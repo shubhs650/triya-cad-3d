@@ -1,0 +1,1911 @@
+{
+  "$defs": {
+    "AnchorBolts": {
+      "properties": {
+        "count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dia_mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "count",
+        "dia_mm"
+      ],
+      "type": "object"
+    },
+    "AngleSense": {
+      "enum": [
+        "clockwise_from_above",
+        "counterclockwise_from_above"
+      ],
+      "type": "string"
+    },
+    "AngleZero": {
+      "description": "What 0° means on the plan view.",
+      "enum": [
+        "plant_north",
+        "plus_x",
+        "plus_y"
+      ],
+      "type": "string"
+    },
+    "Attachment": {
+      "description": "One nozzle, support or detail.",
+      "oneOf": [
+        {
+          "properties": {
+            "attach": {
+              "$ref": "#/$defs/NozzleAttach",
+              "default": "set_in"
+            },
+            "flange": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NozzleFlange"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "inside_projection_mm": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "nozzle",
+              "type": "string"
+            },
+            "manway": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Manway"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "neck_thk_mm": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "neck_type": {
+              "$ref": "#/$defs/NeckType",
+              "default": "pipe"
+            },
+            "nps": {
+              "description": "`\"4\"`, `\"1/2\"`, `\"24\"`.",
+              "type": "string"
+            },
+            "pad": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Pad"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "projection": {
+              "$ref": "#/$defs/Projection"
+            },
+            "schedule": {
+              "description": "`\"STD\"`, `\"XS\"`, `\"80\"`; or give `neck_thk_mm`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "service": {
+              "description": "Text for the nozzle schedule.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "nps",
+            "projection"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A horizontal vessel's saddle; the host is a cylinder.",
+          "properties": {
+            "anchor_bolts": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AnchorBolts"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "base_plate": {
+              "$ref": "#/$defs/Plate"
+            },
+            "contact_angle_deg": {
+              "default": 120.0,
+              "format": "double",
+              "type": "number"
+            },
+            "height_mm": {
+              "description": "Base to the vessel's bottom.",
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "saddle",
+              "type": "string"
+            },
+            "rib_count": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rib_thk_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "wear_plate": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WearPlate"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "web_thk_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "width_mm": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "width_mm",
+            "height_mm",
+            "web_thk_mm",
+            "rib_count",
+            "rib_thk_mm",
+            "base_plate"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A pattern of legs.",
+          "properties": {
+            "attach": {
+              "$ref": "#/$defs/LegAttach",
+              "default": "shell"
+            },
+            "base_plate": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Plate"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "count": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "leg",
+              "type": "string"
+            },
+            "length_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "section": {
+              "$ref": "#/$defs/LegSection"
+            },
+            "start_angle_deg": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "count",
+            "section",
+            "length_mm"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A pattern of bracket (lug) supports.",
+          "properties": {
+            "bolt_holes": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/BoltHoles"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "bottom_plate": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Plate"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "count": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "gusset": {
+              "$ref": "#/$defs/Gusset"
+            },
+            "kind": {
+              "const": "bracket",
+              "type": "string"
+            },
+            "top_plate": {
+              "$ref": "#/$defs/Plate"
+            }
+          },
+          "required": [
+            "kind",
+            "count",
+            "gusset",
+            "top_plate"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Anchor-bolt chairs around a skirt.",
+          "properties": {
+            "bolt_dia_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "count": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "gusset_thk_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "height_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "anchor_chair",
+              "type": "string"
+            },
+            "top_plate_thk_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "width_mm": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "count",
+            "height_mm",
+            "width_mm",
+            "gusset_thk_mm",
+            "top_plate_thk_mm",
+            "bolt_dia_mm"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "inside": {
+              "default": false,
+              "type": "boolean"
+            },
+            "kind": {
+              "const": "stiffening_ring",
+              "type": "string"
+            },
+            "section": {
+              "$ref": "#/$defs/RingSection"
+            }
+          },
+          "required": [
+            "kind",
+            "section"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A half-pipe coil wound on the shell; give `turns` or `end_axial_mm`.",
+          "properties": {
+            "end_axial_mm": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "half_pipe": {
+              "default": true,
+              "type": "boolean"
+            },
+            "hand": {
+              "$ref": "#/$defs/Hand",
+              "default": "rh"
+            },
+            "kind": {
+              "const": "limpet_coil",
+              "type": "string"
+            },
+            "pipe_nps": {
+              "type": "string"
+            },
+            "pitch_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "schedule": {
+              "type": "string"
+            },
+            "start_angle_deg": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "turns": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "pipe_nps",
+            "schedule",
+            "pitch_mm"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "hole_dia_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "lifting_lug",
+              "type": "string"
+            },
+            "pad": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Pad"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "plate": {
+              "$ref": "#/$defs/LugPlate"
+            },
+            "style": {
+              "$ref": "#/$defs/LugStyle"
+            }
+          },
+          "required": [
+            "kind",
+            "style",
+            "plate",
+            "hole_dia_mm"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "insulation_ring",
+              "type": "string"
+            },
+            "segments": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "thk_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "width_mm": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "width_mm",
+            "thk_mm",
+            "segments"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "count": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "clip",
+              "type": "string"
+            },
+            "plate": {
+              "$ref": "#/$defs/Plate"
+            },
+            "purpose": {
+              "$ref": "#/$defs/ClipPurpose"
+            }
+          },
+          "required": [
+            "kind",
+            "plate",
+            "count",
+            "purpose"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "angle_deg": {
+          "default": 0.0,
+          "description": "Azimuth per `global.angle_zero` / `angle_sense`.",
+          "format": "double",
+          "type": "number"
+        },
+        "axial": {
+          "$ref": "#/$defs/Axial"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "flags": {
+          "$ref": "#/$defs/Flags",
+          "description": "Set by the generator."
+        },
+        "frame": {
+          "$ref": "#/$defs/Frame",
+          "default": {
+            "type": "radial"
+          }
+        },
+        "host": {
+          "description": "The element it sits on (`Element::id`).",
+          "type": "string"
+        },
+        "id": {
+          "description": "`N1`, `M1`, `L1`, … (unique across elements and attachments).",
+          "type": "string"
+        },
+        "material": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_key": {
+          "description": "Keys into a `TableSet` row.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "standard_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StandardRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "host",
+        "axial"
+      ],
+      "type": "object"
+    },
+    "Axial": {
+      "description": "Where along the axis an attachment sits.",
+      "properties": {
+        "mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "ref": {
+          "$ref": "#/$defs/AxialRef"
+        }
+      },
+      "required": [
+        "ref",
+        "mm"
+      ],
+      "type": "object"
+    },
+    "AxialRef": {
+      "oneOf": [
+        {
+          "const": "datum",
+          "description": "From the datum: the elevation stays put when elements are re-stacked.",
+          "type": "string"
+        },
+        {
+          "const": "host_from",
+          "description": "From the host element's start node: it moves with the host.",
+          "type": "string"
+        }
+      ]
+    },
+    "BaseRing": {
+      "properties": {
+        "id_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "od_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "thickness_mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "od_mm",
+        "id_mm",
+        "thickness_mm"
+      ],
+      "type": "object"
+    },
+    "BoltHoles": {
+      "properties": {
+        "count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dia_mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "count",
+        "dia_mm"
+      ],
+      "type": "object"
+    },
+    "ClipPurpose": {
+      "enum": [
+        "ladder",
+        "platform",
+        "pipe_support",
+        "earthing",
+        "nameplate"
+      ],
+      "type": "string"
+    },
+    "Datum": {
+      "description": "The 0.0 of every `axial` reference and of the drawing's dimensions.",
+      "oneOf": [
+        {
+          "const": "bottom_tl",
+          "description": "The bottom head's tangent line.",
+          "type": "string"
+        },
+        {
+          "const": "bottom_seam",
+          "description": "The bottom head-to-shell seam (the end of its straight flange).",
+          "type": "string"
+        },
+        {
+          "const": "skirt_base",
+          "description": "The underside of the skirt's base ring.",
+          "type": "string"
+        },
+        {
+          "const": "plant_elevation",
+          "description": "Plant grade: the bottom tangent line sits at `plant_elevation_mm`.",
+          "type": "string"
+        },
+        {
+          "const": "left_tl",
+          "description": "A horizontal vessel's left tangent line.",
+          "type": "string"
+        }
+      ]
+    },
+    "DesignData": {
+      "description": "Drawing and BOM data only: Triya does no code calculations in the beta.",
+      "properties": {
+        "capacity_m3": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "code": {
+          "description": "`\"ASME VIII-1 2025\"`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "design_temp_c": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "empty_weight_kg": {
+          "description": "Computed values fill the weights when absent.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "hydrotest_kpa": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "joint_eff": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mawp_ext": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pressure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mawp_int": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pressure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mdmt_c": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "nameplate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Nameplate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operating_weight_kg": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pwht": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "rt": {
+          "description": "`\"Spot\"`, `\"Full\"`, `\"None\"`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seismic_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "test_weight_kg": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wind_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "DiameterBasis": {
+      "enum": [
+        "inside",
+        "outside"
+      ],
+      "type": "string"
+    },
+    "Element": {
+      "description": "One element of the axisymmetric stack.",
+      "oneOf": [
+        {
+          "description": "Cylinder plus base annulus; its top meets the bottom head `top_offset_mm` below the TL.",
+          "properties": {
+            "base_ring": {
+              "$ref": "#/$defs/BaseRing"
+            },
+            "height_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "skirt",
+              "type": "string"
+            },
+            "top_offset_mm": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "height_mm",
+            "base_ring"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "cylinder",
+              "type": "string"
+            },
+            "length_mm": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "length_mm"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A formed head: straight flange, knuckle, crown.",
+          "properties": {
+            "crown_radius_mm": {
+              "description": "Inside crown radius override (required by `custom_torispherical`).",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "head",
+              "type": "string"
+            },
+            "knuckle_radius_mm": {
+              "description": "Inside knuckle radius override (required by `custom_torispherical`).",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "orientation": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HeadOrientation"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Auto from the head's position in the stack when omitted."
+            },
+            "preset": {
+              "$ref": "#/$defs/HeadPresetId"
+            },
+            "straight_flange_mm": {
+              "description": "Default per preset (≥ 3 t).",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "preset"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A concentric cone; toriconical when a knuckle is > 0.",
+          "properties": {
+            "diameter_large_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "diameter_small_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "cone",
+              "type": "string"
+            },
+            "knuckle_large_mm": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "knuckle_small_mm": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "length_mm": {
+              "description": "Axial length.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "length_mm",
+            "diameter_small_mm",
+            "diameter_large_mm"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A welded or bolted flat plate (its thickness is the element's `thickness_mm`).",
+          "properties": {
+            "bolted": {
+              "default": false,
+              "type": "boolean"
+            },
+            "kind": {
+              "const": "flat_cover",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A weld-neck body flange, from a table row or explicit dimensions.",
+          "properties": {
+            "explicit": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FlangeDims"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "flange_ref": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FlangeRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "gasket_gap_mm": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "body_flange",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "diameter_mm": {
+          "description": "On the vessel's `diameter_basis`; inherited from the previous element when omitted\n(inheritance stops at a cone, which states both ends).",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "`E1`, `E2`, … (unique across elements and attachments).",
+          "type": "string"
+        },
+        "material": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "thickness_mm": {
+          "description": "Wall (or plate) thickness.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "thickness_mm"
+      ],
+      "type": "object"
+    },
+    "Facing": {
+      "enum": [
+        "rf",
+        "ff",
+        "rtj"
+      ],
+      "type": "string"
+    },
+    "Flags": {
+      "properties": {
+        "boolean_failed": {
+          "default": false,
+          "description": "The nozzle's cut/join failed in the kernel; it is kept as a separate body.",
+          "type": "boolean"
+        },
+        "unverified_table": {
+          "default": false,
+          "description": "A dimension came from a table row not marked verified.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "FlangeDims": {
+      "description": "A flange given by its dimensions.",
+      "properties": {
+        "bolt_circle_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "bolt_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bolt_hole_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "hub_len_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "hub_od_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "od_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "thickness_mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "od_mm",
+        "bolt_circle_mm",
+        "bolt_count",
+        "bolt_hole_mm",
+        "thickness_mm",
+        "hub_od_mm",
+        "hub_len_mm"
+      ],
+      "type": "object"
+    },
+    "FlangeKind": {
+      "description": "The flange type a table row describes.",
+      "oneOf": [
+        {
+          "enum": [
+            "blind"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "wn",
+          "description": "Weld neck.",
+          "type": "string"
+        },
+        {
+          "const": "so",
+          "description": "Slip-on.",
+          "type": "string"
+        },
+        {
+          "const": "lj",
+          "description": "Lap joint.",
+          "type": "string"
+        },
+        {
+          "const": "sw",
+          "description": "Socket weld.",
+          "type": "string"
+        },
+        {
+          "const": "lwn",
+          "description": "Long weld neck.",
+          "type": "string"
+        }
+      ]
+    },
+    "FlangeRef": {
+      "description": "A flange looked up in a table.",
+      "properties": {
+        "class": {
+          "$ref": "#/$defs/Rating"
+        },
+        "nps_or_dn": {
+          "description": "`\"24\"` or `\"DN600\"`.",
+          "type": "string"
+        },
+        "standard": {
+          "description": "`B16.5`, `B16.47A`, `EN 1092-1`, …",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/FlangeKind"
+        }
+      },
+      "required": [
+        "standard",
+        "nps_or_dn",
+        "class",
+        "type"
+      ],
+      "type": "object"
+    },
+    "FlangeStandard": {
+      "enum": [
+        "B16.5",
+        "B16.47A",
+        "B16.47B"
+      ],
+      "type": "string"
+    },
+    "Frame": {
+      "description": "How an attachment's axis sits relative to the vessel (`vessel-schema.md` §4.1).",
+      "oneOf": [
+        {
+          "description": "Through the vessel axis, perpendicular to it.",
+          "properties": {
+            "type": {
+              "const": "radial",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Parallel to a radial, offset sideways.",
+          "properties": {
+            "offset_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "hillside",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "offset_mm"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Offset so the neck OD is flush with the shell (default offset R − neck r).",
+          "properties": {
+            "offset_mm": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "tangential",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A radial rotated about the circumferential tangent.",
+          "properties": {
+            "tilt_deg": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "tilted",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "tilt_deg"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "On a head: parallel to the vessel axis at `radius_mm`.",
+          "properties": {
+            "radius_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "parallel_to_axis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "radius_mm"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "On a head: normal to the head surface at `radius_mm`.",
+          "properties": {
+            "radius_mm": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "head_radial_at_r",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "radius_mm"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Global": {
+      "properties": {
+        "angle_sense": {
+          "$ref": "#/$defs/AngleSense",
+          "default": "clockwise_from_above"
+        },
+        "angle_zero": {
+          "$ref": "#/$defs/AngleZero",
+          "default": "plant_north"
+        },
+        "corrosion_allowance_mm": {
+          "default": 0.0,
+          "description": "Drawing note only in the beta.",
+          "format": "double",
+          "type": "number"
+        },
+        "datum": {
+          "$ref": "#/$defs/Datum",
+          "default": "bottom_tl"
+        },
+        "default_material": {
+          "default": "SA-516 Gr.70",
+          "description": "BOM default.",
+          "type": "string"
+        },
+        "diameter_basis": {
+          "$ref": "#/$defs/DiameterBasis",
+          "default": "inside",
+          "description": "How `diameter_mm` on elements is read."
+        },
+        "insulation_thickness_mm": {
+          "default": 0.0,
+          "description": "Nozzle projection reference when `projection.from = insulation`.",
+          "format": "double",
+          "type": "number"
+        },
+        "orientation": {
+          "$ref": "#/$defs/Orientation",
+          "default": "vertical"
+        },
+        "plant_elevation_mm": {
+          "default": 0.0,
+          "description": "Elevation of the datum above plant grade (drawing only).",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "Gusset": {
+      "properties": {
+        "height_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "thk_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "width_mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "height_mm",
+        "width_mm",
+        "thk_mm"
+      ],
+      "type": "object"
+    },
+    "Hand": {
+      "enum": [
+        "rh",
+        "lh"
+      ],
+      "type": "string"
+    },
+    "HeadOrientation": {
+      "oneOf": [
+        {
+          "const": "up",
+          "description": "The crown points toward +axis (a top or right head).",
+          "type": "string"
+        },
+        {
+          "const": "down",
+          "description": "The crown points toward −axis (a bottom or left head).",
+          "type": "string"
+        }
+      ]
+    },
+    "HeadPresetId": {
+      "description": "Head presets (`vessel-schema.md` §3.1).",
+      "oneOf": [
+        {
+          "const": "asme_fd",
+          "description": "Torispherical, L = D, r = 0.06 D (min 3 t).",
+          "type": "string"
+        },
+        {
+          "const": "ellipsoidal_2_1",
+          "description": "True semi-ellipse, a = D/2, b = D/4.",
+          "type": "string"
+        },
+        {
+          "const": "ellipsoidal_2_1_ug32_approx",
+          "description": "Torispherical L = 0.9 D, r = 0.17 D (ASME UG-32 approximation of the 2:1 head).",
+          "type": "string"
+        },
+        {
+          "const": "kloepper_din28011",
+          "description": "DIN 28011: L = Da, r = 0.1 Da.",
+          "type": "string"
+        },
+        {
+          "const": "korbbogen_din28013",
+          "description": "DIN 28013: L = 0.8 Da, r = 0.154 Da.",
+          "type": "string"
+        },
+        {
+          "const": "torispherical_80_10",
+          "description": "L = 0.8 D, r = 0.1 D.",
+          "type": "string"
+        },
+        {
+          "const": "hemispherical",
+          "description": "Sphere R = D/2.",
+          "type": "string"
+        },
+        {
+          "const": "custom_torispherical",
+          "description": "Explicit `crown_radius_mm` and `knuckle_radius_mm`.",
+          "type": "string"
+        }
+      ]
+    },
+    "LegAttach": {
+      "enum": [
+        "head",
+        "shell"
+      ],
+      "type": "string"
+    },
+    "LegSection": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "pipe": {
+              "properties": {
+                "nps": {
+                  "type": "string"
+                },
+                "schedule": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "nps",
+                "schedule"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "pipe"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Angle designation as written (`\"ISA 75x75x8\"`).",
+          "properties": {
+            "angle": {
+              "properties": {
+                "size": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "size"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "angle"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "properties": {
+                "size": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "size"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "channel"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "LugPlate": {
+      "properties": {
+        "height_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "len_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "thk_mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "len_mm",
+        "height_mm",
+        "thk_mm"
+      ],
+      "type": "object"
+    },
+    "LugStyle": {
+      "enum": [
+        "longitudinal",
+        "circumferential",
+        "trunnion",
+        "tailing"
+      ],
+      "type": "string"
+    },
+    "Manway": {
+      "properties": {
+        "davit": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Nameplate": {
+      "properties": {
+        "serial": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "year": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "NeckType": {
+      "enum": [
+        "pipe",
+        "lwn",
+        "forged"
+      ],
+      "type": "string"
+    },
+    "NozzleAttach": {
+      "enum": [
+        "set_in",
+        "set_on"
+      ],
+      "type": "string"
+    },
+    "NozzleFlange": {
+      "properties": {
+        "class": {
+          "description": "150, 300, 600, 900, 1500, 2500.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "facing": {
+          "$ref": "#/$defs/Facing",
+          "default": "rf"
+        },
+        "standard": {
+          "$ref": "#/$defs/FlangeStandard"
+        },
+        "type": {
+          "$ref": "#/$defs/FlangeKind"
+        }
+      },
+      "required": [
+        "standard",
+        "class",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Orientation": {
+      "oneOf": [
+        {
+          "const": "vertical",
+          "description": "Axis +Z, stack bottom → top.",
+          "type": "string"
+        },
+        {
+          "const": "horizontal",
+          "description": "Axis +X, stack left → right.",
+          "type": "string"
+        }
+      ]
+    },
+    "Pad": {
+      "description": "A reinforcing pad around a nozzle or under a lug.",
+      "properties": {
+        "thickness_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "width_mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "width_mm",
+        "thickness_mm"
+      ],
+      "type": "object"
+    },
+    "Plate": {
+      "description": "A rectangular plate: length, width, thickness.",
+      "properties": {
+        "len_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "thk_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "wid_mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "len_mm",
+        "wid_mm",
+        "thk_mm"
+      ],
+      "type": "object"
+    },
+    "Pressure": {
+      "properties": {
+        "at_c": {
+          "format": "double",
+          "type": "number"
+        },
+        "kpa": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kpa",
+        "at_c"
+      ],
+      "type": "object"
+    },
+    "Projection": {
+      "description": "Where the flange face is: `mm` from `from`.",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/ProjectionFrom"
+        },
+        "mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "from",
+        "mm"
+      ],
+      "type": "object"
+    },
+    "ProjectionFrom": {
+      "oneOf": [
+        {
+          "const": "cl",
+          "description": "The vessel centreline.",
+          "type": "string"
+        },
+        {
+          "const": "od",
+          "description": "The shell's outside surface.",
+          "type": "string"
+        },
+        {
+          "const": "insulation",
+          "description": "The insulation's outside surface (`global.insulation_thickness_mm`).",
+          "type": "string"
+        }
+      ]
+    },
+    "Rating": {
+      "anyOf": [
+        {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "A pressure rating as tables write it: `150` or `\"PN16\"`."
+    },
+    "Revision": {
+      "properties": {
+        "by": {
+          "default": "",
+          "type": "string"
+        },
+        "date": {
+          "default": "",
+          "type": "string"
+        },
+        "desc": {
+          "default": "",
+          "type": "string"
+        },
+        "rev": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RingSection": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bar": {
+              "properties": {
+                "height_mm": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "thk_mm": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "height_mm",
+                "thk_mm"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "bar"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "angle": {
+              "properties": {
+                "size": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "size"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "angle"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "StandardRef": {
+      "description": "The document a row comes from: organisation (`ASME`, `EN`, `DIN`, `IS`), number and edition.",
+      "properties": {
+        "number": {
+          "type": "string"
+        },
+        "org": {
+          "type": "string"
+        },
+        "rev": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org",
+        "number"
+      ],
+      "type": "object"
+    },
+    "WearPlate": {
+      "properties": {
+        "angle_deg": {
+          "format": "double",
+          "type": "number"
+        },
+        "thk_mm": {
+          "format": "double",
+          "type": "number"
+        },
+        "width_mm": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "thk_mm",
+        "width_mm",
+        "angle_deg"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "A whole vessel.",
+  "properties": {
+    "attachments": {
+      "default": [],
+      "description": "Nozzles, supports and details placed on elements.",
+      "items": {
+        "$ref": "#/$defs/Attachment"
+      },
+      "type": "array"
+    },
+    "design_data": {
+      "$ref": "#/$defs/DesignData",
+      "description": "Drawing and BOM data only (no code calculations in the beta)."
+    },
+    "elements": {
+      "default": [],
+      "description": "The axisymmetric stack, bottom → top (vertical) or left → right (horizontal).",
+      "items": {
+        "$ref": "#/$defs/Element"
+      },
+      "type": "array"
+    },
+    "extra": {
+      "additionalProperties": true,
+      "description": "Free-form, preserved.",
+      "type": "object"
+    },
+    "global": {
+      "$ref": "#/$defs/Global",
+      "default": {
+        "angle_sense": "clockwise_from_above",
+        "angle_zero": "plant_north",
+        "corrosion_allowance_mm": 0.0,
+        "datum": "bottom_tl",
+        "default_material": "SA-516 Gr.70",
+        "diameter_basis": "inside",
+        "insulation_thickness_mm": 0.0,
+        "orientation": "vertical",
+        "plant_elevation_mm": 0.0
+      }
+    },
+    "id": {
+      "default": "V-1",
+      "description": "The vessel tag (`V-101`); generated parameter names start with it.",
+      "type": "string"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "revisions": {
+      "items": {
+        "$ref": "#/$defs/Revision"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "description": "Always `triya.vessel/0.1`.",
+      "type": "string"
+    },
+    "title": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "title": "VesselDoc",
+  "type": "object"
+}

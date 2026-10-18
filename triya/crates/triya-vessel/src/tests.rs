@@ -3,12 +3,10 @@
 //! Tests: the plan for a plain cylinder, the vessel commands under hostile parameters (no
 //! panic, as upstream's `hostile_params_never_panic`), and a real regeneration measured.
 
+use crate::model::{Element, ElementKind, HeadPresetId, MAX_EXTRA_BYTES, VesselDoc};
+use crate::{commands, emit, eval};
 use serde_json::{Value, json};
 use solidcraft_engine::{EngineError, Session};
-use triya_stdlib::HeadPreset;
-
-use crate::model::{Element, ElementKind, VesselDoc};
-use crate::{commands, emit, eval};
 
 /// The commands are registered once per test process (the registry is global and idempotent).
 fn registered() {
@@ -17,6 +15,17 @@ fn registered() {
 
 fn run(s: &mut Session, cmd: &str, p: Value) -> Value {
     s.execute(cmd, &p).unwrap_or_else(|e| panic!("{cmd}: {e}"))
+}
+
+fn head(id: &str, preset: HeadPresetId, sf: Option<f64>) -> Element {
+    Element {
+        id: id.into(),
+        kind: ElementKind::Head { preset, straight_flange_mm: sf, crown_radius_mm: None, knuckle_radius_mm: None, orientation: None },
+        thickness_mm: 10.0,
+        diameter_mm: Some(1000.0),
+        material: None,
+        description: None,
+    }
 }
 
 #[test]
@@ -51,21 +60,8 @@ fn plan_for_a_cylinder_is_sketch_rectangle_finish_revolve() {
 #[test]
 fn heads_cones_and_attachments_are_not_supported_yet_but_resolve() {
     let mut doc = VesselDoc::cylinder("S1", 1000.0, 10.0, 2000.0);
-    doc.elements.insert(
-        0,
-        Element {
-            id: "H1".into(),
-            kind: ElementKind::Head { preset: HeadPreset::ELLIPSOIDAL_2_1 },
-            id_or_od_mm: 1000.0,
-            thickness_mm: 10.0,
-            length_mm: 0.0,
-            straight_flange_mm: 40.0,
-            corrosion_allowance_mm: 0.0,
-            material: None,
-            note: None,
-        },
-    );
-    doc.global.datum = crate::model::Datum::FirstTangentLine;
+    doc.elements.insert(0, head("H1", HeadPresetId::Ellipsoidal21, Some(40.0)));
+    doc.global.datum = crate::model::Datum::BottomTl;
     let r = eval::resolve(&doc).unwrap();
     let h = r.station("H1").unwrap();
     assert!((h.z_from + 290.0).abs() < 1e-9 && h.z_to.abs() < 1e-9, "{h:?}");
@@ -79,17 +75,7 @@ fn heads_cones_and_attachments_are_not_supported_yet_but_resolve() {
 
     // A torispherical head's profile: continuous, monotone, zero at the crown.
     let mut tori = VesselDoc::cylinder("S1", 1000.0, 10.0, 100.0);
-    tori.elements.push(Element {
-        id: "H2".into(),
-        kind: ElementKind::Head { preset: HeadPreset::KLOPPER },
-        id_or_od_mm: 1000.0,
-        thickness_mm: 10.0,
-        length_mm: 0.0,
-        straight_flange_mm: 0.0,
-        corrosion_allowance_mm: 0.0,
-        material: None,
-        note: None,
-    });
+    tori.elements.push(head("H2", HeadPresetId::KloepperDin28011, Some(0.0)));
     let r = eval::resolve(&tori).unwrap();
     let h = r.station("H2").unwrap();
     let mut last = f64::INFINITY;
@@ -113,8 +99,8 @@ fn invalid_documents_are_errors() {
     assert!(doc.validate().is_err(), "duplicate ids");
     let mut doc = VesselDoc::cylinder("S1", f64::NAN, 10.0, 2000.0);
     assert!(doc.validate().is_err());
-    doc.elements[0].id_or_od_mm = 1000.0;
-    doc.elements[0].length_mm = 0.0;
+    doc.elements[0].diameter_mm = Some(1000.0);
+    doc.elements[0].kind = ElementKind::Cylinder { length_mm: 0.0 };
     assert!(doc.validate().is_err());
     let empty = VesselDoc::new(None);
     assert!(eval::resolve(&empty).is_err());
@@ -145,11 +131,11 @@ fn vessel_commands_never_panic_on_hostile_params() {
         json!({}),
         json!({"x": 1}),
         json!({"schema": "triya.vessel/0.1"}),
-        json!({"schema": "triya.vessel/0.1", "elements": [{"id": "", "type": "cylinder"}]}),
-        json!({"schema": "triya.vessel/0.1", "elements": [{"id": "a", "kind": {"type": "cylinder"}, "id_or_od_mm": 1e308, "thickness_mm": 1, "length_mm": 1}]}),
-        json!({"schema": "triya.vessel/0.1", "elements": [{"id": "a", "kind": {"type": "head", "preset": {"type": "torispherical", "crown_ratio": 0.1, "knuckle_ratio": 0.49}}, "id_or_od_mm": 10, "thickness_mm": 1}]}),
-        json!({"id": "S1", "kind": {"type": "cone", "small_diameter_mm": -5}, "id_or_od_mm": 100, "thickness_mm": 5, "length_mm": 50}),
-        json!({"id": "N1", "host": "S1", "axial": {"type": "fraction", "t": 2}, "angle_deg": 0, "frame": {"type": "radial"}, "kind": {"type": "nozzle", "nps": "2", "class": "150", "flange": "wn", "projection_mm": 150}}),
+        json!({"schema": "triya.vessel/0.1", "elements": [{"id": "", "kind": "cylinder"}]}),
+        json!({"schema": "triya.vessel/0.1", "elements": [{"id": "a", "kind": "cylinder", "diameter_mm": 1e308, "thickness_mm": 1, "length_mm": 1}]}),
+        json!({"schema": "triya.vessel/0.1", "elements": [{"id": "a", "kind": "head", "preset": "custom_torispherical", "crown_radius_mm": 1, "knuckle_radius_mm": 4.9, "diameter_mm": 10, "thickness_mm": 1}]}),
+        json!({"id": "S1", "kind": "cone", "diameter_small_mm": -5, "diameter_large_mm": 100, "thickness_mm": 5, "length_mm": 50}),
+        json!({"id": "N1", "kind": "nozzle", "host": "S1", "axial": {"ref": "host_from", "mm": -1e300}, "angle_deg": 0, "frame": {"type": "radial"}, "nps": "2", "projection": {"from": "cl", "mm": 150}}),
     ];
     let mut internal = Vec::new();
     for spec in commands::COMMANDS {
@@ -198,7 +184,7 @@ fn regenerate_builds_the_cylinder_in_one_undo_step() {
     run(&mut s, "vessel.new", json!({"diameter_mm": 1000, "thickness_mm": 10, "length_mm": 2000, "name": "Drum"}));
     let stored = s.doc.metadata.get(commands::METADATA_KEY).expect("vessel kept in metadata");
     assert_eq!(stored["doc"]["schema"], json!("triya.vessel/0.1"));
-    assert_eq!(stored["doc"]["name"], json!("Drum"));
+    assert_eq!(stored["doc"]["title"], json!("Drum"));
     assert!(s.execute("vessel.new", &json!({})).is_err(), "a second vessel is refused without replace");
 
     let inspect = run(&mut s, "vessel.inspect", json!({}));
@@ -222,11 +208,7 @@ fn regenerate_builds_the_cylinder_in_one_undo_step() {
     // The generated features are remembered, and replaced by the next regeneration.
     let features = r["features"].as_array().cloned().unwrap_or_default();
     assert_eq!(features.len(), 2, "sketch and revolve: {features:?}");
-    run(
-        &mut s,
-        "vessel.set",
-        json!({"element": {"id": "S1", "kind": {"type": "cylinder"}, "id_or_od_mm": 800, "thickness_mm": 8, "length_mm": 1000}}),
-    );
+    run(&mut s, "vessel.set", json!({"element": {"id": "S1", "kind": "cylinder", "diameter_mm": 800, "thickness_mm": 8, "length_mm": 1000}}));
     let r2 = run(&mut s, "vessel.regenerate", json!({}));
     assert_ne!(r2["features"], r["features"]);
     let st = s.model.state();
@@ -256,8 +238,8 @@ fn regenerate_refuses_attachments_and_leaves_the_design_as_it_was() {
     run(
         &mut s,
         "vessel.set",
-        json!({"attachment": {"id": "N1", "host": "S1", "axial": {"type": "from_host_start", "dz_mm": 500}, "angle_deg": 90, "frame": {"type": "radial"},
-            "kind": {"type": "nozzle", "nps": "2", "class": "150", "flange": "wn", "projection_mm": 150}}}),
+        json!({"attachment": {"id": "N1", "kind": "nozzle", "host": "S1", "axial": {"ref": "host_from", "mm": 500}, "angle_deg": 90, "frame": {"type": "radial"},
+            "nps": "2", "projection": {"from": "od", "mm": 150}}}),
     );
     let before = s.doc.clone();
     let e = s.execute("vessel.regenerate", &json!({})).unwrap_err().to_string();
@@ -281,4 +263,139 @@ fn cylinder_volume_matches_analytic() {
     let expected = std::f64::consts::PI * (510.0f64.powi(2) - 500.0f64.powi(2)) * 2000.0;
     // 0.1 %: the revolve is exact geometry; the kernel's measure integrates a tessellation.
     assert!((m.volume - expected).abs() / expected < 1e-3, "volume {} vs {expected}", m.volume);
+}
+
+/// The reference vessels of `docs/beta-dod.md` §B, and a fixture holding every kind they leave out.
+const REFERENCE: [(&str, &str); 4] = [
+    ("vessel-a", include_str!("../tests/reference/vessel-a.json")),
+    ("vessel-b", include_str!("../tests/reference/vessel-b.json")),
+    ("vessel-c", include_str!("../tests/reference/vessel-c.json")),
+    ("every-kind", include_str!("../tests/reference/every-kind.json")),
+];
+
+/// Every field `input` names is in `output`, with the same value (numbers compared as f64).
+fn assert_kept(input: &Value, output: &Value, path: &str) {
+    match (input, output) {
+        (Value::Object(a), Value::Object(b)) => {
+            for (k, v) in a {
+                let o = b.get(k).unwrap_or_else(|| panic!("{path}.{k} was dropped"));
+                assert_kept(v, o, &format!("{path}.{k}"));
+            }
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            assert_eq!(a.len(), b.len(), "{path}: length");
+            for (i, (x, y)) in a.iter().zip(b).enumerate() {
+                assert_kept(x, y, &format!("{path}[{i}]"));
+            }
+        }
+        (Value::Number(a), Value::Number(b)) => assert_eq!(a.as_f64(), b.as_f64(), "{path}"),
+        _ => assert_eq!(input, output, "{path}"),
+    }
+}
+
+/// PLAN T2.1: the three reference vessels (and the every-kind fixture) parse, validate and
+/// serialise back with every field they had, and a second trip changes nothing.
+#[test]
+fn reference_vessels_round_trip() {
+    let mut element_kinds = std::collections::BTreeSet::new();
+    let mut attachment_kinds = std::collections::BTreeSet::new();
+    let mut frames = std::collections::BTreeSet::new();
+    for (name, text) in REFERENCE {
+        let doc = VesselDoc::from_json(text).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let input: Value = serde_json::from_str(text).unwrap();
+        let out = doc.to_value().unwrap();
+        assert_kept(&input, &out, name);
+        let back = VesselDoc::from_value(&out).unwrap();
+        assert_eq!(back, doc, "{name}");
+        assert_eq!(back.to_value().unwrap(), out, "{name}: a second trip is stable");
+        element_kinds.extend(doc.elements.iter().map(|e| e.kind.name()));
+        attachment_kinds.extend(doc.attachments.iter().map(|a| a.kind.name()));
+        frames.extend(doc.attachments.iter().map(|a| serde_json::to_value(a.frame).unwrap()["type"].as_str().unwrap_or_default().to_string()));
+    }
+    let all_elements = ["body_flange", "cone", "cylinder", "flat_cover", "head", "skirt"];
+    assert_eq!(element_kinds.into_iter().collect::<Vec<_>>(), all_elements);
+    let all_attachments =
+        ["anchor_chair", "bracket", "clip", "insulation_ring", "leg", "lifting_lug", "limpet_coil", "nozzle", "saddle", "stiffening_ring"];
+    assert_eq!(attachment_kinds.into_iter().collect::<Vec<_>>(), all_attachments);
+    let all_frames = ["head_radial_at_r", "hillside", "parallel_to_axis", "radial", "tangential", "tilted"];
+    assert_eq!(frames.iter().map(String::as_str).collect::<Vec<_>>(), all_frames);
+    // Unknown top-level fields survive.
+    let fixture = VesselDoc::from_json(REFERENCE[3].1).unwrap();
+    assert_eq!(fixture.unknown.get("a_future_field"), Some(&json!({"kept": true})));
+}
+
+#[test]
+fn head_presets_use_the_schema_names() {
+    let names: Vec<Value> = HeadPresetId::ALL.iter().map(|p| serde_json::to_value(p).unwrap()).collect();
+    assert_eq!(
+        names,
+        [
+            "asme_fd",
+            "ellipsoidal_2_1",
+            "ellipsoidal_2_1_ug32_approx",
+            "kloepper_din28011",
+            "korbbogen_din28013",
+            "torispherical_80_10",
+            "hemispherical",
+            "custom_torispherical"
+        ]
+        .map(|s| json!(s))
+    );
+    for p in HeadPresetId::ALL {
+        let back: HeadPresetId = serde_json::from_value(serde_json::to_value(p).unwrap()).unwrap();
+        assert_eq!(back, p);
+        assert_eq!(p.geometry().is_none(), p == HeadPresetId::CustomTorispherical);
+    }
+}
+
+/// A reference vessel goes into the design (`vessel.new {doc}`) and comes back out of the
+/// saved design unchanged.
+#[test]
+fn reference_vessel_survives_the_design_file() {
+    registered();
+    let doc: Value = serde_json::from_str(REFERENCE[0].1).unwrap();
+    let mut s = Session::default();
+    run(&mut s, "vessel.new", json!({"doc": doc}));
+    let text = s.doc.to_json();
+    let back = solidcraft_engine::doc::Document::from_json(&text).unwrap();
+    let stored = back.metadata.get(commands::METADATA_KEY).map(|v| v["doc"].clone()).unwrap_or_default();
+    assert_eq!(VesselDoc::from_value(&stored).unwrap(), VesselDoc::from_json(REFERENCE[0].1).unwrap());
+}
+
+#[test]
+fn documents_that_break_the_rules_are_refused() {
+    let a: Value = serde_json::from_str(REFERENCE[0].1).unwrap();
+    let refused = |patch: &dyn Fn(&mut Value)| {
+        let mut v = a.clone();
+        patch(&mut v);
+        VesselDoc::from_value(&v).is_err()
+    };
+    assert!(refused(&|v| v["elements"][4]["diameter_mm"] = json!(1600)), "a cone with diameter_mm");
+    assert!(refused(&|v| v["elements"][4]["diameter_small_mm"] = json!(3000)), "small end larger than large end");
+    assert!(refused(&|v| v["elements"][1]["crown_radius_mm"] = json!(1600)), "radii on an ellipsoidal head");
+    assert!(refused(&|v| v["elements"][1]["preset"] = json!("klopper")), "unknown preset");
+    assert!(refused(&|v| v["attachments"][0]["host"] = json!("E99")), "unknown host");
+    assert!(refused(&|v| v["attachments"][0]["id"] = json!("E2")), "id shared with an element");
+    assert!(refused(&|v| v["attachments"][9]["end_axial_mm"] = json!(3000)), "coil with turns and end_axial_mm");
+    assert!(refused(&|v| v["attachments"][3]["frame"]["tilt_deg"] = json!(90)), "tilt of 90°");
+    assert!(refused(&|v| v["global"]["datum"] = json!("left_tl")), "left_tl on a vertical vessel");
+    assert!(refused(&|v| v["design_data"]["joint_eff"] = json!(1.5)), "joint efficiency above 1");
+    assert!(refused(&|v| v["schema"] = json!("triya.vessel/0.2")), "another schema");
+    assert!(refused(&|v| v["extra"] = json!({"blob": "x".repeat(MAX_EXTRA_BYTES)})), "oversized extra");
+    assert!(!refused(&|_| {}), "the reference vessel itself is fine");
+}
+
+/// `vessel-schema.json` is generated from the model (`TRIYA_BLESS=1` rewrites it).
+#[test]
+fn schema_file_is_current() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/vessel-schema.json");
+    let text = serde_json::to_string_pretty(&VesselDoc::json_schema()).unwrap() + "\n";
+    if std::env::var_os("TRIYA_BLESS").is_some() {
+        std::fs::write(path, &text).unwrap();
+    }
+    let on_disk = std::fs::read_to_string(path).unwrap_or_default();
+    assert!(on_disk == text, "vessel-schema.json is stale: TRIYA_BLESS=1 cargo test -p triya-vessel schema_file_is_current");
+    let schema: Value = serde_json::from_str(&on_disk).unwrap();
+    assert_eq!(schema["title"], json!("VesselDoc"));
+    assert!(on_disk.contains("\"ellipsoidal_2_1_ug32_approx\"") && on_disk.contains("\"head_radial_at_r\""));
 }

@@ -1,10 +1,22 @@
 # `triya.vessel/0.1` — vessel document schema
 
 The vessel document is the source of truth for the vessel module (ADR-0003). It is a compact JSON
-object; `triya-vessel::model` holds the serde structs (the skeleton has the shape; T2.1 fills every
-kind) and generates `vessel-schema.json` (`schemars`) in CI. Units: **mm, degrees, kg** in the
-document; converted to mm/radians at the engine boundary. Unknown fields are preserved
-(`#[serde(flatten)]`) for forward compatibility.
+object; `triya-vessel::model` holds the serde structs (every kind and field below, T2.1) and
+generates `triya/crates/triya-vessel/vessel-schema.json` (`schemars`); the test
+`schema_file_is_current` fails CI when the file is stale (`TRIYA_BLESS=1 cargo test -p triya-vessel
+schema_file_is_current` rewrites it). Units: **mm, degrees, kg** in the document; converted to
+mm/radians at the engine boundary. Unknown **top-level** fields are preserved
+(`#[serde(flatten)]`) for forward compatibility, and `extra` is free-form (both together ≤ 16 KiB);
+inside elements and attachments unknown fields are dropped (their `kind` is a flattened tag, and
+serde cannot flatten a second map beside it). Reference documents:
+`triya/crates/triya-vessel/tests/reference/` (`vessel-a/b/c.json` per `beta-dod.md` §B, plus
+`every-kind.json` covering the kinds A–C leave out).
+
+Validation caps: ≤ 200 elements, ≤ 500 attachments, lengths finite and ≤ 1 km, counts 1 … 1000,
+ids ≤ 64 characters and unique across elements and attachments, text ≤ 4 KiB. A cone states
+both ends and no `diameter_mm`; a body flange takes exactly one of `flange_ref` / `explicit`; a
+limpet coil exactly one of `turns` / `end_axial_mm`; `left_tl` is the datum of horizontal
+vessels and only of them.
 
 ## 1. Top level
 ```jsonc

@@ -1,0 +1,48 @@
+{
+  "schema": "triya.vessel/0.1",
+  "id": "V-301",
+  "title": "Reference vessel C (vertical, on legs)",
+  "global": {
+    "orientation": "vertical",
+    "datum": "bottom_tl",
+    "diameter_basis": "inside",
+    "insulation_thickness_mm": 50,
+    "default_material": "SA-240 316L"
+  },
+  "elements": [
+    { "id": "E1", "kind": "head", "preset": "hemispherical", "diameter_mm": 900, "thickness_mm": 8, "straight_flange_mm": 25 },
+    { "id": "E2", "kind": "cylinder", "length_mm": 2400, "thickness_mm": 8 },
+    { "id": "E3", "kind": "head", "preset": "hemispherical", "thickness_mm": 8, "straight_flange_mm": 25 }
+  ],
+  "attachments": [
+    { "id": "LG1", "kind": "leg", "host": "E1", "axial": { "ref": "host_from", "mm": 0 }, "angle_deg": 45,
+      "count": 4, "section": { "pipe": { "nps": "4", "schedule": "40" } }, "length_mm": 1200, "attach": "head",
+      "base_plate": { "len_mm": 200, "wid_mm": 200, "thk_mm": 16 }, "start_angle_deg": 45 },
+    { "id": "N1", "kind": "nozzle", "host": "E2", "axial": { "ref": "datum", "mm": 300 }, "angle_deg": 0,
+      "nps": "3", "schedule": "10S", "flange": { "standard": "B16.5", "class": 150, "type": "so", "facing": "ff" },
+      "projection": { "from": "insulation", "mm": 150 }, "service": "Inlet" },
+    { "id": "N2", "kind": "nozzle", "host": "E2", "axial": { "ref": "datum", "mm": 2100 }, "angle_deg": 180,
+      "nps": "3", "schedule": "10S", "flange": { "standard": "B16.5", "class": 150, "type": "lj" },
+      "projection": { "from": "insulation", "mm": 150 }, "service": "Outlet" },
+    { "id": "N3", "kind": "nozzle", "host": "E3", "axial": { "ref": "host_from", "mm": 0 }, "angle_deg": 0,
+      "frame": { "type": "parallel_to_axis", "radius_mm": 0 }, "nps": "2", "schedule": "40S",
+      "flange": { "standard": "B16.5", "class": 150, "type": "wn" }, "projection": { "from": "cl", "mm": 900 }, "service": "Vent" },
+    { "id": "B1", "kind": "bracket", "host": "E2", "axial": { "ref": "datum", "mm": 1800 }, "angle_deg": 90,
+      "count": 2, "gusset": { "height_mm": 250, "width_mm": 150, "thk_mm": 10 },
+      "top_plate": { "len_mm": 200, "wid_mm": 160, "thk_mm": 12 }, "bottom_plate": { "len_mm": 200, "wid_mm": 40, "thk_mm": 10 },
+      "bolt_holes": { "count": 1, "dia_mm": 22 } },
+    { "id": "I1", "kind": "insulation_ring", "host": "E2", "axial": { "ref": "host_from", "mm": 1200 },
+      "width_mm": 40, "thk_mm": 6, "segments": 4 },
+    { "id": "CL1", "kind": "clip", "host": "E2", "axial": { "ref": "datum", "mm": 600 }, "angle_deg": 270,
+      "plate": { "len_mm": 100, "wid_mm": 75, "thk_mm": 8 }, "count": 1, "purpose": "earthing" }
+  ],
+  "design_data": {
+    "code": "ASME VIII-1 2025",
+    "mawp_int": { "kpa": 350, "at_c": 120 },
+    "design_temp_c": 120,
+    "hydrotest_kpa": 455,
+    "rt": "None",
+    "joint_eff": 0.7
+  },
+  "notes": [ "Insulation 50 thk by others." ]
+}

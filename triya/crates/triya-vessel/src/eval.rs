@@ -128,27 +128,34 @@ fn inside_diameter(doc: &VesselDoc, d: f64, t: f64) -> f64 {
     }
 }
 
-/// An element's axial length and radii (inside), from the document's basis.
-fn extent(doc: &VesselDoc, index: usize, count: usize, e: &Element) -> Result<(f64, f64, f64, Profile, &'static str)> {
+/// An element's axial length and radii (inside), from the document's basis. `inherited` is the
+/// diameter (on the document's basis) the previous element ended with.
+fn extent(doc: &VesselDoc, index: usize, count: usize, e: &Element, inherited: Option<f64>) -> Result<(f64, f64, f64, Profile, &'static str, f64)> {
     let t = e.thickness_mm;
-    let di = inside_diameter(doc, e.id_or_od_mm, t);
+    let kind = e.kind.name();
+    if let ElementKind::Cone { length_mm, diameter_small_mm, diameter_large_mm, .. } = &e.kind {
+        // The end that meets the previous element comes first; a leading cone starts large.
+        let small_first = inherited.is_some_and(|d| (d - diameter_small_mm).abs() < (d - diameter_large_mm).abs());
+        let (d0, d1) = if small_first { (*diameter_small_mm, *diameter_large_mm) } else { (*diameter_large_mm, *diameter_small_mm) };
+        let (r0, r1) = (inside_diameter(doc, d0, t) / 2.0, inside_diameter(doc, d1, t) / 2.0);
+        if !(r0 > 0.0 && r1 > 0.0) {
+            return Err(VesselError::Invalid(format!("element `{}`: the wall leaves no inside diameter", e.id)));
+        }
+        return Ok((*length_mm, r0, r1, Profile::Conical, kind, d1));
+    }
+    let d = e.diameter_mm.or(inherited).ok_or_else(|| VesselError::Invalid(format!("element `{}` needs `diameter_mm`", e.id)))?;
+    let di = inside_diameter(doc, d, t);
     if !(di > 0.0) {
-        return Err(VesselError::Invalid(format!("element `{}`: the wall {t} leaves no inside diameter in {}", e.id, e.id_or_od_mm)));
+        return Err(VesselError::Invalid(format!("element `{}`: the wall {t} leaves no inside diameter in {d}", e.id)));
     }
     let r = di / 2.0;
     match &e.kind {
-        ElementKind::Cylinder => Ok((e.length_mm, r, r, Profile::Straight, "cylinder")),
-        ElementKind::Skirt => Ok((e.length_mm, r, r, Profile::Straight, "skirt")),
-        ElementKind::FlatCover => Ok((e.length_mm, r, r, Profile::Straight, "flat_cover")),
-        ElementKind::BodyFlange => Ok((e.length_mm, r, r, Profile::Straight, "body_flange")),
-        ElementKind::Cone { small_diameter_mm } => {
-            let small = inside_diameter(doc, *small_diameter_mm, t);
-            if !(small >= 0.0) {
-                return Err(VesselError::Invalid(format!("element `{}`: the wall leaves no small-end diameter", e.id)));
-            }
-            Ok((e.length_mm, r, small / 2.0, Profile::Conical, "cone"))
-        }
-        ElementKind::Head { preset } => {
+        ElementKind::Cylinder { length_mm } => Ok((*length_mm, r, r, Profile::Straight, kind, d)),
+        ElementKind::Skirt { height_mm, .. } => Ok((*height_mm, r, r, Profile::Straight, kind, d)),
+        ElementKind::FlatCover { .. } => Ok((t, r, r, Profile::Straight, kind, d)),
+        ElementKind::BodyFlange { explicit, .. } => Ok((explicit.as_ref().map_or(t, |f| f.thickness_mm), r, r, Profile::Straight, kind, d)),
+        ElementKind::Cone { .. } => Err(VesselError::Invalid(format!("element `{}`: cone handled above", e.id))),
+        ElementKind::Head { preset, straight_flange_mm, crown_radius_mm, knuckle_radius_mm, .. } => {
             let side = if index == 0 {
                 HeadSide::CrownAtStart
             } else if index + 1 == count {
@@ -156,9 +163,16 @@ fn extent(doc: &VesselDoc, index: usize, count: usize, e: &Element) -> Result<(f
             } else {
                 return Err(VesselError::Invalid(format!("element `{}`: a head must be the first or the last element", e.id)));
             };
-            let dish = preset.dish_depth(di, t)?;
-            let sf = e.straight_flange_mm;
-            let torus = match preset {
+            let geometry = match (preset.geometry(), crown_radius_mm, knuckle_radius_mm) {
+                (_, Some(l), Some(k)) => {
+                    HeadPreset::Torispherical { crown_ratio: l / di, knuckle_ratio: k / di, basis: triya_stdlib::RatioBasis::Inside }
+                }
+                (Some(g), _, _) => g,
+                (None, _, _) => return Err(VesselError::Invalid(format!("element `{}`: custom head needs both radii", e.id))),
+            };
+            let dish = geometry.dish_depth(di, t)?;
+            let sf = straight_flange_mm.unwrap_or_else(|| preset.default_straight_flange(t));
+            let torus = match geometry {
                 HeadPreset::Torispherical { crown_ratio, knuckle_ratio, basis } => {
                     let d_ref = match basis {
                         triya_stdlib::RatioBasis::Inside => di,
@@ -168,9 +182,9 @@ fn extent(doc: &VesselDoc, index: usize, count: usize, e: &Element) -> Result<(f
                 }
                 _ => None,
             };
-            let ellipsoidal = matches!(preset, HeadPreset::Ellipsoidal { .. } | HeadPreset::Hemispherical);
+            let ellipsoidal = matches!(geometry, HeadPreset::Ellipsoidal { .. } | HeadPreset::Hemispherical);
             let profile = Profile::Head { side, sf, dish, torus, ellipsoidal };
-            Ok((sf + dish, r, r, profile, "head"))
+            Ok((sf + dish, r, r, profile, kind, d))
         }
     }
 }
@@ -184,8 +198,10 @@ pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
     let count = doc.elements.len();
     let mut stations = Vec::with_capacity(count);
     let mut z = 0.0;
+    let mut inherited = None;
     for (index, e) in doc.elements.iter().enumerate() {
-        let (len, r_from, r_to, profile, kind) = extent(doc, index, count, e)?;
+        let (len, r_from, r_to, profile, kind, d_end) = extent(doc, index, count, e, inherited)?;
+        inherited = Some(d_end);
         if !(len.is_finite() && len > 0.0) {
             return Err(VesselError::Invalid(format!("element `{}` has no axial length", e.id)));
         }
@@ -197,8 +213,8 @@ pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
     }
     // The datum moves everything so that zero is where the user says.
     let shift = match doc.global.datum {
-        Datum::FirstElementStart => 0.0,
-        Datum::FirstTangentLine => stations.first().map_or(0.0, |s| s.z_to),
+        Datum::BottomTl | Datum::LeftTl => stations.first().filter(|s| s.kind == "head").map_or(0.0, |s| s.z_to),
+        Datum::BottomSeam | Datum::SkirtBase | Datum::PlantElevation => 0.0,
     };
     if shift != 0.0 {
         for s in &mut stations {

@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
-**Phase:** 1 — Rebrand + PWA shell (done) → 2 — Vessel core · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T2.1 (Phase 2). Phase 1 (M1) is done once #8–#11 merge. Phase 0 is done except the Pages deploy, which waits on the owner (see Owner decisions).
+**Phase:** 2 — Vessel core · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
+**Next task:** T2.2 (evaluator). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -22,6 +22,7 @@
 | T1.3 | Desktop shell `triya/apps/triya` (~200 lines): `SolveApp` + `vessel.*` registered + Vessel panel + Triya About; title "Triya CAD 3D", app id `in.openengtools.triya`, window icon from `triya-brand::mark`, own settings folder, OS title bar (`custom_titlebar = false`), `http_get`/`http_download` `None`; upstream's `control_server.rs` compiled unchanged via `#[path]`; layers row `triya` exempt (seam 10) | #9 | 18 Oct | Xvfb run: `xwininfo` shows `"Triya CAD 3D": ("" "in.openengtools.triya")`; control channel `vessel.new` + `vessel.regenerate` built the cylinder; `ui.help about` opened Triya's About (screenshot in the thread). Left out (upstream's, not needed for the beta): Windows native crash filter/resize border, macOS Finder events, Space Mouse, safe-mode counter, API agents/keychain. Upstream chrome still says SolidCraft: app-bar name/logo (`toolbar.rs:247`), start page (`home.rs:359`), Help menu label (owner decision below) |
 | T1.4 | Root `README.md` (quick start for web/desktop/CLI/MCP, port 8782, no commercial-product names, brand-assets note), `NOTICE` (mark provenance), SPDX + copyright headers on every Triya `.rs/.toml/.sh/.js/.html` and the Triya workflows (`manifest.webmanifest.license` sidecar for the JSON); Triya CI's SPDX step now covers those types | #10 | 18 Oct | `cargo xtask assets` green (95 files); `reuse lint-file` over `triya/`: only "missing license MIT/Apache-2.0" (REUSE wants a `LICENSES/` folder; the repo keeps upstream's root `LICENSE-MIT`/`LICENSE-APACHE`, whole-repo `reuse lint` is not a goal). No screenshots committed (PR template: no review artifacts in the tree) |
 | T1.5 | `triya/docs/upstream-proposals.md`: four issue drafts for upstream (command registration slot, brand constants, `space_mouse` test timing with the fix, runtime toolbar tabs), each naming the seam or workaround it would remove | #11 | 18 Oct | owner posts them (AGENTS.md §4) |
+| T2.1 | `triya.vessel/0.1` model complete per `docs/vessel-schema.md` (every element/attachment kind, frame, design data, notes, revisions, `extra`, unknown top-level fields kept); `schemars` schema checked in at `triya/crates/triya-vessel/vessel-schema.json` (test `schema_file_is_current`); reference vessels A/B/C + `every-kind.json` in `triya-vessel/tests/reference/` | #12 | 18 Oct | AT `reference_vessels_round_trip`: every input field survives, second trip stable, all 6 element kinds, 10 attachment kinds and 6 frames covered; also `documents_that_break_the_rules_are_refused`, `reference_vessel_survives_the_design_file`. Evaluator/emitter only ported (T2.2/T2.3 rewrite them) |
 
 ## In progress
 | id | task | branch | started | owner |
@@ -59,6 +60,12 @@
 
 - 2026-10-18 — Desktop shell is a ~200-line wrapper, not a copy (PLAN T1.3): it reuses upstream's `control_server.rs` by `#[path]` and leaves out the platform extras listed in the T1.3 row; it uses the OS title bar so the window title is Triya's.
 
+- 2026-10-18 — T2.1: the model follows `vessel-schema.md` field for field and replaces the skeleton's shapes (`id_or_od_mm` → optional `diameter_mm`, `name` → `title`, `kind` is a flat tag beside the fields, `axial {ref: datum|host_from, mm}`). No compatibility shim: no document was ever saved with the skeleton shape outside tests.
+- 2026-10-18 — Unknown fields are kept at the top level only (`#[serde(flatten)]` map, with `extra` ≤ 16 KiB together); inside elements/attachments the flattened `kind` tag rules out a second flatten, so unknown keys there are dropped. The round-trip test fails if a known field is dropped.
+- 2026-10-18 — Schema gaps filled (doc silent): a body flange's dimensions go under `explicit {…}` (exactly one of `flange_ref` / `explicit`); `flange_ref.class` takes `150` or `"PN10"`; nozzle `flange` is optional (couplings); a limpet coil takes exactly one of `turns` / `end_axial_mm`; `left_tl` ⇔ horizontal.
+- 2026-10-18 — Caps set in T2.1 with the rewrite: 200 elements, 500 attachments (PLAN T2.6 tests them), counts 1…1000, text ≤ 4 KiB.
+- 2026-10-18 — Reference vessel B's cylinder is 4930 long so that TL–TL is the DoD's 5000 with two 35 mm straight flanges; vessel A's skirt states no diameter (T2.2 defaults a skirt's OD to the bottom head's OD).
+
 ## Owner decisions
 | opened | question | status | answer |
 |---|---|---|---|
@@ -90,6 +97,7 @@
 | crate | licence | why | wasm |
 |---|---|---|---|
 | (skeleton adds no third-party crates beyond upstream's set) | | | |
+| `schemars` 1.2 (+ `schemars_derive`, `dyn-clone`, `ref-cast`, `serde_derive_internals`) | MIT; the others MIT OR Apache-2.0 | JSON schema of the vessel document (T2.1), derive on `triya-vessel` model and two `triya-stdlib` types | yes (pure Rust) |
 
 ## Measurements
 | what | value | date | notes |
@@ -114,3 +122,4 @@
 - 2026-10-18 — T1.3: desktop shell runs under Xvfb with the Triya title, vessel regenerates over the control channel.
 - 2026-10-18 — T1.4: README/NOTICE/SPDX pass.
 - 2026-10-18 — T1.5: upstream issue drafts written. Phase 1 complete pending merges.
+- 2026-10-18 — Phase 2 started (thread "Phase 2 implementation"). T2.1: full vessel model, schema file, reference vessels.
