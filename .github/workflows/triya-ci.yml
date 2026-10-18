@@ -34,6 +34,8 @@ jobs:
           git fetch upstream --tags --quiet
       - name: Whitelist check against the freeze point
         run: bash triya/ci/check-patch-whitelist.sh v0.14.0
+      - name: Seam patches match the tree
+        run: bash triya/ci/refresh-seam-patches.sh --check v0.14.0
       - name: SPDX headers on Triya Rust files
         run: |
           missing=$(grep -rL "SPDX-License-Identifier: MIT OR Apache-2.0" --include='*.rs' triya/ || true)

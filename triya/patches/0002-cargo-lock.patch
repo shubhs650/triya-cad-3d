@@ -1,14 +1,25 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index 1fa2385..be80749 100644
+index 1fa2385..ec4877c 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -4525,6 +4525,71 @@ dependencies = [
+@@ -4525,6 +4525,82 @@ dependencies = [
   "once_cell",
  ]
  
 +[[package]]
 +name = "triya-brand"
 +version = "0.14.0"
++
++[[package]]
++name = "triya-cli"
++version = "0.14.0"
++dependencies = [
++ "serde_json",
++ "solidcraft-engine",
++ "solidcraft-gpu",
++ "solidcraft-mcp",
++ "triya-vessel",
++]
 +
 +[[package]]
 +name = "triya-drawing"
