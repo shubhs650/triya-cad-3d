@@ -288,21 +288,33 @@ fn regenerate_builds_the_cylinder_in_one_undo_step() {
 }
 
 #[test]
-fn regenerate_refuses_attachments_and_leaves_the_design_as_it_was() {
+fn regenerate_refuses_a_misplaced_nozzle_and_warns_about_attachments_it_does_not_build() {
     registered();
     let mut s = Session::default();
     run(&mut s, "vessel.new", json!({}));
+    // A hillside offset that puts the neck outside the shell: an error, nothing built.
     run(
         &mut s,
         "vessel.set",
-        json!({"attachment": {"id": "N1", "kind": "nozzle", "host": "S1", "axial": {"ref": "host_from", "mm": 500}, "angle_deg": 90, "frame": {"type": "radial"},
-            "nps": "2", "projection": {"from": "od", "mm": 150}}}),
+        json!({"attachment": {"id": "N1", "kind": "nozzle", "host": "S1", "axial": {"ref": "host_from", "mm": 500}, "angle_deg": 90,
+            "frame": {"type": "hillside", "offset_mm": 495}, "nps": "2", "schedule": "XS", "projection": {"from": "od", "mm": 150}}}),
     );
     let before = s.doc.clone();
     let e = s.execute("vessel.regenerate", &json!({})).unwrap_err().to_string();
-    assert!(e.contains("not supported yet"), "{e}");
+    assert!(e.contains("nozzle `N1`") && e.contains("outside the shell"), "{e}");
     assert!(std::sync::Arc::ptr_eq(&before, &s.doc) || *before == *s.doc);
     assert!(s.model.state().bodies.is_empty());
+    // A lifting lug (Phase 4) is reported, not refused.
+    run(&mut s, "vessel.set", json!({"remove": "N1"}));
+    run(
+        &mut s,
+        "vessel.set",
+        json!({"attachment": {"id": "L1", "kind": "lifting_lug", "host": "S1", "axial": {"ref": "host_from", "mm": 1000}, "angle_deg": 90,
+            "style": "longitudinal", "plate": {"len_mm": 300, "height_mm": 200, "thk_mm": 25}, "hole_dia_mm": 60}}),
+    );
+    let r = run(&mut s, "vessel.regenerate", json!({}));
+    assert!(r["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap_or("").contains("`L1` (lifting_lug): not built yet")), "{r}");
+    assert_eq!(body_names(&s), vec!["Vessel S1".to_string()]);
 }
 
 /// The template for every element's analytic-volume test (PLAN T0.5): the example script that

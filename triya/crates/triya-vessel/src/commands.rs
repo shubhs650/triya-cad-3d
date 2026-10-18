@@ -16,8 +16,8 @@ use solidcraft_engine::params::{bad, num, str_};
 use solidcraft_engine::{CommandSpec, EngineError, Session};
 
 use crate::emit::{CommandCall, substitute};
-use crate::model::VesselDoc;
-use crate::{VesselError, emit, eval};
+use crate::model::{AttachmentKind, VesselDoc};
+use crate::{VesselError, emit, eval, nozzle};
 
 /// The reverse-DNS metadata key the vessel JSON is kept under.
 pub const METADATA_KEY: &str = "in.openengtools.triya.vessel";
@@ -39,13 +39,17 @@ pub static COMMANDS: &[CommandSpec] = &[
     ),
     CommandSpec::new("vessel.regenerate", "Regenerate Vessel", regenerate).at(TAB, "MAKE").icon("compute").enabled(has_vessel).params(
         "→ steps: [{command, params, reply}], features: [ids] (what it built, kept in the timeline folder `Vessel <id>` → group; only \
-         the features of the previous regeneration are deleted first). One undo step. Also writes every dimension as a user parameter V<vessel>_<element>_<field> (mm) → parameters. Refused (not supported yet) \
-         for attachments",
+         the features of the previous regeneration are deleted first). One undo step. Also writes every dimension as a user parameter \
+         V<vessel>_<element>_<field> (mm) → parameters. Nozzles are cut and joined into their host and kept when the host's measured \
+         volume matches the reference; otherwise built as a separate body with flags.boolean_failed → nozzles: [{id, built: \
+         joined|separate|none, expected_mm3, measured_mm3, warning}]; other attachments are not built yet → warnings. A nozzle that \
+         cannot be placed is an error and nothing changes",
     ),
     CommandSpec::new("vessel.inspect", "Inspect Vessel", inspect).at(TAB, "INSPECT").icon("measure").noundo().doc_only().params(
         "→ doc, stations: [{id, kind, z_from, z_to, r_from, r_to, thickness, diameter_mm, envelope, tl, half_apex_deg, profile, detail}], \
          extent: {z_min, z_max, tl_bottom, tl_top, tl_to_tl}, warnings (parameter drift included), flags: [{id, boolean_failed, unverified_table}], parameters: \
-         [{name, value, unit}], plan: [{command, params}] | plan_error, generated: [feature ids], group",
+         [{name, value, unit}], plan: [{command, params}] | plan_error, nozzles: [{id, host, origin, dir, s_inner, s_outer, s_start, s_face, \
+         neck_od, neck_wall, pad, error?}], generated: [feature ids], group",
     ),
 ];
 
@@ -275,7 +279,7 @@ fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     let mut out = json!({
         "doc": doc.to_value()?, "flags": flags,
         "generated": generated.features, "group": generated.group,
-        "stations": [], "plan": null, "plan_error": null, "warnings": [], "parameters": [],
+        "stations": [], "plan": null, "plan_error": null, "warnings": [], "parameters": [], "nozzles": [],
     });
     match eval::resolve(&doc) {
         Ok(r) => {
@@ -301,6 +305,20 @@ fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
                 Ok(p) => out["plan"] = p.into_iter().map(|c| json!({"command": c.id, "params": c.params})).collect(),
                 Err(e) => out["plan_error"] = json!(e.to_string()),
             }
+            let tables = triya_stdlib::TableSet::embedded().map_err(VesselError::from)?;
+            out["nozzles"] = doc
+                .attachments
+                .iter()
+                .filter(|a| matches!(a.kind, AttachmentKind::Nozzle { .. }))
+                .map(|a| match nozzle::resolve(&doc, &r, a, &tables) {
+                    Ok(g) => json!({
+                        "id": g.id, "host": g.host, "origin": g.frame.origin, "dir": g.frame.dir, "s_inner": g.frame.s_inner,
+                        "s_outer": g.frame.s_outer, "s_start": g.s_start, "s_face": g.s_face, "neck_od": g.neck_od, "neck_wall": g.neck_wall,
+                        "pad": g.pad.map(|p| json!({"od": p.od, "thickness": p.thickness})), "manway": g.manway,
+                    }),
+                    Err(e) => json!({"id": a.id, "error": e.to_string()}),
+                })
+                .collect();
         }
         Err(e) => out["plan_error"] = json!(e.to_string()),
     }
@@ -323,12 +341,16 @@ pub fn group_name(doc: &VesselDoc) -> String {
 }
 
 fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
-    let (doc, previous) = load(s)?;
-    let resolved = eval::resolve(&doc)?;
-    if !doc.attachments.is_empty() {
-        return Err(
-            VesselError::NotSupportedYet(format!("{} attachment(s): nozzles, saddles, legs… are not built yet", doc.attachments.len())).into()
-        );
+    let (mut doc, previous) = load(s)?;
+    let tables = triya_stdlib::TableSet::embedded().map_err(VesselError::from)?;
+    let resolved = eval::resolve_with(&doc, &tables)?;
+    // Every nozzle is placed before anything is built: a nozzle that cannot be placed is an
+    // error in the document, and the design stays as it was.
+    let mut nozzles = Vec::new();
+    for a in &doc.attachments {
+        if matches!(a.kind, AttachmentKind::Nozzle { .. }) {
+            nozzles.push(nozzle::resolve(&doc, &resolved, a, &tables)?);
+        }
     }
     let plan = emit::plan(&resolved)?;
     // Only what the last regeneration made goes (sketches take their revolves with them); a
@@ -357,6 +379,30 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     }
     // A sketch left open by a failed plan would be odd; the plan closes its own.
     s.active_sketch = None;
+    // Nozzles, one at a time, each tried on a scratch copy and kept only when the kernel's
+    // result measures as expected; otherwise built as separate bodies and flagged.
+    let mut warnings: Vec<String> = resolved.warnings.clone();
+    let mut built_nozzles = Vec::new();
+    let mut extra_params = Vec::new();
+    for mut g in nozzles {
+        let Some(host) = resolved.station(&g.host) else { continue };
+        let report = build_nozzle(s, &doc, &resolved, host, &mut g, &mut features, &mut steps);
+        warnings.extend(g.warnings.iter().cloned());
+        if let Some(a) = doc.attachments.iter_mut().find(|a| a.id == g.id) {
+            a.flags.boolean_failed = report.get("built").and_then(Value::as_str) != Some("joined");
+            a.flags.unverified_table = g.unverified_table;
+            extra_params.extend(nozzle::parameters(&doc.id, &doc.global, a, &g));
+        }
+        if let Some(w) = report.get("warning").and_then(Value::as_str) {
+            warnings.push(w.to_string());
+        }
+        built_nozzles.push(report);
+    }
+    for a in &doc.attachments {
+        if !matches!(a.kind, AttachmentKind::Nozzle { .. }) {
+            warnings.push(format!("attachment `{}` ({}): not built yet (supports and details come in Phase 4)", a.id, a.kind.name()));
+        }
+    }
     // The features go into the vessel's own timeline folder: the previous one when it is still
     // there (the user may have renamed or moved it), else a new one.
     let built: Vec<u64> = features.iter().copied().filter(|id| s.doc.feature(*id).is_some()).collect();
@@ -377,12 +423,92 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     };
     // Every dimension as a user parameter (created or updated; nothing drives from them yet).
     let mut parameters = Vec::new();
-    for p in emit::parameters(&doc.id, &resolved) {
+    for p in emit::parameters(&doc.id, &resolved).into_iter().chain(extra_params) {
         let params = json!({"name": p.name, "expression": p.value, "unit": p.unit, "comment": p.comment});
         sub(s, &CommandCall { id: "parameters.change".into(), params })
             .map_err(|e| EngineError::Other(format!("vessel parameter `{}`: {e}", p.name)))?;
         parameters.push(p.name);
     }
     store(s, &doc, &Generated { features: features.clone(), group })?;
-    Ok(json!({"steps": steps, "features": features, "group": group, "parameters": parameters}))
+    Ok(json!({"steps": steps, "features": features, "group": group, "parameters": parameters, "nozzles": built_nozzles, "warnings": warnings}))
+}
+
+/// The host body's measured volume.
+fn volume(s: &mut Session, body: &str) -> solidcraft_engine::Result<f64> {
+    let r = sub(s, &CommandCall { id: "inspect.measure".into(), params: json!({"bodies": [body]}) })?;
+    r.get("total").and_then(|t| t.get("volume_mm3")).and_then(Value::as_f64).ok_or_else(|| EngineError::Other(format!("cannot measure `{body}`")))
+}
+
+/// Run `calls` on `s`, collecting the features they make and their steps.
+fn run_calls(s: &mut Session, calls: &[CommandCall], features: &mut Vec<u64>, steps: &mut Vec<Value>) -> solidcraft_engine::Result<()> {
+    let mut replies: Vec<Value> = Vec::with_capacity(calls.len());
+    for call in calls {
+        let params = substitute(&call.params, &replies)?;
+        let reply = sub(s, &CommandCall { id: call.id.clone(), params: params.clone() })
+            .map_err(|e| EngineError::Other(format!("vessel step `{}`: {e}", call.id)))?;
+        for key in ["sketch", "feature"] {
+            if let Some(id) = reply.get(key).and_then(Value::as_u64)
+                && call.id != "sketch.finish"
+                && !features.contains(&id)
+            {
+                features.push(id);
+            }
+        }
+        steps.push(json!({"command": call.id, "params": params, "reply": reply}));
+        replies.push(reply);
+    }
+    Ok(())
+}
+
+/// Build one nozzle into its host (tried on a scratch copy, kept when the host's measured
+/// volume changes by the expected amount), else as a separate body, else not at all: a kernel
+/// failure never fails the regeneration. → `{id, built: joined|separate|none, expected_mm3,
+/// measured_mm3, warning?}`.
+fn build_nozzle(
+    s: &mut Session,
+    doc: &VesselDoc,
+    r: &eval::Resolved,
+    host: &eval::Station,
+    g: &mut nozzle::NozzleGeom,
+    features: &mut Vec<u64>,
+    steps: &mut Vec<Value>,
+) -> Value {
+    let host_body = format!("Vessel {}", host.id);
+    let joined = (|| -> std::result::Result<(Vec<u64>, Vec<Value>, Session, f64, f64), String> {
+        let calls = nozzle::plan(&doc.global, r, host, g).map_err(|e| e.to_string())?;
+        let expected = nozzle::expected_change(&doc.global, host, g, 96).ok_or("no reference volume")?;
+        let before = volume(s, &host_body).map_err(|e| e.to_string())?;
+        let mut trial = s.scratch();
+        let (mut f, mut st) = (Vec::new(), Vec::new());
+        run_calls(&mut trial, &calls, &mut f, &mut st).map_err(|e| e.to_string())?;
+        let after = volume(&mut trial, &host_body).map_err(|e| e.to_string())?;
+        let change = after - before;
+        if (change - expected).abs() > nozzle::tolerance(expected, before) {
+            return Err(format!("the host's volume changed by {change:.0} mm³, {expected:.0} mm³ expected"));
+        }
+        Ok((f, st, trial, expected, change))
+    })();
+    match joined {
+        Ok((f, st, trial, expected, change)) => {
+            s.accept_computed(trial);
+            features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
+            steps.extend(st);
+            json!({"id": g.id, "built": "joined", "expected_mm3": expected, "measured_mm3": change})
+        }
+        Err(why) => {
+            let mut trial = s.scratch();
+            let (mut f, mut st) = (Vec::new(), Vec::new());
+            match run_calls(&mut trial, &nozzle::plan_separate(g), &mut f, &mut st) {
+                Ok(()) => {
+                    s.accept_computed(trial);
+                    features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
+                    steps.extend(st);
+                    json!({"id": g.id, "built": "separate", "warning": format!("nozzle `{}`: {why}; kept as a separate body (flags.boolean_failed)", g.id)})
+                }
+                Err(e) => {
+                    json!({"id": g.id, "built": "none", "warning": format!("nozzle `{}`: {why}; the separate body failed too ({e}); not built", g.id)})
+                }
+            }
+        }
+    }
 }
