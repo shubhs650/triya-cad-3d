@@ -1,0 +1,9 @@
+# Triya CAD 3D — merge policy for root files the fork owns outright.
+# "merge=ours" keeps OUR version on every `git merge upstream/main` (needs
+# `git config merge.ours.driver true`, see REPO-SETUP.md §4). Everything else merges normally.
+README.md                               merge=ours
+NOTICE                                  merge=ours
+.github/workflows/triya-ci.yml          merge=ours
+.github/workflows/triya-pages.yml       merge=ours
+.github/workflows/upstream-sync.yml     merge=ours
+# Everything under triya/ is ours by construction (upstream never has these paths).

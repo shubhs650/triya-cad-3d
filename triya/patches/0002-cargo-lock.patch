@@ -1,0 +1,76 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 1fa2385..be80749 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -4525,6 +4525,71 @@ dependencies = [
+  "once_cell",
+ ]
+ 
++[[package]]
++name = "triya-brand"
++version = "0.14.0"
++
++[[package]]
++name = "triya-drawing"
++version = "0.14.0"
++dependencies = [
++ "serde",
++ "serde_json",
++ "thiserror 2.0.21",
++ "triya-vessel",
++]
++
++[[package]]
++name = "triya-stdlib"
++version = "0.14.0"
++dependencies = [
++ "serde",
++ "serde_json",
++ "thiserror 2.0.21",
++]
++
++[[package]]
++name = "triya-ui"
++version = "0.14.0"
++dependencies = [
++ "egui",
++ "serde_json",
++ "solidcraft-engine",
++ "solidcraft-ui-egui",
++ "triya-brand",
++ "triya-vessel",
++]
++
++[[package]]
++name = "triya-vessel"
++version = "0.14.0"
++dependencies = [
++ "serde",
++ "serde_json",
++ "solidcraft-doc",
++ "solidcraft-engine",
++ "thiserror 2.0.21",
++ "triya-stdlib",
++]
++
++[[package]]
++name = "triya-web"
++version = "0.14.0"
++dependencies = [
++ "eframe",
++ "egui",
++ "js-sys",
++ "log",
++ "serde_json",
++ "solidcraft-engine",
++ "solidcraft-ui-egui",
++ "triya-brand",
++ "triya-ui",
++ "wasm-bindgen",
++ "wasm-bindgen-futures",
++ "web-sys",
++]
++
+ [[package]]
+ name = "truck-base"
+ version = "0.5.0"

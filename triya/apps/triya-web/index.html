@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!-- Triya CAD 3D web shell: a copy of SolidCraft v0.14.0 apps/solidcraft-web/index.html (MIT OR Apache-2.0)
+     with the title, Open Graph tags, Trunk binary, manifest and icons changed for Triya. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Triya CAD 3D</title>
+  <meta name="description" content="Parametric 3D CAD for pressure-vessel engineers, in your browser. By Open Engineering Tools; based on SolidCraft.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Triya CAD 3D">
+  <meta property="og:title" content="Triya CAD 3D: pressure-vessel CAD in your browser">
+  <meta property="og:description" content="Parametric 3D CAD for pressure-vessel engineers, in your browser. By Open Engineering Tools; based on SolidCraft.">
+  <meta property="og:url" content="https://openengtools.com/triya/">
+  <meta property="og:image" content="https://openengtools.com/triya/og.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Triya CAD 3D: pressure-vessel CAD in your browser">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Triya CAD 3D: pressure-vessel CAD in your browser">
+  <meta name="twitter:description" content="Parametric 3D CAD for pressure-vessel engineers, in your browser. By Open Engineering Tools; based on SolidCraft.">
+  <meta name="twitter:image" content="https://openengtools.com/triya/og.png">
+  <meta name="twitter:image:alt" content="Triya CAD 3D: pressure-vessel CAD in your browser">
+  <link data-trunk rel="rust" data-bin="triya-web" data-wasm-opt="z" data-weak-refs />
+  <link data-trunk rel="copy-file" href="../../../assets/fonts/biz-udp-gothic/BIZUDPGothic-Regular.ttf" data-target-path="fonts" />
+  <link data-trunk rel="copy-file" href="../../../assets/fonts/biz-udp-gothic/OFL.txt" data-target-path="fonts" />
+  <link data-trunk rel="css" href="../../../assets/styles/web/loading.css" />
+  <!-- Installable as an app (manifest.webmanifest); the icons are Triya's own mark (icons/README.md). -->
+  <meta name="theme-color" content="#343840">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/32x32/in.openengtools.triya.png">
+  <link rel="apple-touch-icon" href="icons/256x256/in.openengtools.triya.png">
+  <link data-trunk rel="copy-file" href="manifest.webmanifest" />
+  <link data-trunk rel="copy-dir" href="icons" />
+</head>
+<body>
+  <canvas id="solidcraft_canvas"></canvas><!-- ids stay upstream's: loading.css styles them -->
+  <div id="solidcraft_loading">Loading Triya CAD 3D&hellip;</div>
+  <script>
+    // Offline use and updates (sw.js; written into release builds by `cargo xtask web-offline`).
+    if ("serviceWorker" in navigator) {
+      addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+    }
+    // Install as an app: the browser's offer can come before the app runs, so it is kept here for
+    // the app's File ▸ Install app… item (src/install.rs). Installed, the browser makes no more offers.
+    addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); window.triyaInstall = e; });
+    addEventListener("appinstalled", () => { window.triyaInstall = null; });
+  </script>
+</body>
+</html>

@@ -151,3 +151,4 @@ workflow; never regenerate them in a PR.
 Keep them conflict-free (CONTRIBUTING.md, "Lists many changes add to"): message catalogs sorted
 (`cargo xtask lists --fix`), `mod` lines in their sorted group, the language list English first
 then by id, generated files left to `main`, and a design-format change as one new file.
+@triya/CLAUDE.md

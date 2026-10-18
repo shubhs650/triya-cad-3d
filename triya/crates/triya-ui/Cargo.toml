@@ -1,0 +1,18 @@
+[package]
+name = "triya-ui"
+description = "Triya CAD 3D UI hooks on the SolidCraft egui front end: command registration, the Vessel panel and the brand/About text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+solidcraft-engine = { workspace = true }
+solidcraft-ui-egui = { workspace = true }
+triya-vessel = { workspace = true }
+triya-brand = { workspace = true }
+egui = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,11 @@
+{
+  "source": "ILLUSTRATIVE — replace with verified values",
+  "note": "Head preset ratios as commonly published in public references; the preset names are descriptive and the ratios must be verified against the standard edition in force before use.",
+  "rows": [
+    { "name": "klopper", "standard": { "org": "DIN", "number": "28011", "rev": "" }, "preset": { "type": "torispherical", "crown_ratio": 1.0, "knuckle_ratio": 0.1, "basis": "outside" } },
+    { "name": "korbbogen", "standard": { "org": "DIN", "number": "28013", "rev": "" }, "preset": { "type": "torispherical", "crown_ratio": 0.8, "knuckle_ratio": 0.154, "basis": "outside" } },
+    { "name": "asme_fd", "standard": null, "preset": { "type": "torispherical", "crown_ratio": 1.0, "knuckle_ratio": 0.06, "basis": "inside" } },
+    { "name": "ellipsoidal_2_1", "standard": null, "preset": { "type": "ellipsoidal", "ratio": 2.0 } },
+    { "name": "hemispherical", "standard": null, "preset": { "type": "hemispherical" } }
+  ]
+}

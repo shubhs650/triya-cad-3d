@@ -1,0 +1,17 @@
+{
+  "name": "Triya CAD 3D",
+  "short_name": "Triya CAD",
+  "id": "in.openengtools.triya",
+  "description": "Parametric 3D CAD for pressure-vessel engineers, by Open Engineering Tools. Based on SolidCraft.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e8ebf0",
+  "theme_color": "#343840",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "icons/32x32/in.openengtools.triya.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "icons/256x256/in.openengtools.triya.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "icons/512x512/in.openengtools.triya.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

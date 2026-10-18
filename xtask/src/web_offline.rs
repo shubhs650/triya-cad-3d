@@ -73,7 +73,9 @@ pub fn retire(root: &Path, dir: &Path) -> Result<(), String> {
 }
 
 fn template(root: &Path) -> Result<String, String> {
-    let path = root.join("apps/solidcraft-web").join(SW);
+    // Modified by Triya CAD 3D: a web app with its own sw.js (triya/apps/triya-web) is the template when Trunk's hook runs there (TRUNK_SOURCE_DIR).
+    let own = std::env::var_os("TRUNK_SOURCE_DIR").map(|d| PathBuf::from(d).join(SW)).filter(|p| p.is_file());
+    let path = own.unwrap_or_else(|| root.join("apps/solidcraft-web").join(SW));
     std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
