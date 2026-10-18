@@ -38,7 +38,7 @@ fn b16_5_class_150_and_300_tables_are_complete() {
         }
         assert_eq!(count(class, FlangeKind::Sw), 8, "Class {class} SW");
     }
-    assert_eq!(b165.rows.len(), 2 * (4 * 21 + 8));
+    assert_eq!(b165.rows.iter().filter(|r| r.class == "150" || r.class == "300").count(), 2 * (4 * 21 + 8));
 
     // NPS 4 Class 150 WN: B16.5's metric table gives OD 230 (the inch table's 9.00 in is 228.6),
     // 8 bolts 5/8 in on 190.5 in 3/4 in holes, tf 22.3, hub 135, Y 75, RF 157.2.
@@ -86,17 +86,23 @@ fn every_shipped_row_has_its_provenance() {
     for r in t.pipe_rows() {
         assert!(!r.source.is_empty() && r.verified != Verified::Unverified && r.verified != Verified::Illustrative, "{}", r.size_key());
     }
+    // Class 150/300 (T3.1) is ≥ 90 % two-source; the high classes and B16.47 (T3.2) ≥ 60 %.
+    let low = |r: &&triya_stdlib::FlangeRow| r.class == "150" || r.class == "300";
+    let b165: Vec<_> = t.flanges.iter().filter(|x| x.is_for("B16.5")).flat_map(|x| &x.rows).filter(low).collect();
+    let two = b165.iter().filter(|r| r.verified == Verified::TwoSource).count();
+    assert!(two * 10 >= b165.len() * 9, "{two} of {} two-source Class 150/300 rows", b165.len());
     let two = t.flange_rows().filter(|r| r.verified == Verified::TwoSource).count();
-    assert!(two * 10 >= t.flange_rows().count() * 9, "{two} two-source flange rows");
+    assert!(two * 10 >= t.flange_rows().count() * 6, "{two} of {} two-source flange rows", t.flange_rows().count());
 }
 
 #[test]
 fn shipped_rows_pass_the_sanity_rules() {
     let t = TableSet::embedded().unwrap();
     // OD, bolt circle and bolt count do not decrease with NPS within a standard, class and kind.
-    let mut groups: BTreeMap<(String, &str), Vec<_>> = BTreeMap::new();
-    for r in t.flange_rows() {
-        groups.entry((r.class.clone(), r.kind.code())).or_default().push(r);
+    let mut groups: BTreeMap<(String, String, &str), Vec<_>> = BTreeMap::new();
+    for (table, r) in t.flanges.iter().flat_map(|t| t.rows.iter().map(move |r| (t, r))) {
+        let standard = table.standard.as_ref().map(|s| s.number.clone()).unwrap_or_default();
+        groups.entry((standard, r.class.clone(), r.kind.code())).or_default().push(r);
         assert!(r.bolt_circle < r.od && (r.raised_face_d == 0.0 || r.raised_face_d < r.bolt_circle), "{}", r.size_key());
         let hole = r.bolt_hole.unwrap();
         assert!(r.hub_od < r.bolt_circle - hole && r.bolt_circle + hole < r.od, "{}: hub/holes/rim", r.size_key());
@@ -105,11 +111,21 @@ fn shipped_rows_pass_the_sanity_rules() {
         }
         assert!(r.bolt_size.starts_with('M') || r.bolt_size.chars().all(|c| c.is_ascii_digit() || c == '/' || c == '-'), "{}", r.bolt_size);
     }
-    for ((class, kind), mut rows) in groups {
+    for ((standard, class, kind), mut rows) in groups {
         rows.sort_by(|a, b| nps_value(&a.nps).total_cmp(&nps_value(&b.nps)));
         for w in rows.windows(2) {
             let (a, b) = (w[0], w[1]);
-            assert!(b.od >= a.od && b.bolt_circle >= a.bolt_circle && b.bolt_count >= a.bolt_count, "Class {class} {kind}: {} → {}", a.nps, b.nps);
+            // B16.47 is not monotonic: Series A Cl 300 NPS 38 (OD 1170) is smaller than NPS 36
+            // (1270), the sizes come from two older standards. Only B16.5 must grow.
+            if standard.starts_with("B16.47") {
+                continue;
+            }
+            assert!(
+                b.od >= a.od && b.bolt_circle >= a.bolt_circle && b.bolt_count >= a.bolt_count,
+                "{standard} Class {class} {kind}: {} → {}",
+                a.nps,
+                b.nps
+            );
         }
     }
     for r in t.pipe_rows() {

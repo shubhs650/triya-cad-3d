@@ -1,8 +1,8 @@
 diff --git a/ATTRIBUTION.md b/ATTRIBUTION.md
-index 97dca7e5d1b46d6d178b3db013e8a75597af335c..4c532ac7ba40ed77c79f8e8c2f67e868f37ce192 100644
+index 97dca7e5d1b46d6d178b3db013e8a75597af335c..001ad613b70e6ee09fac1df71c2f3eabd12e35dd 100644
 --- a/ATTRIBUTION.md
 +++ b/ATTRIBUTION.md
-@@ -190,3 +190,16 @@ and shares that effective count with the surface attachments and CAD callbacks.
+@@ -190,3 +190,18 @@ and shares that effective count with the surface attachments and CAD callbacks.
  Vulkan, DirectX 12, Metal and WebGPU retain their requested multisampling.
  A frame whose meshes the GPU refuses to stage (device lost or out of memory) is
  skipped with a warning instead of panicking (#1469).
@@ -17,8 +17,10 @@ index 97dca7e5d1b46d6d178b3db013e8a75597af335c..4c532ac7ba40ed77c79f8e8c2f67e868
 +| triya/apps/triya-web/icons/256x256/in.openengtools.triya.png | Triya CAD 3D contributors | original Triya mark drawn in code (triya/crates/triya-brand/src/mark.rs), same export | MIT OR Apache-2.0 |
 +| triya/apps/triya-web/icons/512x512/in.openengtools.triya.png | Triya CAD 3D contributors | original Triya mark drawn in code (triya/crates/triya-brand/src/mark.rs), same export | MIT OR Apache-2.0 |
 +| triya/apps/triya-web/icons/512x512/in.openengtools.triya-maskable.png | Triya CAD 3D contributors | original Triya mark drawn in code (triya/crates/triya-brand/src/mark.rs), full-bleed maskable variant, same export | MIT OR Apache-2.0 |
-+| triya/crates/triya-stdlib/data/asme-b16.5.json | Triya CAD 3D contributors | ASME B16.5 Class 150/300 flange dimensions (facts of the public standard) re-keyed from gumyr/bd_warehouse 0.4.0 `flange.py` (Apache-2.0), cross-checked against wermac.org's B16.5 tables; raised-face diameters from wermac.org; per-row sources in the file | Apache-2.0 (bd_warehouse-derived values); the table layout MIT OR Apache-2.0 |
++| triya/crates/triya-stdlib/data/asme-b16.5.json | Triya CAD 3D contributors | ASME B16.5 flange dimensions (facts of the public standard; Class 150/300 all kinds, Class 400–2500 WN and blind) re-keyed from gumyr/bd_warehouse 0.4.0 `flange.py` and `data_flange/*.csv` (Apache-2.0), cross-checked against wermac.org's B16.5 tables; raised-face diameters from wermac.org; per-row sources in the file | Apache-2.0 (bd_warehouse-derived values); the table layout MIT OR Apache-2.0 |
 +| triya/crates/triya-stdlib/data/asme-b36.10.json | Triya CAD 3D contributors | ASME B36.10M carbon-steel pipe ODs and walls re-keyed from gumyr/bd_warehouse 0.4.0 `pipe.csv` (Apache-2.0, inches converted to mm), cross-checked against wermac.org's B36.10 tables | Apache-2.0 (bd_warehouse-derived values); the table layout MIT OR Apache-2.0 |
++| triya/crates/triya-stdlib/data/asme-b16.47a.json | Triya CAD 3D contributors | ASME B16.47 Series A Class 150–900 weld-neck and blind flange dimensions (facts of the public standard) hand-keyed from wermac.org's metric tables and cross-checked against blog.projectmaterials.com's inch tables; per-row sources in the file | MIT OR Apache-2.0 |
++| triya/crates/triya-stdlib/data/asme-b16.47b.json | Triya CAD 3D contributors | ASME B16.47 Series B Class 150–900 weld-neck and blind flange dimensions, same sources and method as Series A | MIT OR Apache-2.0 |
 diff --git a/Cargo.toml b/Cargo.toml
 index d48e8a619e249f85182d0cfca8069b2a37a1fc30..70ddb61c2eb3d6b4bc96d88c8dea47ee7f817577 100644
 --- a/Cargo.toml
