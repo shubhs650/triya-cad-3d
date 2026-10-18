@@ -43,6 +43,9 @@ jobs:
         working-directory: triya/apps/triya-web
         run: trunk build --release --public-url "/${{ github.event.repository.name }}/app/"
       - name: Offline/update test
+        # The test regenerates sw.js to compare it with the build's; outside Trunk's hook it needs to
+        # be told which template the build used (xtask/src/web_offline.rs seam, PATCHES.md row 12).
+        env: { TRUNK_SOURCE_DIR: '${{ github.workspace }}/triya/apps/triya-web' }
         run: cargo xtask web-offline-test --site dist/triya-web
       - name: Assemble the site
         run: |

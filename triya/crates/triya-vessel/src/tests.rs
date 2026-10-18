@@ -265,3 +265,20 @@ fn regenerate_refuses_attachments_and_leaves_the_design_as_it_was() {
     assert!(std::sync::Arc::ptr_eq(&before, &s.doc) || *before == *s.doc);
     assert!(s.model.state().bodies.is_empty());
 }
+
+/// The template for every element's analytic-volume test (PLAN T0.5): the example script that
+/// `triya-cli run` exports, replayed here and measured against the closed-form volume.
+#[test]
+fn cylinder_volume_matches_analytic() {
+    registered();
+    let script: Value = serde_json::from_str(include_str!("../examples/cylinder.json")).unwrap();
+    let mut s = Session::default();
+    s.run_script(&script).unwrap();
+    let st = s.model.state();
+    assert_eq!(st.bodies.len(), 1);
+    let m = solidcraft_engine::kernel::measure(&st.bodies[0].body).unwrap();
+    // 1000 ID × 10 t × 2000 L shell: π (510² − 500²) · 2000.
+    let expected = std::f64::consts::PI * (510.0f64.powi(2) - 500.0f64.powi(2)) * 2000.0;
+    // 0.1 %: the revolve is exact geometry; the kernel's measure integrates a tessellation.
+    assert!((m.volume - expected).abs() / expected < 1e-3, "volume {} vs {expected}", m.volume);
+}

@@ -4530,6 +4530,17 @@ name = "triya-brand"
 version = "0.14.0"
 
 [[package]]
+name = "triya-cli"
+version = "0.14.0"
+dependencies = [
+ "serde_json",
+ "solidcraft-engine",
+ "solidcraft-gpu",
+ "solidcraft-mcp",
+ "triya-vessel",
+]
+
+[[package]]
 name = "triya-drawing"
 version = "0.14.0"
 dependencies = [

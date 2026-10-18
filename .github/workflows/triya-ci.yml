@@ -65,9 +65,9 @@ jobs:
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy (Triya crates)
-        run: cargo clippy -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui --all-targets -- -D warnings
+        run: cargo clippy -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui -p triya-cli --all-targets -- -D warnings
       - name: tests (Triya crates)
-        run: cargo test -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui
+        run: cargo test -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui -p triya-cli
       - name: layers + assets (upstream xtask)
         run: cargo xtask layers && cargo xtask assets
       - name: wasm check (Triya crates)
@@ -93,6 +93,9 @@ jobs:
         working-directory: triya/apps/triya-web
         run: trunk build --release
       - name: Offline/update test (headless Chrome)
+        # The test regenerates sw.js to compare it with the build's; outside Trunk's hook it needs to
+        # be told which template the build used (xtask/src/web_offline.rs seam, PATCHES.md row 12).
+        env: { TRUNK_SOURCE_DIR: '${{ github.workspace }}/triya/apps/triya-web' }
         run: cargo xtask web-offline-test --site dist/triya-web
       - name: Record wasm size
         run: |

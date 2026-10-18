@@ -1,0 +1,25 @@
+[package]
+name = "triya-cli"
+description = "Triya CAD 3D headless command line: upstream's solidcraft-cli with the vessel.* commands registered"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+build = "build.rs"
+
+[lints]
+workspace = true
+
+# The binary is upstream's CLI source, compiled here (build.rs); its unit tests stay upstream's.
+# tests/cli.rs runs the built binary.
+[[bin]]
+name = "triya-cli"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+solidcraft-engine = { workspace = true }
+solidcraft-gpu = { workspace = true }
+solidcraft-mcp = { workspace = true }
+serde_json = { workspace = true }
+triya-vessel = { workspace = true }

@@ -1,0 +1,6 @@
+{
+  "commands": [
+    { "command": "vessel.new", "params": { "diameter_mm": 1000, "thickness_mm": 10, "length_mm": 2000, "name": "Drum" } },
+    { "command": "vessel.regenerate", "params": {} }
+  ]
+}
