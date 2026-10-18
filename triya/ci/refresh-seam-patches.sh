@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 Triya CAD 3D contributors
 # Triya CAD 3D — regenerate triya/patches/0001-seams.patch (every whitelisted upstream file but
 # Cargo.lock) and 0002-cargo-lock.patch from `git diff <baseline>`, or with --check fail when the
 # committed patches differ from what the tree would produce.

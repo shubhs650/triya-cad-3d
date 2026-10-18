@@ -1,4 +1,6 @@
-// Triya CAD 3D's service worker (a copy of SolidCraft v0.14.0 apps/solidcraft-web/sw.js, MIT OR Apache-2.0; unchanged apart from this line — the cache names stay upstream's identifiers, which xtask web-offline-test checks, and PATH keeps them apart from any SolidCraft site): the web app keeps working offline and updates itself.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2026 SolidCraft contributors; Copyright (c) 2026 Triya CAD 3D contributors
+// Triya CAD 3D's service worker (a copy of SolidCraft v0.14.0 apps/solidcraft-web/sw.js, MIT OR Apache-2.0; unchanged apart from these first three lines — the cache names stay upstream's identifiers, which xtask web-offline-test checks, and PATH keeps them apart from any SolidCraft site): the web app keeps working offline and updates itself.
 //
 // `cargo xtask web-offline` (Trunk's post_build hook) writes the build into the line below: the
 // version (workspace version + a hash of every built file) and the files to keep, each with its
