@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
 **Phase:** 2 — Vessel core · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T2.6 (hostile-params coverage, caps). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
+**Next task:** T3.1 (Phase 3: standards library + nozzles). Phase 2's exit test passes (vessel A's shell → STEP). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -27,6 +27,8 @@
 | T2.3 | Emitter: 2:1 ellipsoidal (true ellipse: quarter conic, ρ = √2 − 1), UG-32 0.9D/0.17D, ASME F&D, Klöpper, Korbbogen, 80:10, custom torispherical, hemispherical, cones bare and toriconical (knuckles at either end), welded flat cover; each a half-profile revolved 360°, inside and outside curves; every dimension written as a user parameter `V<vessel>_<element>_<field>` via `parameters.change` | #14 | 18 Oct | AT: `ellipsoidal_and_hemispherical_heads_match_analytic_volume`, `torispherical_heads_match_analytic_volume` (6 presets), `cones_match_analytic_volume`, `flat_cover_matches_analytic_volume`: all within 0.1 % (measured −0.001 … −0.018 %); `vessel_a_shell_regenerates` (7 bodies, parameters in the table, top head crown at 8776.54) |
 | T2.4 | Body flange: weld-neck section revolved (bore = shell ID, hub from shell OD to `hub_od`, ring to OD) from a table row (`flange_ref`) or `explicit`, bolt holes = one hole cut through the ring + `solid.pattern.circular`; a following flange faces back (pair). Skirt: one L-shaped profile (shell on its base ring) | #15 | 18 Oct | AT: `explicit_body_flange_matches_analytic_volume_and_bolt_count` (28 holes, both flanges of a pair), `table_body_flange_takes_the_rows_bolt_count` (row 2/150/wn: 4 holes), `skirt_with_base_ring_matches_analytic_volume`; all within 0.1 % |
 | T2.5 | Regenerate hardening: the vessel's features go in the timeline folder `Vessel <id>` and the metadata records `{features, group}`; regenerate deletes only those (user features stay, even inside the folder) and reuses the folder; vessel JSON over 60 KiB is split into ≤ 4 chunk keys; `vessel.inspect` returns full stations (profile, TL, half-apex, flange/base-ring detail), extent, warnings incl. parameter drift, attachment flags, parameters | #16 | 18 Oct | AT: `regenerate_replaces_only_its_own_features` (count unchanged), `one_undo_takes_the_vessel_away`, `a_saved_design_regenerates_in_place_after_opening`, `a_70_kib_document_is_chunked_and_round_trips` (and 300 KiB refused cleanly), `inspect_reports_resolved_stations_warnings_and_flags`, `inspect_warns_when_a_parameter_drifted` |
+| T2.6 | Hostile params: the sibling test asserts it covers every `vessel.*` command in the registry, runs each with 17 keys × 25 hostile values (huge lists, 70 KiB strings, 300-deep nesting, absurd flanges) in 7 session states (none, good vessel, broken chunk heads/texts, garbage generated ids); caps ≤ 200 elements / ≤ 500 attachments refused before deserialising | #17 | 18 Oct | AT: `vessel_commands_never_panic_on_hostile_params`, `element_and_attachment_counts_are_capped` |
+| P2 exit | Vessel A's shell (skirt, 2:1 head, two courses, toriconical cone, F&D head) regenerates from `examples/vessel-a-shell.json` and exports STEP (101 KB, 7 solids, 7 s); Triya CI runs it | #17 | 18 Oct | CI step "Phase 2 exit vessel to STEP" |
 
 ## In progress
 | id | task | branch | started | owner |
@@ -81,6 +83,8 @@
 
 - 2026-10-18 — T2.5: the "vessel group" tag is the metadata entry (`generated.group` = the folder id, `generated.features`), not the folder's name; the folder is named `Vessel <id>` for people. Renaming or moving the folder keeps it the vessel's; if a user feature placed in it would make the folder non-contiguous, the new features get a fresh folder instead of failing.
 - 2026-10-18 — T2.5: chunks are `{"text": …}` objects (upstream requires an object under a reverse-DNS key), ≤ 60 KiB escaped each, at most 4 (240 KiB, under upstream's 256 KiB total); a larger document is refused with its size.
+- 2026-10-18 — T2.6: `VesselDoc::from_value` checks list lengths before deserialising (a 100 000-element list is refused without being copied); runtime-registered commands are proved covered by comparing the registry's `vessel.*` ids with `COMMANDS`.
+- 2026-10-18 — Owner: after Phase 2, Phases 3–5 run serially; every agent suggestion or ADR along the way is accepted (recorded here, no owner wait).
 
 ## Owner decisions
 | opened | question | status | answer |
@@ -142,3 +146,4 @@
 - 2026-10-18 — Phase 2 started (thread "Phase 2 implementation"). T2.1: full vessel model, schema file, reference vessels.
 - 2026-10-18 — T2.2 evaluator and T2.3 emitter: every head preset, cones and flat covers regenerate within 0.02 % of analytic volume; one kernel case captured (arcs on the axis), worked around with conics.
 - 2026-10-18 — T2.5: regenerate replaces only its own features (timeline folder + metadata tag), chunked vessel JSON, full `vessel.inspect`.
+- 2026-10-18 — T2.6: hostile-params coverage and caps; Phase 2 exit met (vessel A shell → STEP in CI).

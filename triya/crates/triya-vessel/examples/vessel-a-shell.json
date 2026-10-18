@@ -1,0 +1,128 @@
+{
+ "commands": [
+  {
+   "command": "vessel.new",
+   "params": {
+    "doc": {
+     "schema": "triya.vessel/0.1",
+     "id": "V-101",
+     "title": "Reference vessel A (vertical, skirt-supported)",
+     "global": {
+      "orientation": "vertical",
+      "datum": "bottom_tl",
+      "plant_elevation_mm": 300,
+      "diameter_basis": "inside",
+      "angle_zero": "plant_north",
+      "angle_sense": "clockwise_from_above",
+      "default_material": "SA-516 Gr.70",
+      "corrosion_allowance_mm": 3,
+      "insulation_thickness_mm": 0
+     },
+     "elements": [
+      {
+       "id": "E0",
+       "kind": "skirt",
+       "height_mm": 2500,
+       "thickness_mm": 10,
+       "base_ring": {
+        "od_mm": 1900,
+        "id_mm": 1500,
+        "thickness_mm": 20
+       },
+       "material": "SA-283 Gr.C"
+      },
+      {
+       "id": "E1",
+       "kind": "head",
+       "preset": "ellipsoidal_2_1",
+       "diameter_mm": 1600,
+       "thickness_mm": 12,
+       "straight_flange_mm": 40,
+       "description": "Bottom head"
+      },
+      {
+       "id": "E2",
+       "kind": "cylinder",
+       "length_mm": 3000,
+       "thickness_mm": 12
+      },
+      {
+       "id": "E3",
+       "kind": "cylinder",
+       "length_mm": 2500,
+       "thickness_mm": 12
+      },
+      {
+       "id": "E4",
+       "kind": "cone",
+       "length_mm": 800,
+       "diameter_small_mm": 1600,
+       "diameter_large_mm": 2200,
+       "thickness_mm": 14,
+       "knuckle_large_mm": 100
+      },
+      {
+       "id": "E5",
+       "kind": "cylinder",
+       "diameter_mm": 2200,
+       "length_mm": 2000,
+       "thickness_mm": 14
+      },
+      {
+       "id": "E6",
+       "kind": "head",
+       "preset": "asme_fd",
+       "thickness_mm": 14,
+       "straight_flange_mm": 50,
+       "orientation": "up"
+      }
+     ],
+     "attachments": [],
+     "design_data": {
+      "code": "ASME VIII-1 2025",
+      "mawp_int": {
+       "kpa": 1000,
+       "at_c": 150
+      },
+      "mawp_ext": {
+       "kpa": 103,
+       "at_c": 150
+      },
+      "design_temp_c": 150,
+      "mdmt_c": -29,
+      "hydrotest_kpa": 1300,
+      "pwht": false,
+      "rt": "Spot",
+      "joint_eff": 0.85,
+      "wind_code": "IS 875 Part 3",
+      "seismic_code": "IS 1893",
+      "capacity_m3": 21.5,
+      "nameplate": {
+       "serial": "OET-0001",
+       "year": 2026
+      }
+     },
+     "notes": [
+      "All dimensions in mm unless noted.",
+      "Nozzle orientation looking down, 0° = plant north, clockwise."
+     ],
+     "revisions": [
+      {
+       "rev": "0",
+       "date": "2026-11-08",
+       "by": "SSP",
+       "desc": "Issued for beta"
+      }
+     ],
+     "extra": {
+      "project": "Beta reference set"
+     }
+    }
+   }
+  },
+  {
+   "command": "vessel.regenerate",
+   "params": {}
+  }
+ ]
+}

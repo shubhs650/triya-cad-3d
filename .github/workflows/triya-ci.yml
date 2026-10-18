@@ -76,6 +76,10 @@ jobs:
           cargo run -q -p triya-cli -- run triya/crates/triya-vessel/examples/cylinder.json --out "$RUNNER_TEMP/cyl.step"
           ls -la "$RUNNER_TEMP/cyl.step"
           cargo run -q -p triya-cli -- eval triya/crates/triya-vessel/examples/cylinder.json
+      - name: Phase 2 exit vessel to STEP (skirt, 2:1 head, two courses, cone, F&D head)
+        run: |
+          cargo run -q -p triya-cli -- run triya/crates/triya-vessel/examples/vessel-a-shell.json --out "$RUNNER_TEMP/vessel-a.step"
+          test -s "$RUNNER_TEMP/vessel-a.step" && ls -la "$RUNNER_TEMP/vessel-a.step"
       - name: layers + assets (upstream xtask)
         run: cargo xtask layers && cargo xtask assets
       - name: wasm check (Triya crates)
