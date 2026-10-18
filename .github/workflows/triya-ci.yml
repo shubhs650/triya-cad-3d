@@ -1,0 +1,102 @@
+# Triya CAD 3D — fork-specific gates. Upstream's CI workflow still runs (it tests the whole
+# workspace, Triya crates included); this one adds the overlay rules and the web shell.
+name: Triya CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: triya-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  TRUNK_VERSION: v0.21.14
+
+jobs:
+  seams:
+    name: Seam whitelist + licence headers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Fetch upstream baseline tag
+        run: |
+          git remote add upstream https://github.com/tangency-labs/solidcraft.git || true
+          git fetch upstream --tags --quiet
+      - name: Whitelist check against the freeze point
+        run: bash triya/ci/check-patch-whitelist.sh v0.14.0
+      - name: SPDX headers on Triya Rust files
+        run: |
+          missing=$(grep -rL "SPDX-License-Identifier: MIT OR Apache-2.0" --include='*.rs' triya/ || true)
+          if [ -n "$missing" ]; then echo "Missing SPDX header:"; echo "$missing"; exit 1; fi
+      - name: No illustrative table rows outside tests
+        # The kickoff skeleton ships placeholder rows; T3.1 replaces them and deletes the marker file.
+        run: |
+          hits=$(grep -rli 'illustrative' triya/crates/*/data 2>/dev/null || true)
+          if [ -n "$hits" ]; then
+            if [ -f triya/crates/triya-stdlib/data/.illustrative-allowed-until-T3.1 ]; then
+              echo "::warning::illustrative placeholder tables present (allowed until PLAN T3.1): $hits"
+            else
+              echo "::error::illustrative rows must not ship: $hits"; exit 1
+            fi
+          fi
+
+  triya-crates:
+    name: Triya crates (clippy + tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: triya }
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy (Triya crates)
+        run: cargo clippy -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui --all-targets -- -D warnings
+      - name: tests (Triya crates)
+        run: cargo test -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui
+      - name: layers + assets (upstream xtask)
+        run: cargo xtask layers && cargo xtask assets
+      - name: wasm check (Triya crates)
+        run: cargo check --target wasm32-unknown-unknown -p triya-vessel -p triya-drawing -p triya-ui -p triya-stdlib
+
+  web-shell:
+    name: Triya web shell (trunk build + offline test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    needs: [seams]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: triya-web }
+      - name: Install trunk
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build
+        working-directory: triya/apps/triya-web
+        run: trunk build --release
+      - name: Offline/update test (headless Chrome)
+        run: cargo xtask web-offline-test --site dist/triya-web
+      - name: Record wasm size
+        run: |
+          ls -la dist/triya-web/*.wasm
+          du -sh dist/triya-web
+      - uses: actions/upload-artifact@v4
+        with: { name: triya-web-dist, path: dist/triya-web, retention-days: 7 }

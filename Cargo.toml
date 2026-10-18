@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "apps/*", "xtask"]
+members = ["crates/*", "apps/*", "xtask", "triya/crates/*", "triya/apps/*"] # Modified by Triya CAD 3D: the overlay crates and apps
 # Third-party code kept with local fixes (see vendor/README.md); not linted as ours.
 exclude = ["vendor"]
 
@@ -25,6 +25,12 @@ solidcraft-engine = { path = "crates/engine" }
 solidcraft-ui-egui = { path = "crates/ui-egui" }
 solidcraft-mcp = { path = "crates/mcp" }
 solidcraft-derive = { path = "crates/derive" }
+# Modified by Triya CAD 3D: the overlay crates (triya/README.md)
+triya-brand = { path = "triya/crates/triya-brand" }
+triya-stdlib = { path = "triya/crates/triya-stdlib" }
+triya-vessel = { path = "triya/crates/triya-vessel" }
+triya-drawing = { path = "triya/crates/triya-drawing" }
+triya-ui = { path = "triya/crates/triya-ui" }
 
 # foundation
 thiserror = "2"

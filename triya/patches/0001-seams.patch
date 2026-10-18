@@ -1,0 +1,200 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index d48e8a6..70ddb61 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,6 +1,6 @@
+ [workspace]
+ resolver = "3"
+-members = ["crates/*", "apps/*", "xtask"]
++members = ["crates/*", "apps/*", "xtask", "triya/crates/*", "triya/apps/*"] # Modified by Triya CAD 3D: the overlay crates and apps
+ # Third-party code kept with local fixes (see vendor/README.md); not linted as ours.
+ exclude = ["vendor"]
+ 
+@@ -25,6 +25,12 @@ solidcraft-engine = { path = "crates/engine" }
+ solidcraft-ui-egui = { path = "crates/ui-egui" }
+ solidcraft-mcp = { path = "crates/mcp" }
+ solidcraft-derive = { path = "crates/derive" }
++# Modified by Triya CAD 3D: the overlay crates (triya/README.md)
++triya-brand = { path = "triya/crates/triya-brand" }
++triya-stdlib = { path = "triya/crates/triya-stdlib" }
++triya-vessel = { path = "triya/crates/triya-vessel" }
++triya-drawing = { path = "triya/crates/triya-drawing" }
++triya-ui = { path = "triya/crates/triya-ui" }
+ 
+ # foundation
+ thiserror = "2"
+diff --git a/assets/locales/en.json b/assets/locales/en.json
+index ffbe52a..08d37c0 100644
+--- a/assets/locales/en.json
++++ b/assets/locales/en.json
+@@ -1160,6 +1160,7 @@
+   "ui.heading_torus": "TORUS",
+   "ui.heading_utilities": "UTILITIES",
+   "ui.heading_utility": "UTILITY",
++  "ui.heading_vessel": "VESSEL",
+   "ui.help": "Help",
+   "ui.hide": "Hide",
+   "ui.hideAxes": "Hide Axes",
+diff --git a/assets/locales/ja.json b/assets/locales/ja.json
+index 4bb4502..33807a9 100644
+--- a/assets/locales/ja.json
++++ b/assets/locales/ja.json
+@@ -1160,6 +1160,7 @@
+   "ui.heading_torus": "トーラス",
+   "ui.heading_utilities": "ユーティリティ",
+   "ui.heading_utility": "ユーティリティ",
++  "ui.heading_vessel": "容器",
+   "ui.help": "ヘルプ",
+   "ui.hide": "非表示",
+   "ui.hideAxes": "軸を非表示",
+diff --git a/assets/locales/zh.json b/assets/locales/zh.json
+index b310f83..c7eaf9a 100644
+--- a/assets/locales/zh.json
++++ b/assets/locales/zh.json
+@@ -1160,6 +1160,7 @@
+   "ui.heading_torus": "圆环体",
+   "ui.heading_utilities": "工具",
+   "ui.heading_utility": "实用工具",
++  "ui.heading_vessel": "容器",
+   "ui.help": "帮助",
+   "ui.hide": "隐藏",
+   "ui.hideAxes": "隐藏轴",
+diff --git a/crates/engine/src/cmd/mod.rs b/crates/engine/src/cmd/mod.rs
+index a37f226..7ad991f 100644
+--- a/crates/engine/src/cmd/mod.rs
++++ b/crates/engine/src/cmd/mod.rs
+@@ -75,6 +75,7 @@ mod sketch_project;
+ mod surface;
+ mod surface_analysis;
+ mod surface_match;
++pub mod triya_extra; // Modified by Triya CAD 3D: extension slot for command slices registered by overlay crates above the engine
+ mod view_dxf;
+ mod view_navigation;
+ 
+@@ -271,6 +272,7 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
+     v.extend(view_dxf::COMMANDS.iter());
+     v.extend(diagnostics::COMMANDS.iter());
+     v.extend(render::COMMANDS.iter());
++    triya_extra::extend(&mut v); // Modified by Triya CAD 3D: commands registered at startup by overlay crates (triya-vessel)
+     v
+ }
+ 
+diff --git a/crates/engine/src/cmd/triya_extra.rs b/crates/engine/src/cmd/triya_extra.rs
+new file mode 100644
+index 0000000..5adbb55
+--- /dev/null
++++ b/crates/engine/src/cmd/triya_extra.rs
+@@ -0,0 +1,53 @@
++// SPDX-License-Identifier: MIT OR Apache-2.0
++// Copyright (c) 2026 Triya CAD 3D contributors
++//! Modified by Triya CAD 3D: an extension slot for command slices registered by crates *above*
++//! the engine.
++//!
++//! The overlay's commands (`triya-vessel`) call engine commands, so `triya-vessel` depends on
++//! `solidcraft-engine`; the engine therefore cannot list `triya_vessel::COMMANDS` in
++//! [`super::command_specs`] without a dependency cycle. Instead an app registers the slice here
++//! at startup (before its first `Session`), and `command_specs()` appends every registered slice,
++//! so the toolbar, palette, scripts, CLI, control channel and MCP all see the same commands.
++//!
++//! Registration is idempotent for the same slice and refuses an id that is already a command,
++//! so `registry_is_consistent` keeps holding. A poisoned lock is treated as "nothing registered"
++//! (never a panic).
++
++use std::sync::RwLock;
++
++use super::CommandSpec;
++
++static EXTRA: RwLock<Vec<&'static [CommandSpec]>> = RwLock::new(Vec::new());
++
++/// Add `specs` to the registry. `Err` names the first id that is already a command (from the
++/// built-in registry or another registered slice); registering the same slice twice is fine.
++pub fn register(specs: &'static [CommandSpec]) -> Result<(), String> {
++    // Built-in commands and the slices registered so far (its read lock is released before the
++    // write lock below is taken: the lock is not reentrant).
++    let existing = super::command_specs();
++    let mut extra = EXTRA.write().map_err(|_| "command registry lock is poisoned".to_string())?;
++    if extra.iter().any(|s| std::ptr::eq(s.as_ptr(), specs.as_ptr()) && s.len() == specs.len()) {
++        return Ok(());
++    }
++    for spec in specs {
++        if existing.iter().any(|c| c.id.eq_ignore_ascii_case(spec.id))
++            || extra.iter().flat_map(|s| s.iter()).any(|c| c.id.eq_ignore_ascii_case(spec.id))
++        {
++            return Err(format!("command id `{}` is already registered", spec.id));
++        }
++        if specs.iter().filter(|c| c.id.eq_ignore_ascii_case(spec.id)).count() > 1 {
++            return Err(format!("command id `{}` appears twice in the slice", spec.id));
++        }
++    }
++    extra.push(specs);
++    Ok(())
++}
++
++/// Append every registered slice to `v` (nothing when none is registered or the lock is poisoned).
++pub(super) fn extend(v: &mut Vec<&'static CommandSpec>) {
++    if let Ok(extra) = EXTRA.read() {
++        for slice in extra.iter() {
++            v.extend(slice.iter());
++        }
++    }
++}
+diff --git a/crates/ui-egui/src/toolbar.rs b/crates/ui-egui/src/toolbar.rs
+index 56cf016..f4c66ff 100644
+--- a/crates/ui-egui/src/toolbar.rs
++++ b/crates/ui-egui/src/toolbar.rs
+@@ -8,7 +8,7 @@ use serde_json::json;
+ use crate::theme::Tokens;
+ use crate::{SolveApp, icons};
+ 
+-pub const TABS: &[&str] = &["SOLID", "SURFACE", "MESH", "SHEET METAL", "PLASTIC", "UTILITIES"];
++pub const TABS: &[&str] = &["SOLID", "SURFACE", "MESH", "SHEET METAL", "PLASTIC", "UTILITIES", "VESSEL"]; // Modified by Triya CAD 3D: the pressure-vessel tab (triya-vessel commands)
+ 
+ /// The accent stroke colour for a panel's icons: constraint commands use the same red as the
+ /// constraint glyphs they draw in the sketch (`glyph_text`), sketch tools otherwise keep
+diff --git a/xtask/src/layers.rs b/xtask/src/layers.rs
+index 2118c8e..c8fe00f 100644
+--- a/xtask/src/layers.rs
++++ b/xtask/src/layers.rs
+@@ -53,12 +53,26 @@ pub const TABLE: &[(&str, Class)] = &[
+     ("cli", Class::Exempt),
+     ("web", Class::Exempt),
+     ("xtask", Class::Exempt),
++    // Modified by Triya CAD 3D: the overlay crates (triya/crates/*, triya/apps/*). triya-vessel and
++    // triya-drawing sit beside the engine (L4), triya-ui beside ui-egui (L5); see INTRA_LAYER_ORDER.
++    ("triya-brand", Class::Standalone),
++    ("triya-stdlib", Class::Layer(0)),
++    ("triya-vessel", Class::Layer(4)),
++    ("triya-drawing", Class::Layer(4)),
++    ("triya-ui", Class::Layer(5)),
++    ("triya-web", Class::Exempt),
+ ];
+ 
+ /// Explicit orderings *within* a layer (earlier may be used by later).
+ /// The viewport draws display plans the GPU crate evaluates and draws with its pipelines; the MCP
+ /// server's tests draw screenshots with them.
+-pub const INTRA_LAYER_ORDER: &[&[&str]] = &[&["gpu", "ui-egui"], &["gpu", "mcp"]];
++pub const INTRA_LAYER_ORDER: &[&[&str]] = &[
++    &["gpu", "ui-egui"],
++    &["gpu", "mcp"],
++    // Modified by Triya CAD 3D: overlay crates use the upstream crate of their own layer.
++    &["engine", "triya-vessel", "triya-drawing"],
++    &["ui-egui", "triya-ui"],
++];
+ 
+ fn intra_layer_allowed(from: &str, to: &str) -> bool {
+     let (from, to) = (short_name(from), short_name(to));
+diff --git a/xtask/src/web_offline.rs b/xtask/src/web_offline.rs
+index 86fa54b..095480b 100644
+--- a/xtask/src/web_offline.rs
++++ b/xtask/src/web_offline.rs
+@@ -73,7 +73,9 @@ pub fn retire(root: &Path, dir: &Path) -> Result<(), String> {
+ }
+ 
+ fn template(root: &Path) -> Result<String, String> {
+-    let path = root.join("apps/solidcraft-web").join(SW);
++    // Modified by Triya CAD 3D: a web app with its own sw.js (triya/apps/triya-web) is the template when Trunk's hook runs there (TRUNK_SOURCE_DIR).
++    let own = std::env::var_os("TRUNK_SOURCE_DIR").map(|d| PathBuf::from(d).join(SW)).filter(|p| p.is_file());
++    let path = own.unwrap_or_else(|| root.join("apps/solidcraft-web").join(SW));
+     std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
+ }
+ 

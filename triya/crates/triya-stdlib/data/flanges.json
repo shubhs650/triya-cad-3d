@@ -1,0 +1,10 @@
+{
+  "source": "ILLUSTRATIVE — replace with verified values",
+  "note": "Shape of a flange table only. These numbers are placeholders for wiring and tests; they are NOT taken from any standard and must not be used for engineering.",
+  "standard": { "org": "EXAMPLE", "number": "flange-table-shape", "rev": "0" },
+  "rows": [
+    { "nps": "2", "class": "150", "kind": "wn", "od": 150.0, "bolt_circle": 120.0, "bolt_count": 4, "bolt_size": "M16", "thickness": 18.0, "hub_od": 84.0, "raised_face_d": 92.0, "length_through_hub": 62.0, "bore_schedule": "STD" },
+    { "nps": "2", "class": "150", "kind": "blind", "od": 150.0, "bolt_circle": 120.0, "bolt_count": 4, "bolt_size": "M16", "thickness": 18.0, "hub_od": 0.0, "raised_face_d": 92.0, "length_through_hub": 18.0, "bore_schedule": null },
+    { "nps": "4", "class": "300", "kind": "so", "od": 255.0, "bolt_circle": 200.0, "bolt_count": 8, "bolt_size": "M20", "thickness": 32.0, "hub_od": 146.0, "raised_face_d": 157.0, "length_through_hub": 48.0, "bore_schedule": null }
+  ]
+}

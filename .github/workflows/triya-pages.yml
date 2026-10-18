@@ -1,0 +1,65 @@
+# Triya CAD 3D on GitHub Pages: the web app at /<repo>/app/ and a small landing page at /<repo>/.
+# Replaces upstream's `Pages` workflow (disable that one in Settings → Actions).
+# Needs Settings → Pages → Source = GitHub Actions.
+# Custom domain later: add a step `echo cad.openengtools.com > site/CNAME` before upload and set
+# public-url to "/app/" (root of the custom domain).
+name: Triya Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['triya/**', 'crates/**', 'apps/**', 'Cargo.*', '.github/workflows/triya-pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: triya-pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  TRUNK_VERSION: v0.21.14
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: triya-web }
+      - name: Install trunk
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build the web app
+        working-directory: triya/apps/triya-web
+        run: trunk build --release --public-url "/${{ github.event.repository.name }}/app/"
+      - name: Offline/update test
+        run: cargo xtask web-offline-test --site dist/triya-web
+      - name: Assemble the site
+        run: |
+          mkdir -p site/app
+          cp -r dist/triya-web/. site/app/
+          cp triya/apps/triya-web/landing/index.html site/index.html 2>/dev/null || \
+            printf '<!doctype html><meta charset="utf-8"><title>Triya CAD 3D</title><p><a href="app/">Open Triya CAD 3D</a></p>' > site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

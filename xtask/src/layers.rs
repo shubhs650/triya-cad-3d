@@ -53,12 +53,26 @@ pub const TABLE: &[(&str, Class)] = &[
     ("cli", Class::Exempt),
     ("web", Class::Exempt),
     ("xtask", Class::Exempt),
+    // Modified by Triya CAD 3D: the overlay crates (triya/crates/*, triya/apps/*). triya-vessel and
+    // triya-drawing sit beside the engine (L4), triya-ui beside ui-egui (L5); see INTRA_LAYER_ORDER.
+    ("triya-brand", Class::Standalone),
+    ("triya-stdlib", Class::Layer(0)),
+    ("triya-vessel", Class::Layer(4)),
+    ("triya-drawing", Class::Layer(4)),
+    ("triya-ui", Class::Layer(5)),
+    ("triya-web", Class::Exempt),
 ];
 
 /// Explicit orderings *within* a layer (earlier may be used by later).
 /// The viewport draws display plans the GPU crate evaluates and draws with its pipelines; the MCP
 /// server's tests draw screenshots with them.
-pub const INTRA_LAYER_ORDER: &[&[&str]] = &[&["gpu", "ui-egui"], &["gpu", "mcp"]];
+pub const INTRA_LAYER_ORDER: &[&[&str]] = &[
+    &["gpu", "ui-egui"],
+    &["gpu", "mcp"],
+    // Modified by Triya CAD 3D: overlay crates use the upstream crate of their own layer.
+    &["engine", "triya-vessel", "triya-drawing"],
+    &["ui-egui", "triya-ui"],
+];
 
 fn intra_layer_allowed(from: &str, to: &str) -> bool {
     let (from, to) = (short_name(from), short_name(to));

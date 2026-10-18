@@ -75,6 +75,7 @@ mod sketch_project;
 mod surface;
 mod surface_analysis;
 mod surface_match;
+pub mod triya_extra; // Modified by Triya CAD 3D: extension slot for command slices registered by overlay crates above the engine
 mod view_dxf;
 mod view_navigation;
 
@@ -271,6 +272,7 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     v.extend(view_dxf::COMMANDS.iter());
     v.extend(diagnostics::COMMANDS.iter());
     v.extend(render::COMMANDS.iter());
+    triya_extra::extend(&mut v); // Modified by Triya CAD 3D: commands registered at startup by overlay crates (triya-vessel)
     v
 }
 

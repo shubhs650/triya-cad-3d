@@ -1,0 +1,9 @@
+{
+  "source": "ILLUSTRATIVE — replace with verified values",
+  "note": "Shape of a pipe schedule table only. Placeholder numbers for wiring and tests; NOT from any standard.",
+  "standard": { "org": "EXAMPLE", "number": "pipe-table-shape", "rev": "0" },
+  "rows": [
+    { "nps": "2", "dn": 50, "od": 60.0, "schedule": "STD", "wall": 3.9 },
+    { "nps": "4", "dn": 100, "od": 114.0, "schedule": "XS", "wall": 8.5 }
+  ]
+}

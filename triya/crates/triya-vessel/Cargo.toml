@@ -1,0 +1,18 @@
+[package]
+name = "triya-vessel"
+description = "Triya CAD 3D pressure-vessel add-on: the vessel document, its axial resolution, the command plan that builds it and the vessel.* commands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+solidcraft-engine = { workspace = true }
+solidcraft-doc = { workspace = true }
+triya-stdlib = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

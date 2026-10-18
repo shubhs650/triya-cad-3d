@@ -1,0 +1,116 @@
+# Triya CAD 3D — daily merge of tangency-labs/solidcraft into a sync branch, gated, as a PR.
+# FROZEN until the beta ships (ADR-0002): the cron line is commented out. To arm it after the
+# tag triya-v0.1.0-beta exists, uncomment the `schedule` block. Until then run it by hand
+# (Actions → Upstream sync → Run workflow) when you want to see how far upstream has drifted.
+#
+# Needs: Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests".
+name: Upstream sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Upstream ref to merge (default upstream/main; e.g. a tag v0.15.0)"
+        type: string
+        default: "main"
+  # schedule:
+  #   - cron: "17 2 * * *"   # 02:17 UTC daily — uncomment after the beta
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  UPSTREAM: https://github.com/tangency-labs/solidcraft.git
+  SYNC_BRANCH: sync/upstream
+
+jobs:
+  merge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Git identity + merge config
+        run: |
+          git config user.name  "triya-sync-bot"
+          git config user.email "triya-sync-bot@users.noreply.github.com"
+          git config rerere.enabled true
+          git config rerere.autoupdate true
+          git config merge.conflictStyle zdiff3
+          git config merge.ours.driver true
+          # Replay previously recorded conflict resolutions (committed under triya/rr-cache).
+          if [ -d triya/rr-cache ]; then mkdir -p .git/rr-cache && cp -r triya/rr-cache/. .git/rr-cache/; fi
+      - name: Fetch upstream
+        run: |
+          git remote add upstream "$UPSTREAM"
+          git fetch upstream --tags --quiet
+          echo "UPSTREAM_SHA=$(git rev-parse --short upstream/${{ inputs.ref || 'main' }})" >> "$GITHUB_ENV"
+      - name: Nothing to do?
+        id: check
+        run: |
+          if git merge-base --is-ancestor "upstream/${{ inputs.ref || 'main' }}" HEAD; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"; echo "Already contains upstream."; fi
+      - name: Attempt merge
+        if: steps.check.outputs.up_to_date != 'true'
+        id: merge
+        run: |
+          git checkout -B "$SYNC_BRANCH"
+          set +e
+          git merge --no-ff --no-edit "upstream/${{ inputs.ref || 'main' }}" \
+            -m "sync: merge upstream ${{ inputs.ref || 'main' }} @ $UPSTREAM_SHA"
+          rc=$?
+          set -e
+          if [ $rc -ne 0 ]; then
+            git diff --name-only --diff-filter=U > /tmp/conflicts.txt || true
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            echo "Conflicts:"; cat /tmp/conflicts.txt
+            git merge --abort || true
+          else
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open/update conflict issue
+        if: steps.merge.outputs.conflict == 'true'
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          body="Automated merge of upstream \`${{ inputs.ref || 'main' }}\` @ $UPSTREAM_SHA conflicted in:\n\n\`\`\`\n$(cat /tmp/conflicts.txt)\n\`\`\`\n\nResolve locally (see \`triya/docs/sync-playbook.md\`): \`git checkout -b sync/upstream main && git merge upstream/main\`, fix the seams, run \`cargo xtask ci\`, open a PR."
+          num=$(gh issue list --label upstream-conflict --state open --json number --jq '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "$(printf "$body")";
+          else gh issue create --title "Upstream merge conflict @ $UPSTREAM_SHA" --label upstream-conflict --body "$(printf "$body")"; fi
+          exit 1
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.merge.outputs.conflict == 'false'
+        with: { components: 'clippy, rustfmt', targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        if: steps.merge.outputs.conflict == 'false'
+        with: { shared-key: triya-sync }
+      - name: Gates on the merged tree
+        if: steps.merge.outputs.conflict == 'false'
+        run: |
+          bash triya/ci/check-patch-whitelist.sh "upstream/${{ inputs.ref || 'main' }}"
+          cargo xtask ci
+          cargo test -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui
+      - name: Save rerere cache back into the tree
+        if: steps.merge.outputs.conflict == 'false'
+        run: |
+          if [ -d .git/rr-cache ] && [ -n "$(ls -A .git/rr-cache)" ]; then
+            mkdir -p triya/rr-cache && cp -r .git/rr-cache/. triya/rr-cache/
+            git add triya/rr-cache && git commit -m "sync: record rerere resolutions" || true
+          fi
+      - name: Push and open PR
+        if: steps.merge.outputs.conflict == 'false'
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          git push --force-with-lease origin "$SYNC_BRANCH"
+          title="sync: upstream ${{ inputs.ref || 'main' }} @ $UPSTREAM_SHA"
+          body="Automated merge of tangency-labs/solidcraft \`${{ inputs.ref || 'main' }}\` @ $UPSTREAM_SHA. Gates passed in this workflow; upstream CI + Triya CI run on this PR. Review the seams (\`triya/patches/PATCHES.md\`) and PROGRESS.md notes before merging."
+          if gh pr view "$SYNC_BRANCH" >/dev/null 2>&1; then gh pr edit "$SYNC_BRANCH" --title "$title" --body "$body";
+          else gh pr create --base main --head "$SYNC_BRANCH" --title "$title" --body "$body" --label upstream-sync; fi

@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::theme::Tokens;
 use crate::{SolveApp, icons};
 
-pub const TABS: &[&str] = &["SOLID", "SURFACE", "MESH", "SHEET METAL", "PLASTIC", "UTILITIES"];
+pub const TABS: &[&str] = &["SOLID", "SURFACE", "MESH", "SHEET METAL", "PLASTIC", "UTILITIES", "VESSEL"]; // Modified by Triya CAD 3D: the pressure-vessel tab (triya-vessel commands)
 
 /// The accent stroke colour for a panel's icons: constraint commands use the same red as the
 /// constraint glyphs they draw in the sketch (`glyph_text`), sketch tools otherwise keep
