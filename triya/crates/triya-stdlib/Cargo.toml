@@ -12,6 +12,7 @@ publish = false
 workspace = true
 
 [dependencies]
+schemars = "1.2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

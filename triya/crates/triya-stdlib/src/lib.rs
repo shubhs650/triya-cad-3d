@@ -24,10 +24,11 @@ pub use head::{HeadPreset, RatioBasis};
 pub use pipe::PipeScheduleRow;
 pub use tables::{HeadPresetRow, Table, TableSet};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The document a row comes from: organisation (`ASME`, `EN`, `DIN`, `IS`), number and edition.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct StandardRef {
     pub org: String,
     pub number: String,

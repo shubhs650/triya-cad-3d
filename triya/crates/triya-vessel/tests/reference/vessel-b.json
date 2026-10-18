@@ -1,0 +1,61 @@
+{
+  "schema": "triya.vessel/0.1",
+  "id": "V-201",
+  "title": "Reference vessel B (horizontal, on saddles)",
+  "global": {
+    "orientation": "horizontal",
+    "datum": "left_tl",
+    "diameter_basis": "inside",
+    "angle_zero": "plus_y",
+    "angle_sense": "clockwise_from_above",
+    "default_material": "SA-516 Gr.70",
+    "corrosion_allowance_mm": 1.5
+  },
+  "elements": [
+    { "id": "E1", "kind": "head", "preset": "kloepper_din28011", "diameter_mm": 1200, "thickness_mm": 10, "straight_flange_mm": 35,
+      "description": "Left head" },
+    { "id": "E2", "kind": "cylinder", "length_mm": 4930, "thickness_mm": 10, "description": "5000 TL–TL less two 35 mm straight flanges" },
+    { "id": "E3", "kind": "head", "preset": "kloepper_din28011", "thickness_mm": 10, "straight_flange_mm": 35,
+      "description": "Right head" }
+  ],
+  "attachments": [
+    { "id": "S1", "kind": "saddle", "host": "E2", "axial": { "ref": "datum", "mm": 1000 }, "angle_deg": 180,
+      "width_mm": 200, "height_mm": 800, "contact_angle_deg": 120, "web_thk_mm": 12, "rib_count": 4, "rib_thk_mm": 10,
+      "base_plate": { "len_mm": 1100, "wid_mm": 200, "thk_mm": 16 },
+      "wear_plate": { "thk_mm": 10, "width_mm": 300, "angle_deg": 132 },
+      "anchor_bolts": { "count": 2, "dia_mm": 24 } },
+    { "id": "S2", "kind": "saddle", "host": "E2", "axial": { "ref": "datum", "mm": 4000 }, "angle_deg": 180,
+      "width_mm": 200, "height_mm": 800, "web_thk_mm": 12, "rib_count": 4, "rib_thk_mm": 10,
+      "base_plate": { "len_mm": 1100, "wid_mm": 200, "thk_mm": 16 },
+      "wear_plate": { "thk_mm": 10, "width_mm": 300, "angle_deg": 132 },
+      "anchor_bolts": { "count": 2, "dia_mm": 24 }, "description": "Sliding saddle" },
+    { "id": "N1", "kind": "nozzle", "host": "E2", "axial": { "ref": "datum", "mm": 500 }, "angle_deg": 0,
+      "nps": "4", "schedule": "STD", "flange": { "standard": "B16.5", "class": 150, "type": "wn" },
+      "projection": { "from": "od", "mm": 200 }, "service": "Inlet" },
+    { "id": "N2", "kind": "nozzle", "host": "E2", "axial": { "ref": "datum", "mm": 4500 }, "angle_deg": 0,
+      "nps": "4", "schedule": "STD", "flange": { "standard": "B16.5", "class": 150, "type": "wn" },
+      "projection": { "from": "od", "mm": 200 }, "service": "Outlet" },
+    { "id": "N3", "kind": "nozzle", "host": "E2", "axial": { "ref": "datum", "mm": 2500 }, "angle_deg": 180,
+      "nps": "2", "schedule": "80", "flange": { "standard": "B16.5", "class": 150, "type": "wn" },
+      "projection": { "from": "od", "mm": 250 }, "attach": "set_on", "service": "Drain" },
+    { "id": "N4", "kind": "nozzle", "host": "E3", "axial": { "ref": "host_from", "mm": 0 }, "angle_deg": 0,
+      "frame": { "type": "head_radial_at_r", "radius_mm": 0 }, "nps": "20", "schedule": "STD",
+      "flange": { "standard": "B16.47A", "class": 150, "type": "blind" },
+      "projection": { "from": "cl", "mm": 3400 }, "manway": { "davit": false }, "service": "Manway" },
+    { "id": "T1", "kind": "lifting_lug", "host": "E2", "axial": { "ref": "datum", "mm": 1500 }, "angle_deg": 90,
+      "style": "trunnion", "plate": { "len_mm": 250, "height_mm": 150, "thk_mm": 20 }, "hole_dia_mm": 50 },
+    { "id": "T2", "kind": "lifting_lug", "host": "E2", "axial": { "ref": "datum", "mm": 3500 }, "angle_deg": 270,
+      "style": "trunnion", "plate": { "len_mm": 250, "height_mm": 150, "thk_mm": 20 }, "hole_dia_mm": 50 }
+  ],
+  "design_data": {
+    "code": "ASME VIII-1 2025",
+    "mawp_int": { "kpa": 700, "at_c": 80 },
+    "design_temp_c": 80,
+    "mdmt_c": -10,
+    "hydrotest_kpa": 910,
+    "pwht": false,
+    "rt": "Full",
+    "joint_eff": 1.0
+  },
+  "revisions": [ { "rev": "0", "date": "2026-11-08", "by": "SSP", "desc": "Issued for beta" } ]
+}

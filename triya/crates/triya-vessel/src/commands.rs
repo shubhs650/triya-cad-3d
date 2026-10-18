@@ -88,7 +88,7 @@ fn new(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value> {
             let t = num(p, "thickness_mm").unwrap_or(10.0);
             let l = num(p, "length_mm").unwrap_or(2000.0);
             let mut doc = VesselDoc::cylinder("S1", d, t, l);
-            doc.name = str_(p, "name").map(str::to_string);
+            doc.title = str_(p, "name").map(str::to_string);
             doc
         }
     };

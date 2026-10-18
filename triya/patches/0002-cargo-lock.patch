@@ -1,8 +1,98 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index 1fa23852da6d0c504360f08f1e4017e1cc892fe9..6ab402f70c9ce74f4eb024deca46afbbadfb09d7 100644
+index 1fa23852da6d0c504360f08f1e4017e1cc892fe9..1711a351914e569de0865beea387e5d0a15e9f5d 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -4525,6 +4525,100 @@ dependencies = [
+@@ -1172,6 +1172,12 @@ version = "0.1.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
+ 
++[[package]]
++name = "dyn-clone"
++version = "1.0.20"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
++
+ [[package]]
+ name = "ecolor"
+ version = "0.36.2"
+@@ -3476,6 +3482,26 @@ dependencies = [
+  "bitflags 2.13.2",
+ ]
+ 
++[[package]]
++name = "ref-cast"
++version = "1.0.27"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "7e440fb4e4b4147295338efb76001ab9e4efc0e5839df2c47fc5ac2381d365c3"
++dependencies = [
++ "ref-cast-impl",
++]
++
++[[package]]
++name = "ref-cast-impl"
++version = "1.0.27"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "92ecd8964f8453721699a1ed72037b0db49ce2f5a5138486ee89bed6f67cdf3a"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.6",
++]
++
+ [[package]]
+ name = "regex-syntax"
+ version = "0.8.11"
+@@ -3703,6 +3729,31 @@ dependencies = [
+  "windows-sys 0.61.2",
+ ]
+ 
++[[package]]
++name = "schemars"
++version = "1.2.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ab508826f74a77ca9d5aba6ff19b522583ee3eaf28a19384ff3d0e5835fadf6e"
++dependencies = [
++ "dyn-clone",
++ "ref-cast",
++ "schemars_derive",
++ "serde",
++ "serde_json",
++]
++
++[[package]]
++name = "schemars_derive"
++version = "1.2.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e1c3a92094fa7d61aa124645844facb6b554dfc797136d0f5fd1f890e2bffc69"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "serde_derive_internals",
++ "syn 3.0.6",
++]
++
+ [[package]]
+ name = "scoped-tls"
+ version = "1.0.1"
+@@ -3822,6 +3873,17 @@ dependencies = [
+  "syn 3.0.6",
+ ]
+ 
++[[package]]
++name = "serde_derive_internals"
++version = "0.30.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f852137cce035d6a4df67ccce505ff6b3e9fd3a10e3e52b24dc71e650bb1a9bd"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.6",
++]
++
+ [[package]]
+ name = "serde_json"
+ version = "1.0.151"
+@@ -4525,6 +4587,102 @@ dependencies = [
   "once_cell",
  ]
  
@@ -52,6 +142,7 @@ index 1fa23852da6d0c504360f08f1e4017e1cc892fe9..6ab402f70c9ce74f4eb024deca46afbb
 +name = "triya-stdlib"
 +version = "0.14.0"
 +dependencies = [
++ "schemars",
 + "serde",
 + "serde_json",
 + "thiserror 2.0.21",
@@ -74,6 +165,7 @@ index 1fa23852da6d0c504360f08f1e4017e1cc892fe9..6ab402f70c9ce74f4eb024deca46afbb
 +name = "triya-vessel"
 +version = "0.14.0"
 +dependencies = [
++ "schemars",
 + "serde",
 + "serde_json",
 + "solidcraft-doc",

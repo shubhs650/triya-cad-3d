@@ -2,10 +2,11 @@
 // Copyright (c) 2026 Triya CAD 3D contributors
 //! One row of a flange dimension table. Lengths in millimetres.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The flange type a table row describes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FlangeKind {
     /// Weld neck.
