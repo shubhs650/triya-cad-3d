@@ -117,6 +117,24 @@ Common fields:
 | `parallel_to_axis` | `radius_mm` | on heads: axis parallel to the vessel axis at radius `radius_mm` |
 | `head_radial_at_r` | `radius_mm` | on heads: normal to the head surface at radius `radius_mm` |
 
+How the frames are read (T3.3, `triya-vessel/src/nozzle.rs`):
+- Azimuth: vertical vessels have 0° at plant north (+Y; `plus_x`: +X), clockwise looking down,
+  so 90° is +X. Horizontal vessels have 0° at the top (+Z; `plus_y`: +Y), clockwise looking from
+  the left end, so 90° is −Y. `counterclockwise_from_above` reverses both.
+- `hillside`/`tangential` offsets run along the circumferential tangent `axis × radial`.
+- `tilted` turns the radial about the tangent through the point where the axis meets the shell's
+  outside at the elevation; positive tilt points toward +axis.
+- Head frames ignore `axial`. `head_radial_at_r` is normal to the head's outside surface at
+  `radius_mm` from the axis.
+- `projection.from = cl` is measured along the nozzle axis from the vessel centreline (cylinder
+  frames) or from the head's tangent-line plane (head frames). `od` is measured from where the
+  axis leaves the host's outside surface.
+- `set_in` and `set_on` build the same joined solid (host + neck outside it − bore); the weld
+  details differ only on the drawing. `inside_projection_mm` is a square cut at that distance
+  inside where the axis meets the inside surface.
+- Pads are built on cylinders only in the beta (on a head: a warning; the pad is drawn on the
+  sheet).
+
 ### 4.2 Kinds
 | kind | fields |
 |---|---|

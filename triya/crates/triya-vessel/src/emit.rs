@@ -386,7 +386,7 @@ pub struct Param {
 }
 
 /// Letters, digits and `_` only (upstream parameter names are identifiers).
-fn ident(s: &str) -> String {
+pub(crate) fn ident(s: &str) -> String {
     s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect()
 }
 

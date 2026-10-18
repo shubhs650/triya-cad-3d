@@ -6,6 +6,8 @@
 //! attachments placed on them), resolved into axial stations by [`eval::resolve`], turned into a
 //! plan of ordinary engine commands by [`emit::plan`], and built by the `vessel.*` commands in
 //! [`commands`], which run that plan through the engine's own command path in one undo step.
+//! Nozzles are placed by [`nozzle`] and joined into their hosts after the shell, each checked
+//! against a reference volume computed without the kernel.
 //!
 //! # Where the vessel JSON lives
 //! The document is kept in the design's own metadata, under the reverse-DNS key
@@ -23,6 +25,7 @@ pub mod commands;
 pub mod emit;
 pub mod eval;
 pub mod model;
+pub mod nozzle;
 
 pub use commands::COMMANDS;
 pub use emit::{CommandCall, plan};
@@ -55,5 +58,7 @@ impl From<VesselError> for solidcraft_engine::EngineError {
     }
 }
 
+#[cfg(test)]
+mod nozzle_tests;
 #[cfg(test)]
 mod tests;
