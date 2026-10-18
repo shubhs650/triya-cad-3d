@@ -40,7 +40,7 @@ pub static COMMANDS: &[CommandSpec] = &[
     CommandSpec::new("vessel.regenerate", "Regenerate Vessel", regenerate).at(TAB, "MAKE").icon("compute").enabled(has_vessel).params(
         "→ steps: [{command, params, reply}], features: [ids] (what it built; the features of the previous regeneration are deleted \
          first). One undo step. Also writes every dimension as a user parameter V<vessel>_<element>_<field> (mm) → parameters. Refused (not supported yet) \
-         for body flanges and attachments",
+         for attachments",
     ),
     CommandSpec::new("vessel.inspect", "Inspect Vessel", inspect).at(TAB, "INSPECT").icon("measure").noundo().doc_only().params(
         "→ doc, stations: [{id, kind, z_from, z_to, r_from, r_to, thickness}], plan: [{command, params}] | plan_error, generated: [feature ids]",

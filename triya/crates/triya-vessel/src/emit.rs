@@ -33,6 +33,10 @@
 //!   the outside is the concentric offset (large knuckle `+ t`, small knuckle `− t`, line `+ t`);
 //!   without a knuckle the end is where the offset line meets the end plane.
 //! - flat cover: a disc (rectangle from the axis) out to the adjacent shell's outside radius.
+//! - skirt: one L-shaped profile, the shell on top of its base ring (no boolean).
+//! - body flange: the weld-neck section (bore = shell ID, hub tapering from the shell OD at the
+//!   weld end to `hub_od` at the ring, ring to the flange OD), then one bolt hole sketched on the
+//!   face, cut through the ring (`solid.extrude` cut) and patterned (`solid.pattern.circular`).
 //!
 //! A later step may need an earlier reply (the sketch's id): a string parameter
 //! `"$ref:<step>.<field>"` is replaced by that field of that step's reply when the plan runs
@@ -46,7 +50,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::eval::{HeadShape, HeadSide, Profile, Resolved, Station};
+use crate::eval::{Detail, FlangeGeom, HeadShape, HeadSide, Profile, Resolved, Station};
 use crate::model::Orientation;
 use crate::{Result, VesselError};
 
@@ -151,7 +155,32 @@ fn dish(shape: HeadShape, r_shell: f64, depth: f64, tl: f64, dir: f64, off: f64)
 pub fn profile(st: &Station) -> Result<Vec<Seg>> {
     let t = st.thickness;
     let segs = match (st.kind, st.profile) {
-        ("cylinder" | "skirt", Profile::Straight) => {
+        ("skirt", Profile::Straight) => match st.detail {
+            Detail::BaseRing { id, od, thickness: tb } => {
+                let (r, z0, z1) = (st.r_from, st.z_from, st.z_to);
+                closed(&[
+                    [id / 2.0, z0],
+                    [od / 2.0, z0],
+                    [od / 2.0, z0 + tb],
+                    [r + t, z0 + tb],
+                    [r + t, z1],
+                    [r, z1],
+                    [r, z0 + tb],
+                    [id / 2.0, z0 + tb],
+                ])
+            }
+            _ => return Err(VesselError::Invalid(format!("element `{}`: skirt without its base ring", st.id))),
+        },
+        ("body_flange", Profile::Straight) => match st.detail {
+            Detail::Flange(g) => {
+                let (r, ro) = (st.r_from, st.r_from + t);
+                let (zh, zf) = (g.hub_len, g.hub_len + g.thickness);
+                let z = |u: f64| if g.hub_at_start { st.z_from + u } else { st.z_to - u };
+                closed(&[[r, z(0.0)], [ro, z(0.0)], [g.hub_od / 2.0, z(zh)], [g.od / 2.0, z(zh)], [g.od / 2.0, z(zf)], [r, z(zf)]])
+            }
+            _ => return Err(VesselError::Invalid(format!("element `{}`: body flange without its dimensions", st.id))),
+        },
+        ("cylinder", Profile::Straight) => {
             let (a, b) = ([st.r_from, st.z_from], [st.r_from + t, st.z_to]);
             vec![Seg::Line(a, [b[0], a[1]]), Seg::Line([b[0], a[1]], b), Seg::Line(b, [a[0], b[1]]), Seg::Line([a[0], b[1]], a)]
         }
@@ -183,6 +212,20 @@ pub fn profile(st: &Station) -> Result<Vec<Seg>> {
         return Err(VesselError::Invalid(format!("element `{}`: the profile has non-finite points", st.id)));
     }
     Ok(segs)
+}
+
+/// A closed polygon through `pts` (consecutive duplicates dropped).
+fn closed(pts: &[P2]) -> Vec<Seg> {
+    let mut v: Vec<P2> = Vec::with_capacity(pts.len());
+    for p in pts {
+        if v.last() != Some(p) {
+            v.push(*p);
+        }
+    }
+    if v.len() > 1 && v.first() == v.last() {
+        v.pop();
+    }
+    (0..v.len()).filter_map(|i| Some(Seg::Line(*v.get(i)?, *v.get((i + 1) % v.len())?))).collect()
 }
 
 fn cone(st: &Station, knuckle_from: f64, knuckle_to: f64) -> Result<Vec<Seg>> {
@@ -265,7 +308,7 @@ pub fn plan_station(st: &Station, r: &Resolved, first: usize) -> Result<Vec<Comm
     let mut out = vec![CommandCall { id: "sketch.create".into(), params: json!({"name": sketch_name(st), "plane": plane}) }];
     // A plain rectangle stays one command (the skeleton's plan; upstream constrains it as one).
     let rect = match (st.kind, st.profile) {
-        ("cylinder" | "skirt", Profile::Straight) => Some(([st.r_from, st.z_from], [st.r_from + st.thickness, st.z_to])),
+        ("cylinder", Profile::Straight) => Some(([st.r_from, st.z_from], [st.r_from + st.thickness, st.z_to])),
         ("flat_cover", Profile::Straight) => Some(([0.0, st.z_from], [st.r_from, st.z_to])),
         _ => None,
     };
@@ -280,7 +323,43 @@ pub fn plan_station(st: &Station, r: &Resolved, first: usize) -> Result<Vec<Comm
         id: "solid.revolve".into(),
         params: json!({"sketch": sketch_ref, "axis": axis, "angle": "360 deg", "operation": "new", "name": body_name(st), "body_name": body_name(st)}),
     });
+    if let Detail::Flange(g) = st.detail {
+        let at = first + out.len();
+        out.extend(bolt_holes(st, &g, r.orientation, at));
+    }
     Ok(out)
+}
+
+/// The bolt holes of a body flange: one hole sketched on the flange face, cut through the ring
+/// and patterned `bolt_count` times about the axis. Holes straddle the centrelines (the first at
+/// 180°/n from the sketch x axis), the usual drilling.
+fn bolt_holes(st: &Station, g: &FlangeGeom, orientation: Orientation, first: usize) -> Vec<CommandCall> {
+    let face = if g.hub_at_start { st.z_from + g.hub_len + g.thickness } else { st.z_to - g.hub_len - g.thickness };
+    let (plane, axis) = match orientation {
+        Orientation::Vertical => (json!({"origin": [0.0, 0.0, face], "x_dir": [1.0, 0.0, 0.0], "y_dir": [0.0, 1.0, 0.0]}), "Z"),
+        Orientation::Horizontal => (json!({"origin": [face, 0.0, 0.0], "x_dir": [0.0, 1.0, 0.0], "y_dir": [0.0, 0.0, 1.0]}), "X"),
+    };
+    let a = std::f64::consts::PI / f64::from(g.bolt_count.max(1));
+    let centre = [g.bolt_circle / 2.0 * a.cos(), g.bolt_circle / 2.0 * a.sin()];
+    let hole = format!("Vessel {} bolt hole", st.id);
+    let sketch_ref = format!("{REF}{first}.sketch");
+    let mut out = vec![
+        CommandCall { id: "sketch.create".into(), params: json!({"name": format!("{hole} sketch"), "plane": plane}) },
+        CommandCall { id: "sketch.circle.center".into(), params: json!({"center": centre, "radius": g.bolt_hole / 2.0}) },
+        CommandCall { id: "sketch.finish".into(), params: json!({}) },
+        CommandCall {
+            id: "solid.extrude".into(),
+            params: json!({"sketch": sketch_ref, "distance": g.thickness, "direction": if g.hub_at_start { "negative" } else { "positive" },
+                "operation": "cut", "targets": [body_name(st)], "name": hole}),
+        },
+    ];
+    if g.bolt_count > 1 {
+        out.push(CommandCall {
+            id: "solid.pattern.circular".into(),
+            params: json!({"features": [hole], "axis": axis, "count": g.bolt_count, "name": format!("Vessel {} bolt holes", st.id)}),
+        });
+    }
+    out
 }
 
 /// The whole vessel's commands, element by element.
@@ -350,7 +429,23 @@ pub fn parameters(vessel_id: &str, r: &Resolved) -> Vec<Param> {
                     push("half_apex", a, "deg", "half-apex angle");
                 }
             }
-            Profile::Straight => {}
+            Profile::Straight => match st.detail {
+                Detail::Flange(g) => {
+                    push("flange_od", g.od, "mm", "flange outside diameter");
+                    push("bolt_circle", g.bolt_circle, "mm", "bolt circle diameter");
+                    push("bolt_count", f64::from(g.bolt_count), "", "bolt count");
+                    push("bolt_hole", g.bolt_hole, "mm", "bolt hole diameter");
+                    push("flange_thk", g.thickness, "mm", "flange ring thickness");
+                    push("hub_od", g.hub_od, "mm", "hub diameter at the ring");
+                    push("hub_len", g.hub_len, "mm", "hub length");
+                }
+                Detail::BaseRing { id, od, thickness } => {
+                    push("ring_id", id, "mm", "base ring inside diameter");
+                    push("ring_od", od, "mm", "base ring outside diameter");
+                    push("ring_thk", thickness, "mm", "base ring thickness");
+                }
+                Detail::None => {}
+            },
         }
     }
     out
