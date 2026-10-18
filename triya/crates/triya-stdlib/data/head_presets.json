@@ -1,11 +1,59 @@
 {
-  "source": "ILLUSTRATIVE — replace with verified values",
-  "note": "Head preset ratios as commonly published in public references; the preset names are descriptive and the ratios must be verified against the standard edition in force before use.",
+  "source": "Preset ratios as defined in public descriptions of the standards (DIN 28011 Klöpper, DIN 28013 Korbbogen, ASME flanged-and-dished, 2:1 ellipsoidal, hemispherical); geometry, not table values",
+  "note": "Ratios are the defining shape parameters of each head type; the depths derive from them (head.rs). Verify against the edition in force before fabrication.",
   "rows": [
-    { "name": "klopper", "standard": { "org": "DIN", "number": "28011", "rev": "" }, "preset": { "type": "torispherical", "crown_ratio": 1.0, "knuckle_ratio": 0.1, "basis": "outside" } },
-    { "name": "korbbogen", "standard": { "org": "DIN", "number": "28013", "rev": "" }, "preset": { "type": "torispherical", "crown_ratio": 0.8, "knuckle_ratio": 0.154, "basis": "outside" } },
-    { "name": "asme_fd", "standard": null, "preset": { "type": "torispherical", "crown_ratio": 1.0, "knuckle_ratio": 0.06, "basis": "inside" } },
-    { "name": "ellipsoidal_2_1", "standard": null, "preset": { "type": "ellipsoidal", "ratio": 2.0 } },
-    { "name": "hemispherical", "standard": null, "preset": { "type": "hemispherical" } }
+    {
+      "name": "klopper",
+      "standard": {
+        "org": "DIN",
+        "number": "28011",
+        "rev": ""
+      },
+      "preset": {
+        "type": "torispherical",
+        "crown_ratio": 1.0,
+        "knuckle_ratio": 0.1,
+        "basis": "outside"
+      }
+    },
+    {
+      "name": "korbbogen",
+      "standard": {
+        "org": "DIN",
+        "number": "28013",
+        "rev": ""
+      },
+      "preset": {
+        "type": "torispherical",
+        "crown_ratio": 0.8,
+        "knuckle_ratio": 0.154,
+        "basis": "outside"
+      }
+    },
+    {
+      "name": "asme_fd",
+      "standard": null,
+      "preset": {
+        "type": "torispherical",
+        "crown_ratio": 1.0,
+        "knuckle_ratio": 0.06,
+        "basis": "inside"
+      }
+    },
+    {
+      "name": "ellipsoidal_2_1",
+      "standard": null,
+      "preset": {
+        "type": "ellipsoidal",
+        "ratio": 2.0
+      }
+    },
+    {
+      "name": "hemispherical",
+      "standard": null,
+      "preset": {
+        "type": "hemispherical"
+      }
+    }
   ]
 }

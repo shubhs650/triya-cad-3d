@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PipeScheduleRow {
-    /// Nominal pipe size as written (`"2"`, `"1/2"`).
+    /// Nominal pipe size, canonical (`"2"`, `"1/2"`, `"1-1/4"`).
     pub nps: String,
     /// Nominal diameter (DN) when the table gives one.
     #[serde(default)]
@@ -17,6 +17,12 @@ pub struct PipeScheduleRow {
     pub schedule: String,
     /// Nominal wall thickness.
     pub wall: f64,
+    #[serde(default)]
+    pub source: Vec<String>,
+    #[serde(default)]
+    pub verified: crate::Verified,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 impl PipeScheduleRow {

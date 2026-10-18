@@ -43,9 +43,13 @@ impl FlangeKind {
     }
 }
 
+/// One flange size. `thickness` is the ring (`tf` in B16.5) without the raised face; the raised
+/// face (`raised_face_h`, 2 mm for Class 150/300 and 7 mm above in B16.5's metric tables) stands
+/// on top of it. `length_through_hub` runs from the back of the hub to the ring's face, also
+/// without the raised face.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FlangeRow {
-    /// Nominal pipe size as written in the table (`"2"`, `"1/2"`, `"24"`).
+    /// Nominal pipe size, canonical (`"2"`, `"1/2"`, `"1-1/4"`, `"24"`): see [`crate::canonical_nps`].
     pub nps: String,
     /// Pressure class or PN rating as written (`"150"`, `"PN16"`).
     pub class: String,
@@ -54,17 +58,38 @@ pub struct FlangeRow {
     pub od: f64,
     pub bolt_circle: f64,
     pub bolt_count: u32,
-    /// Bolt designation as written (`"M16"`, `"5/8"`).
+    /// Bolt designation as written (`"M16"`, `"5/8"`, `"1-1/8"`).
     pub bolt_size: String,
-    /// Flange (ring) thickness.
+    /// Bolt-hole diameter as the table gives it; without it the hole is derived from the bolt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bolt_hole: Option<f64>,
+    /// Flange (ring) thickness without the raised face.
     pub thickness: f64,
     /// Hub diameter at the base (0 for a blind).
     pub hub_od: f64,
-    pub raised_face_d: f64,
-    pub length_through_hub: f64,
-    /// Bore schedule the table row is for, when the standard distinguishes them.
+    /// Hub diameter at the weld bevel (a weld neck's `A`, the pipe's OD).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hub_weld_d: Option<f64>,
+    /// Raised-face diameter (0 when the flange has none, e.g. lap joint).
     #[serde(default)]
-    pub bore_schedule: Option<String>,
+    pub raised_face_d: f64,
+    #[serde(default)]
+    pub raised_face_h: f64,
+    pub length_through_hub: f64,
+    /// Bore of a slip-on, socket-weld or lap-joint flange (fits over the pipe).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bore: Option<f64>,
+    /// Socket depth of a socket-weld flange.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub socket_depth: Option<f64>,
+    /// Where the values come from, one entry per independent source.
+    #[serde(default)]
+    pub source: Vec<String>,
+    #[serde(default)]
+    pub verified: crate::Verified,
+    /// Disagreements between the sources and what was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 impl FlangeRow {
@@ -77,9 +102,35 @@ impl FlangeRow {
             ("thickness", self.thickness),
             ("hub_od", self.hub_od),
             ("raised_face_d", self.raised_face_d),
+            ("raised_face_h", self.raised_face_h),
             ("length_through_hub", self.length_through_hub),
         ] {
             crate::non_negative(name, v)?;
+        }
+        for (name, v) in [("bolt_hole", self.bolt_hole), ("hub_weld_d", self.hub_weld_d), ("bore", self.bore), ("socket_depth", self.socket_depth)] {
+            if let Some(v) = v {
+                crate::positive(name, v)?;
+            }
+        }
+        crate::positive("od", self.od)?;
+        crate::positive("thickness", self.thickness)?;
+        if !(self.bolt_circle < self.od) {
+            return Err(crate::StdlibError::Invalid(format!("bolt circle {} must be inside the OD {}", self.bolt_circle, self.od)));
+        }
+        if self.raised_face_d > 0.0 && !(self.raised_face_d < self.bolt_circle) {
+            return Err(crate::StdlibError::Invalid(format!(
+                "raised face {} must be inside the bolt circle {}",
+                self.raised_face_d, self.bolt_circle
+            )));
+        }
+        if self.length_through_hub + 1e-9 < self.thickness {
+            return Err(crate::StdlibError::Invalid(format!(
+                "length through hub {} is shorter than the ring {}",
+                self.length_through_hub, self.thickness
+            )));
+        }
+        if self.bolt_diameter_mm().is_none() {
+            return Err(crate::StdlibError::Invalid(format!("cannot read the bolt size `{}`", self.bolt_size)));
         }
         if self.bolt_count == 0 || self.bolt_count > 1000 {
             return Err(crate::StdlibError::Invalid(format!("`bolt_count` must be 1…1000 (got {})", self.bolt_count)));
@@ -98,10 +149,16 @@ impl FlangeRow {
         Some(inches * 25.4).filter(|d| d.is_finite() && *d > 0.0 && *d < 500.0)
     }
 
-    /// The bolt-hole diameter: metric bolts + 2 mm up to M24 and + 3 mm above (the clearance
-    /// EN 1092-1 tables show), inch bolts + 1/8 in (the B16.5 table note). An approximation
-    /// until the tables carry the hole (T3.1); callers flag it.
+    /// The bolt-hole diameter: the table's, or [`FlangeRow::derived_bolt_hole_mm`] when the row
+    /// has none.
     pub fn bolt_hole_mm(&self) -> Option<f64> {
+        self.bolt_hole.filter(|h| h.is_finite() && *h > 0.0).or_else(|| self.derived_bolt_hole_mm())
+    }
+
+    /// The hole derived from the bolt: metric bolts + 2 mm up to M24 and + 3 mm above (the
+    /// clearance EN 1092-1 tables show), inch bolts + 1/8 in (the B16.5 table note). An
+    /// approximation for rows without a hole; callers flag it.
+    pub fn derived_bolt_hole_mm(&self) -> Option<f64> {
         let d = self.bolt_diameter_mm()?;
         Some(if self.bolt_size.trim().starts_with(['M', 'm']) { d + if d <= 24.0 { 2.0 } else { 3.0 } } else { d + 3.175 })
     }
@@ -144,9 +201,16 @@ mod tests {
             bolt_size: bolt.into(),
             thickness: 18.0,
             hub_od: 84.0,
+            hub_weld_d: None,
             raised_face_d: 92.0,
+            raised_face_h: 2.0,
             length_through_hub: 62.0,
-            bore_schedule: None,
+            bolt_hole: None,
+            bore: None,
+            socket_depth: None,
+            source: vec!["test".into()],
+            verified: crate::Verified::SingleSource,
+            note: None,
         }
     }
 
@@ -160,6 +224,27 @@ mod tests {
         assert!((row("0.625").bolt_hole_mm().unwrap() - (15.875 + 3.175)).abs() < 1e-9);
         for bad in ["", "M", "Mx", "1/0", "nope", "M-5", "M1e9"] {
             assert_eq!(row(bad).bolt_hole_mm(), None, "{bad}");
+            assert!(row(bad).validate().is_err(), "{bad}");
         }
+        let mut r = row("5/8");
+        r.bolt_hole = Some(19.1);
+        assert_eq!(r.bolt_hole_mm(), Some(19.1));
+        assert!(r.validate().is_ok());
+    }
+
+    #[test]
+    fn rows_that_cannot_be_built_are_refused() {
+        let mut r = row("M16");
+        r.bolt_circle = 160.0;
+        assert!(r.validate().is_err());
+        let mut r = row("M16");
+        r.raised_face_d = 130.0;
+        assert!(r.validate().is_err());
+        let mut r = row("M16");
+        r.length_through_hub = 10.0;
+        assert!(r.validate().is_err());
+        let mut r = row("M16");
+        r.bolt_hole = Some(f64::NAN);
+        assert!(r.validate().is_err());
     }
 }

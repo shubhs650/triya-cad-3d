@@ -318,16 +318,18 @@ fn body_flange(tables: &TableSet, e: &Element, r_in: f64, warnings: &mut Vec<Str
                 Rating::Named(s) => s.clone(),
             };
             let row = tables
-                .flange(&r.nps_or_dn, &class, r.kind)
-                .ok_or_else(|| invalid(e, format!("no flange row {}/{class}/{} in the loaded tables", r.nps_or_dn, r.kind.code())))?;
+                .flange_in(&r.standard, &r.nps_or_dn, &class, r.kind)
+                .ok_or_else(|| invalid(e, format!("no {} flange row {}/{class}/{} in the loaded tables", r.standard, r.nps_or_dn, r.kind.code())))?;
             if row.hub_od <= 0.0 {
                 return Err(invalid(e, "the table row has no hub (a blind flange is a flat cover)"));
             }
             let bolt_hole = row.bolt_hole_mm().ok_or_else(|| invalid(e, format!("cannot read the bolt size `{}`", row.bolt_size)))?;
-            if tables.flanges.is_illustrative() {
-                warnings.push(format!("element `{}`: flange row {} comes from an illustrative table", e.id, row.size_key()));
+            if !row.verified.is_trusted() {
+                warnings.push(format!("element `{}`: flange row {} is {:?} in its table", e.id, row.size_key(), row.verified));
             }
-            warnings.push(format!("element `{}`: bolt holes {bolt_hole} mm derived from bolt {} (clearance rule)", e.id, row.bolt_size));
+            if row.bolt_hole.is_none() {
+                warnings.push(format!("element `{}`: bolt holes {bolt_hole} mm derived from bolt {} (clearance rule)", e.id, row.bolt_size));
+            }
             FlangeGeom {
                 od: row.od,
                 bolt_circle: row.bolt_circle,
