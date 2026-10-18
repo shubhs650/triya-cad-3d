@@ -83,8 +83,8 @@ jobs:
         run: |
           body="Automated merge of upstream \`${{ inputs.ref || 'main' }}\` @ $UPSTREAM_SHA conflicted in:\n\n\`\`\`\n$(cat /tmp/conflicts.txt)\n\`\`\`\n\nResolve locally (see \`triya/docs/sync-playbook.md\`): \`git checkout -b sync/upstream main && git merge upstream/main\`, fix the seams, run \`cargo xtask ci\`, open a PR."
           num=$(gh issue list --label upstream-conflict --state open --json number --jq '.[0].number')
-          if [ -n "$num" ]; then gh issue comment "$num" --body "$(printf "$body")";
-          else gh issue create --title "Upstream merge conflict @ $UPSTREAM_SHA" --label upstream-conflict --body "$(printf "$body")"; fi
+          if [ -n "$num" ]; then gh issue comment "$num" --body "$(printf '%b' "$body")";
+          else gh issue create --title "Upstream merge conflict @ $UPSTREAM_SHA" --label upstream-conflict --body "$(printf '%b' "$body")"; fi
           exit 1
       - uses: dtolnay/rust-toolchain@stable
         if: steps.merge.outputs.conflict == 'false'
@@ -103,7 +103,8 @@ jobs:
         run: |
           if [ -d .git/rr-cache ] && [ -n "$(ls -A .git/rr-cache)" ]; then
             mkdir -p triya/rr-cache && cp -r .git/rr-cache/. triya/rr-cache/
-            git add triya/rr-cache && git commit -m "sync: record rerere resolutions" || true
+            git add triya/rr-cache
+            if ! git diff --cached --quiet; then git commit -m "sync: record rerere resolutions"; fi
           fi
       - name: Push and open PR
         if: steps.merge.outputs.conflict == 'false'
