@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
 **Phase:** 2 — Vessel core · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T2.3 (head/cone/cover emitter). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
+**Next task:** T2.4 (body flange, skirt). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -24,6 +24,7 @@
 | T1.5 | `triya/docs/upstream-proposals.md`: four issue drafts for upstream (command registration slot, brand constants, `space_mouse` test timing with the fix, runtime toolbar tabs), each naming the seam or workaround it would remove | #11 | 18 Oct | owner posts them (AGENTS.md §4) |
 | T2.1 | `triya.vessel/0.1` model complete per `docs/vessel-schema.md` (every element/attachment kind, frame, design data, notes, revisions, `extra`, unknown top-level fields kept); `schemars` schema checked in at `triya/crates/triya-vessel/vessel-schema.json` (test `schema_file_is_current`); reference vessels A/B/C + `every-kind.json` in `triya-vessel/tests/reference/` | #12 | 18 Oct | AT `reference_vessels_round_trip`: every input field survives, second trip stable, all 6 element kinds, 10 attachment kinds and 6 frames covered; also `documents_that_break_the_rules_are_refused`, `reference_vessel_survives_the_design_file`. Evaluator/emitter only ported (T2.2/T2.3 rewrite them) |
 | T2.2 | Evaluator: datums (bottom TL / bottom seam / skirt base / plant elevation / left TL), stations with TLs, skirt hung below the bottom TL (OD = head OD by default), diameter inheritance stopping at cones, ID/OD basis, `radius_at(z)` through heads and toriconical knuckles, warnings (cone > 30°, joint mismatch) | #13 | 18 Oct | AT `stations_of_a_seven_element_vertical_vessel_match_hand_calc` (vessel A, E6 F&D depth 372.543, cone half-apex 21.00° with the knuckle); `head_depths_match_the_din_worked_examples` (exact 188.89 / 248.26 vs DIN fits 188.95 / 248.65, within 0.5 mm); datum, inheritance, outside-basis tests |
+| T2.3 | Emitter: 2:1 ellipsoidal (true ellipse: quarter conic, ρ = √2 − 1), UG-32 0.9D/0.17D, ASME F&D, Klöpper, Korbbogen, 80:10, custom torispherical, hemispherical, cones bare and toriconical (knuckles at either end), welded flat cover; each a half-profile revolved 360°, inside and outside curves; every dimension written as a user parameter `V<vessel>_<element>_<field>` via `parameters.change` | #14 | 18 Oct | AT: `ellipsoidal_and_hemispherical_heads_match_analytic_volume`, `torispherical_heads_match_analytic_volume` (6 presets), `cones_match_analytic_volume`, `flat_cover_matches_analytic_volume`: all within 0.1 % (measured −0.001 … −0.018 %); `vessel_a_shell_regenerates` (7 bodies, parameters in the table, top head crown at 8776.54) |
 
 ## In progress
 | id | task | branch | started | owner |
@@ -70,6 +71,9 @@
 - 2026-10-18 — T2.2: the tangent line is the knuckle/straight-flange junction, not the head seam (the skeleton put datum zero at the seam); `bottom_seam` is the seam. Head depths use the exact geometry, not DIN's linear fits (difference 0.06 / 0.39 mm at Da 1000 / s 10, documented in `eval.rs`).
 - 2026-10-18 — T2.2: a cone's half-apex angle is measured on the straight line tangent to its knuckles (vessel A E4: 21.00°, vs 20.56° for the bare trapezoid); knuckle radii are inside radii.
 
+- 2026-10-18 — T2.3: one body per element (`Vessel <id>`), not one joined shell: nozzle cuts (P3) target the host element's body, and a failed boolean stays local. Circular arcs go to the sketch as conics (kernel case above).
+- 2026-10-18 — T2.3: emitted dimensions are recorded as user parameters (`parameters.change` creates or updates them); the geometry is built from numbers, not driven by them — editing a parameter changes nothing until `vessel.adopt_parameters` (post-beta, `vessel-schema.md` §6).
+
 ## Owner decisions
 | opened | question | status | answer |
 |---|---|---|---|
@@ -86,6 +90,7 @@
 ## Kernel cases (`triya/crates/triya-vessel/tests/kernel-cases/`)
 | case | symptom | fallback engaged | upstream issue |
 |---|---|---|---|
+| `torispherical-arc-revolve.json` (T2.3) | revolving a head half-profile drawn with `sketch.arc.center_point` (or `three_point`) arcs ending on the axis: one sector's spherical face covers the wrong part of its sphere; measured volume 14× too large (or negative) depending on the preset | every circular arc is emitted as an exact conic (`sketch.conic`, apex at the tangent intersection, ρ = w/(1+w), w = cos θ/2); test `kernel_case_…_still_wrong_with_plain_arcs` fails once the kernel is fixed | draft later (T1.5 style) |
 
 ## Deferred (post-beta, with reason)
 | item | reason | target phase |
@@ -127,3 +132,4 @@
 - 2026-10-18 — T1.4: README/NOTICE/SPDX pass.
 - 2026-10-18 — T1.5: upstream issue drafts written. Phase 1 complete pending merges.
 - 2026-10-18 — Phase 2 started (thread "Phase 2 implementation"). T2.1: full vessel model, schema file, reference vessels.
+- 2026-10-18 — T2.2 evaluator and T2.3 emitter: every head preset, cones and flat covers regenerate within 0.02 % of analytic volume; one kernel case captured (arcs on the axis), worked around with conics.
