@@ -1,0 +1,161 @@
+{
+ "note": "T3.3 kernel trial (18 Oct 2026): the inside of a 2:1 ellipsoidal head (ID 1000, SF 40 above a 500 mm shell; a quarter-ellipse conic revolved: 138,745,772 mm\u00b3, analytic 138,753,676) used as a tool to cut a 2 in rod (r 30.15, parallel to Z at x 200): solid.combine had not finished after 10 minutes. Fallback in triya-vessel::nozzle::plan: on an ellipsoidal dish the neck starts square on a plane inside the wall when one fits (the usual case for small necks); otherwise square at the deepest point of the inside surface, as an inside projection with a warning. Torispherical crowns are trimmed by a sphere instead.",
+ "commands": [
+  {
+   "command": "vessel.new",
+   "params": {
+    "doc": {
+     "schema": "triya.vessel/0.1",
+     "id": "K",
+     "elements": [
+      {
+       "id": "S1",
+       "kind": "cylinder",
+       "diameter_mm": 1000,
+       "length_mm": 500,
+       "thickness_mm": 10
+      },
+      {
+       "id": "H1",
+       "kind": "head",
+       "preset": "ellipsoidal_2_1",
+       "straight_flange_mm": 40,
+       "thickness_mm": 10
+      }
+     ]
+    }
+   }
+  },
+  {
+   "command": "vessel.regenerate",
+   "params": {}
+  },
+  {
+   "command": "sketch.create",
+   "params": {
+    "name": "cav",
+    "plane": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "x_dir": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "y_dir": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    }
+   }
+  },
+  {
+   "command": "sketch.line",
+   "params": {
+    "points": [
+     [
+      0.0,
+      530.0
+     ],
+     [
+      500.0,
+      530.0
+     ]
+    ]
+   }
+  },
+  {
+   "command": "sketch.line",
+   "params": {
+    "points": [
+     [
+      500.0,
+      530.0
+     ],
+     [
+      500.0,
+      540.0
+     ]
+    ]
+   }
+  },
+  {
+   "command": "sketch.conic",
+   "params": {
+    "start": [
+     500.0,
+     540.0
+    ],
+    "end": [
+     0.0,
+     790.0
+    ],
+    "apex": [
+     500.0,
+     790.0
+    ],
+    "rho": 0.41421356237309515
+   }
+  },
+  {
+   "command": "sketch.line",
+   "params": {
+    "points": [
+     [
+      0.0,
+      790.0
+     ],
+     [
+      0.0,
+      530.0
+     ]
+    ]
+   }
+  },
+  {
+   "command": "sketch.finish",
+   "params": {}
+  },
+  {
+   "command": "solid.revolve",
+   "params": {
+    "sketch": "$ref:2.sketch",
+    "axis": "Z",
+    "angle": "360 deg",
+    "operation": "new",
+    "name": "cav",
+    "body_name": "cav"
+   }
+  },
+  {
+   "command": "solid.cylinder",
+   "params": {
+    "diameter": 60.3,
+    "height": 400,
+    "base": [
+     200.0,
+     0.0,
+     600.0
+    ],
+    "axis": "Z",
+    "operation": "new",
+    "name": "rod",
+    "body_name": "rod"
+   }
+  },
+  {
+   "command": "solid.combine",
+   "params": {
+    "target": "rod",
+    "tools": [
+     "cav"
+    ],
+    "operation": "cut"
+   }
+  }
+ ]
+}

@@ -810,20 +810,31 @@ pub fn plan(gl: &Global, r: &Resolved, host: &Station, g: &mut NozzleGeom) -> Re
             let trim_body = body_name(&id, "pad trim");
             let (_, top) = crossing_range(gl, host, g, rp, host.thickness + pad.thickness)
                 .ok_or_else(|| VesselError::Invalid(format!("nozzle `{id}`: the pad does not fit its host")))?;
-            match plane_in_wall(gl, host, g, rp) {
-                Some(s0) => out.push(rod(&pad_body, Some(&pad_body), g, rp, s0, top + 1.0, "new", &[])),
+            let s0 = match plane_in_wall(gl, host, g, rp) {
+                Some(s0) => {
+                    out.push(rod(&pad_body, Some(&pad_body), g, rp, s0, top + 1.0, "new", &[]));
+                    s0
+                }
                 None => {
                     out.push(rod(&pad_body, Some(&pad_body), g, rp, g.frame.s_cavity, top + 1.0, "new", &[]));
                     out.extend(mid_wall_cut(gl, r, host, g, &pad_body, &body_name(&id, "pad inner trim")));
+                    g.frame.s_cavity
                 }
-            }
-            // The outside of the pad: everything beyond the host's OD + pad thickness goes.
+            };
+            // The outside of the pad: everything beyond the host's OD + pad thickness goes. The
+            // trim tube only spans the pad rod (with 10 mm to spare): a tube as long as the course
+            // made the kernel's cut fail, slowly, on a 3 m course (vessel A, 18 Oct).
             let ax = vessel_axis(gl.orientation);
-            let (z0, z1) = (host.z_from - 1.0, host.z_to + 1.0);
+            let ends = [g.frame.at(s0), g.frame.at(top + 1.0)];
+            let spread = rp * (1.0 - dot(g.frame.dir, ax).powi(2)).max(0.0).sqrt();
+            let zs = ends.map(|p| dot(p, ax));
+            let z0 = zs[0].min(zs[1]) - spread - 10.0;
+            let z1 = zs[0].max(zs[1]) + spread + 10.0;
+            let reach = ends.iter().map(|p| norm(sub(*p, mul(ax, dot(*p, ax))))).fold(0.0, f64::max) + rp + 10.0;
             let r_out = host.r_from + host.thickness + pad.thickness;
             out.push(CommandCall {
                 id: "solid.cylinder".into(),
-                params: json!({"radius": r_out + 2.0 * rp + 100.0, "height": z1 - z0, "base": mul(ax, z0), "axis": ax, "operation": "new",
+                params: json!({"radius": reach.max(r_out + 10.0), "height": z1 - z0, "base": mul(ax, z0), "axis": ax, "operation": "new",
                     "name": trim_body, "body_name": trim_body}),
             });
             out.push(CommandCall {
@@ -875,26 +886,21 @@ pub fn plan(gl: &Global, r: &Resolved, host: &Station, g: &mut NozzleGeom) -> Re
         }
     }
     out.push(rod(&body_name(&id, "bore"), None, g, g.neck_id() / 2.0, g.frame.s_cavity, g.s_neck_end + 1.0, "cut", &[hb]));
-    let first = out.len();
-    out.extend(flange_calls(gl, g, first));
     Ok(out)
 }
 
 /// The fallback (T3.5): the neck as its own body, square from where it meets the host to the
 /// face, bored through, with no boolean against the host.
-pub fn plan_separate(gl: &Global, g: &NozzleGeom) -> Vec<CommandCall> {
+pub fn plan_separate(g: &NozzleGeom) -> Vec<CommandCall> {
     let body = body_name(&g.id, "neck (separate)");
     let from = match g.attach {
         NozzleAttach::SetIn if g.inside_projection > 0.0 => g.s_start,
         _ => g.frame.s_outer,
     };
-    let mut out = vec![
+    vec![
         rod(&body, Some(&body), g, g.neck_od / 2.0, from, g.s_neck_end, "new", &[]),
         rod(&body_name(&g.id, "bore (separate)"), None, g, g.neck_id() / 2.0, from - 1.0, g.s_neck_end + 1.0, "cut", &[body.as_str()]),
-    ];
-    let first = out.len();
-    out.extend(flange_calls(gl, g, first));
-    out
+    ]
 }
 
 /// The flange's half-section in (radius from the nozzle axis, `s`), closed.
@@ -945,10 +951,21 @@ fn flange_x(gl: &Global, g: &NozzleGeom) -> V3 {
     unit(sub(ax, mul(d, dot(ax, d)))).unwrap_or_else(|| perpendiculars(d).0)
 }
 
-/// The flange as its own body: its section revolved about the nozzle axis, one bolt hole cut
-/// through the ring and patterned (holes straddle the centrelines: the first at 180°/n).
-/// Numbered from `first` for `$ref`s.
-pub fn flange_calls(gl: &Global, g: &NozzleGeom, first: usize) -> Vec<CommandCall> {
+/// How [`flange_calls`] makes the bolt holes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BoltHoles {
+    /// One hole cut through the ring and patterned (the first choice: one feature to edit).
+    Pattern,
+    /// Each hole its own cut (when the kernel fails on the patterned cut).
+    Each,
+    /// The plain ring (when every cut failed; the drawing still shows the holes).
+    None,
+}
+
+/// The flange as its own body: its section revolved about the nozzle axis, then its bolt holes
+/// (straddling the centrelines: the first at 180°/n) as `holes` says. Run on its own: its
+/// `$ref`s count from its first call.
+pub fn flange_calls(gl: &Global, g: &NozzleGeom, holes: BoltHoles) -> Vec<CommandCall> {
     let (Some(f), Some(pts)) = (g.flange, flange_section(g)) else { return Vec::new() };
     let x = flange_x(gl, g);
     let y = g.frame.dir;
@@ -965,23 +982,33 @@ pub fn flange_calls(gl: &Global, g: &NozzleGeom, first: usize) -> Vec<CommandCal
     out.push(CommandCall { id: "sketch.finish".into(), params: json!({}) });
     out.push(CommandCall {
         id: "solid.revolve".into(),
-        params: json!({"sketch": format!("{}{first}.sketch", crate::emit::REF), "axis": "y", "angle": "360 deg", "operation": "new", "name": body, "body_name": body}),
+        params: json!({"sketch": format!("{}0.sketch", crate::emit::REF), "axis": "y", "angle": "360 deg", "operation": "new", "name": body, "body_name": body}),
     });
     let (face, back) = f.ring(g.s_face);
-    let a = std::f64::consts::PI / f64::from(f.bolt_count.max(1));
+    let n = f.bolt_count.max(1);
     let z = cross(y, x);
-    let off = add(mul(x, f.bolt_circle / 2.0 * a.cos()), mul(z, f.bolt_circle / 2.0 * a.sin()));
-    let hole = body_name(&g.id, "bolt hole");
-    out.push(CommandCall {
-        id: "solid.cylinder".into(),
-        params: json!({"radius": f.bolt_hole / 2.0, "height": face - back + 2.0, "base": add(g.frame.at(back - 1.0), off), "axis": y,
-            "operation": "cut", "targets": [body], "name": hole}),
-    });
-    if f.bolt_count > 1 {
-        out.push(CommandCall {
-            id: "solid.pattern.circular".into(),
-            params: json!({"features": [hole], "axis": {"origin": g.frame.origin, "dir": y}, "count": f.bolt_count, "name": body_name(&g.id, "bolt holes")}),
-        });
+    let hole = |k: u32, name: String| {
+        let a = std::f64::consts::PI * f64::from(2 * k + 1) / f64::from(n);
+        let off = add(mul(x, f.bolt_circle / 2.0 * a.cos()), mul(z, f.bolt_circle / 2.0 * a.sin()));
+        CommandCall {
+            id: "solid.cylinder".into(),
+            params: json!({"radius": f.bolt_hole / 2.0, "height": face - back + 2.0, "base": add(g.frame.at(back - 1.0), off), "axis": y,
+                "operation": "cut", "targets": [body], "name": name}),
+        }
+    };
+    match holes {
+        BoltHoles::Pattern => {
+            let first = body_name(&g.id, "bolt hole");
+            out.push(hole(0, first.clone()));
+            if n > 1 {
+                out.push(CommandCall {
+                    id: "solid.pattern.circular".into(),
+                    params: json!({"features": [first], "axis": {"origin": g.frame.origin, "dir": y}, "count": n, "name": body_name(&g.id, "bolt holes")}),
+                });
+            }
+        }
+        BoltHoles::Each => out.extend((0..n).map(|k| hole(k, body_name(&g.id, &format!("bolt hole {}", k + 1))))),
+        BoltHoles::None => {}
     }
     out
 }

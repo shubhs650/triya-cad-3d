@@ -1,0 +1,119 @@
+{
+ "note": "T3.3 kernel trial (18 Oct 2026): a 1600 ID x 12 shell (body `Vessel S1`), a 6 in opening cut at the neck OD (168.3, radial at z 1500), then a neck tube of the same OD trimmed to the shell's inside radius (800) and joined with solid.combine. The opening cut removes 236,946 mm\u00b3 where 267,347 are expected (\u221211 %, within the tessellated measure's error on the whole shell); the join then runs 207 s and fails ('boolean Union: the operation failed: no result'): the neck's outside and the hole's wall are the same cylinder. Fallback in triya-vessel::nozzle::plan: no opening is cut; a solid rod is joined from a plane inside the wall (or trimmed by the mid-wall surface) and the bore is cut afterwards, which is accurate (+0.44 % added, \u22120.02 % bored) and takes 5\u201330 s.",
+ "commands": [
+  {
+   "command": "vessel.new",
+   "params": {
+    "doc": {
+     "schema": "triya.vessel/0.1",
+     "id": "K",
+     "elements": [
+      {
+       "id": "S1",
+       "kind": "cylinder",
+       "diameter_mm": 1600,
+       "length_mm": 3000,
+       "thickness_mm": 12
+      }
+     ]
+    }
+   }
+  },
+  {
+   "command": "vessel.regenerate",
+   "params": {}
+  },
+  {
+   "command": "solid.cylinder",
+   "params": {
+    "diameter": 168.3,
+    "height": 60,
+    "base": [
+     780.0,
+     0.0,
+     1500.0
+    ],
+    "axis": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "operation": "cut",
+    "targets": [
+     "Vessel S1"
+    ],
+    "name": "N1 opening"
+   }
+  },
+  {
+   "command": "solid.cylinder",
+   "params": {
+    "diameter": 168.3,
+    "height": 400,
+    "base": [
+     700.0,
+     0.0,
+     1500.0
+    ],
+    "axis": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "operation": "new",
+    "name": "N1 neck",
+    "body_name": "N1 neck"
+   }
+  },
+  {
+   "command": "solid.cylinder",
+   "params": {
+    "diameter": 154.08,
+    "height": 402,
+    "base": [
+     699.0,
+     0.0,
+     1500.0
+    ],
+    "axis": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "operation": "cut",
+    "targets": [
+     "N1 neck"
+    ],
+    "name": "N1 bore"
+   }
+  },
+  {
+   "command": "solid.cylinder",
+   "params": {
+    "radius": 800,
+    "height": 3000,
+    "base": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "axis": "Z",
+    "operation": "cut",
+    "targets": [
+     "N1 neck"
+    ],
+    "name": "N1 trim"
+   }
+  },
+  {
+   "command": "solid.combine",
+   "params": {
+    "target": "Vessel S1",
+    "tools": [
+     "N1 neck"
+    ],
+    "operation": "join"
+   }
+  }
+ ]
+}

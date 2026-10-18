@@ -391,12 +391,15 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         let report = build_nozzle(s, &doc, &resolved, host, &mut g, &mut features, &mut steps);
         warnings.extend(g.warnings.iter().cloned());
         if let Some(a) = doc.attachments.iter_mut().find(|a| a.id == g.id) {
-            a.flags.boolean_failed = report.get("built").and_then(Value::as_str) != Some("joined");
+            let flange_ok = report.get("flange").is_none_or(|f| f == "built");
+            a.flags.boolean_failed = report.get("built").and_then(Value::as_str) != Some("joined") || !flange_ok;
             a.flags.unverified_table = g.unverified_table;
             extra_params.extend(nozzle::parameters(&doc.id, &doc.global, a, &g));
         }
-        if let Some(w) = report.get("warning").and_then(Value::as_str) {
-            warnings.push(w.to_string());
+        for key in ["warning", "flange_warning"] {
+            if let Some(w) = report.get(key).and_then(Value::as_str) {
+                warnings.push(w.to_string());
+            }
         }
         built_nozzles.push(report);
     }
@@ -464,8 +467,9 @@ fn run_calls(s: &mut Session, calls: &[CommandCall], features: &mut Vec<u64>, st
 
 /// Build one nozzle into its host (tried on a scratch copy, kept when the host's measured
 /// volume changes by the expected amount), else as a separate body, else not at all: a kernel
-/// failure never fails the regeneration. → `{id, built: joined|separate|none, expected_mm3,
-/// measured_mm3, warning?}`.
+/// failure never fails the regeneration; then its flange (bolt holes patterned, else one by
+/// one, else none; else no flange). → `{id, built: joined|separate|none, expected_mm3, measured_mm3, warning?,
+/// flange?: built|without bolt holes|none, bolt_count?, flange_warning?}`.
 fn build_nozzle(
     s: &mut Session,
     doc: &VesselDoc,
@@ -490,28 +494,62 @@ fn build_nozzle(
         }
         Ok((f, st, trial, expected, change))
     })();
-    match joined {
+    let mut out = match joined {
         Ok((f, st, trial, expected, change)) => {
             s.accept_computed(trial);
             features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
             steps.extend(st);
-            json!({"id": g.id, "built": "joined", "expected_mm3": expected, "measured_mm3": change, "manway": g.manway, "davit": g.davit,
-                "bolt_count": g.flange.map(|f| f.bolt_count)})
+            json!({"id": g.id, "built": "joined", "expected_mm3": expected, "measured_mm3": change, "manway": g.manway, "davit": g.davit})
         }
         Err(why) => {
             let mut trial = s.scratch();
             let (mut f, mut st) = (Vec::new(), Vec::new());
-            match run_calls(&mut trial, &nozzle::plan_separate(&doc.global, g), &mut f, &mut st) {
+            match run_calls(&mut trial, &nozzle::plan_separate(g), &mut f, &mut st) {
                 Ok(()) => {
                     s.accept_computed(trial);
                     features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
                     steps.extend(st);
-                    json!({"id": g.id, "built": "separate", "warning": format!("nozzle `{}`: {why}; kept as a separate body (flags.boolean_failed)", g.id)})
+                    json!({"id": g.id, "built": "separate", "manway": g.manway, "davit": g.davit,
+                        "warning": format!("nozzle `{}`: {why}; kept as a separate body (flags.boolean_failed)", g.id)})
                 }
                 Err(e) => {
-                    json!({"id": g.id, "built": "none", "warning": format!("nozzle `{}`: {why}; the separate body failed too ({e}); not built", g.id)})
+                    return json!({"id": g.id, "built": "none", "warning": format!("nozzle `{}`: {why}; the separate body failed too ({e}); not built", g.id)});
                 }
             }
         }
+    };
+    // The flange is its own body, built after the neck so a kernel failure on it never costs
+    // the neck: its holes patterned, else cut one by one, else the plain ring, else none.
+    if let Some(fl) = g.flange {
+        let mut why = Vec::new();
+        for holes in [nozzle::BoltHoles::Pattern, nozzle::BoltHoles::Each, nozzle::BoltHoles::None] {
+            let mut trial = s.scratch();
+            let (mut f, mut st) = (Vec::new(), Vec::new());
+            match run_calls(&mut trial, &nozzle::flange_calls(&doc.global, g, holes), &mut f, &mut st) {
+                Ok(()) => {
+                    s.accept_computed(trial);
+                    features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
+                    steps.extend(st);
+                    out["flange"] = json!(if holes == nozzle::BoltHoles::None { "without bolt holes" } else { "built" });
+                    if holes != nozzle::BoltHoles::None {
+                        out["bolt_count"] = json!(fl.bolt_count);
+                    }
+                    break;
+                }
+                Err(e) => why.push(e.to_string()),
+            }
+        }
+        if out.get("flange").is_none() {
+            out["flange"] = json!("none");
+        }
+        if !why.is_empty() {
+            let what = match out["flange"].as_str() {
+                Some("built") => "bolt holes cut one by one",
+                Some("without bolt holes") => "built without its bolt holes",
+                _ => "not built",
+            };
+            out["flange_warning"] = json!(format!("nozzle `{}`: flange {what} ({})", g.id, why.join("; ")));
+        }
     }
+    out
 }
