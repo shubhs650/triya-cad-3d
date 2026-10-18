@@ -41,7 +41,10 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Build the web app
         working-directory: triya/apps/triya-web
-        run: trunk build --release --public-url "/${{ github.event.repository.name }}/app/"
+        # Relative URLs (Trunk.toml public_url = "./"): the same build serves at /<repo>/app/ here and
+        # at /solidcraft/app/ in web-offline-test, whose prefix is fixed, so the deployed files are
+        # exactly the tested ones.
+        run: trunk build --release
       - name: Offline/update test
         # The test regenerates sw.js to compare it with the build's; outside Trunk's hook it needs to
         # be told which template the build used (xtask/src/web_offline.rs seam, PATCHES.md row 12).
