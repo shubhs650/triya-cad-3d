@@ -190,3 +190,14 @@ and shares that effective count with the surface attachments and CAD callbacks.
 Vulkan, DirectX 12, Metal and WebGPU retain their requested multisampling.
 A frame whose meshes the GPU refuses to stage (device lost or out of memory) is
 skipped with a warning instead of panicking (#1469).
+
+<!-- Modified by Triya CAD 3D: rows for the fork's own assets (triya/patches/PATCHES.md row 14). -->
+## Triya CAD 3D files
+
+| File | Author | Source | Licence |
+|---|---|---|---|
+| triya/apps/triya-web/icons/32x32/in.openengtools.triya.png | Triya CAD 3D contributors | original Triya mark drawn in code (triya/crates/triya-brand/src/mark.rs), exported by `TRIYA_WRITE_ICONS=1 cargo test -p triya-ui --test icons` | MIT OR Apache-2.0 |
+| triya/apps/triya-web/icons/192x192/in.openengtools.triya.png | Triya CAD 3D contributors | original Triya mark drawn in code (triya/crates/triya-brand/src/mark.rs), same export | MIT OR Apache-2.0 |
+| triya/apps/triya-web/icons/256x256/in.openengtools.triya.png | Triya CAD 3D contributors | original Triya mark drawn in code (triya/crates/triya-brand/src/mark.rs), same export | MIT OR Apache-2.0 |
+| triya/apps/triya-web/icons/512x512/in.openengtools.triya.png | Triya CAD 3D contributors | original Triya mark drawn in code (triya/crates/triya-brand/src/mark.rs), same export | MIT OR Apache-2.0 |
+| triya/apps/triya-web/icons/512x512/in.openengtools.triya-maskable.png | Triya CAD 3D contributors | original Triya mark drawn in code (triya/crates/triya-brand/src/mark.rs), full-bleed maskable variant, same export | MIT OR Apache-2.0 |

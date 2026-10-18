@@ -118,7 +118,7 @@ extension slot is the one exception and is named for greppability).
 - The upstream "Claim = draft PR" protocol does not apply inside this fork (single owner); it
   does apply when you open a PR on `tangency-labs/solidcraft`.
 - Builds: `export CARGO_TARGET_DIR="$PWD/target"`; web: `cd triya/apps/triya-web && trunk serve`
-  (port 8781) or `trunk build --release`; headless: `cargo run -p triya-cli -- run <script.json> --out part.step`
+  (port 8782; upstream's web shell uses 8781) or `trunk build --release`; headless: `cargo run -p triya-cli -- run <script.json> --out part.step`
   (the Triya CLI wrapper registers `vessel.*` then delegates to upstream's CLI; plain
   `solidcraft-cli` does not know the vessel commands); MCP: `cargo run -p triya-cli -- mcp`.
 
