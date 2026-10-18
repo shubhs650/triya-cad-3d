@@ -48,12 +48,13 @@
 //! host's outside, out to `width_mm` beyond the neck OD, conforming to the host.
 
 use serde_json::json;
-use triya_stdlib::TableSet;
+use triya_stdlib::{FlangeKind, TableSet};
 
 use crate::emit::CommandCall;
 use crate::eval::{HeadShape, HeadSide, Profile, Resolved, Station};
 use crate::model::{
-    AngleSense, AngleZero, Attachment, AttachmentKind, AxialRef, Frame, Global, NozzleAttach, Orientation, ProjectionFrom, VesselDoc,
+    AngleSense, AngleZero, Attachment, AttachmentKind, AxialRef, Facing, FlangeStandard, Frame, Global, NozzleAttach, Orientation, ProjectionFrom,
+    VesselDoc,
 };
 use crate::{Result, VesselError};
 
@@ -321,6 +322,45 @@ pub struct PadGeom {
     pub thickness: f64,
 }
 
+/// A nozzle's flange, from its table row (mm). `s_face` is the gasket face: the top of the
+/// raised face (RF, RTJ: the RTJ groove is not modelled in the beta) or the flat face (FF).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NozzleFlangeGeom {
+    pub kind: FlangeKind,
+    pub od: f64,
+    pub bolt_circle: f64,
+    pub bolt_count: u32,
+    pub bolt_hole: f64,
+    /// Ring thickness without the raised face.
+    pub thickness: f64,
+    pub hub_od: f64,
+    /// The hub's diameter at the weld end (WN), else the neck OD.
+    pub hub_weld_d: f64,
+    /// From the hub's back to the ring face (without the raised face).
+    pub length_through_hub: f64,
+    pub rf_d: f64,
+    pub rf_h: f64,
+    /// Bore of a slip-on, lap-joint or socket-weld flange (the weld neck's is the neck's bore).
+    pub bore: f64,
+}
+
+impl NozzleFlangeGeom {
+    /// The ring's face and back.
+    pub fn ring(&self, s_face: f64) -> (f64, f64) {
+        let face = s_face - self.rf_h;
+        (face, face - self.thickness)
+    }
+
+    /// The back of the hub (the weld end of a weld neck); the ring's back for a blind.
+    pub fn back(&self, s_face: f64) -> f64 {
+        let (face, back) = self.ring(s_face);
+        match self.kind {
+            FlangeKind::Blind => back,
+            _ => face - self.length_through_hub.max(self.thickness),
+        }
+    }
+}
+
 /// A nozzle, resolved (all mm along its axis).
 #[derive(Clone, Debug, PartialEq)]
 pub struct NozzleGeom {
@@ -334,10 +374,16 @@ pub struct NozzleGeom {
     /// the inside surface) and the flange face.
     pub s_start: f64,
     pub s_face: f64,
+    /// Where the neck pipe ends: the weld end of a weld-neck flange, inside a slip-on, the back
+    /// of a blind; the face without a flange.
+    pub s_neck_end: f64,
+    pub flange: Option<NozzleFlangeGeom>,
     pub attach: NozzleAttach,
     pub inside_projection: f64,
     pub pad: Option<PadGeom>,
     pub manway: bool,
+    /// A manway with a davit: a reference for the drawing and BOM (no davit geometry in the beta).
+    pub davit: bool,
     /// The neck came from a table row not marked verified.
     pub unverified_table: bool,
     pub warnings: Vec<String>,
@@ -356,7 +402,8 @@ impl NozzleGeom {
 
 /// Nozzle `a` of `doc` against its resolved host, with pipe rows from `tables`.
 pub fn resolve(doc: &VesselDoc, r: &Resolved, a: &Attachment, tables: &TableSet) -> Result<NozzleGeom> {
-    let AttachmentKind::Nozzle { nps, schedule, neck_thk_mm, projection, inside_projection_mm, attach, pad, manway, .. } = &a.kind else {
+    let AttachmentKind::Nozzle { nps, schedule, neck_thk_mm, projection, inside_projection_mm, attach, pad, manway, flange, neck_type, .. } = &a.kind
+    else {
         return Err(VesselError::Invalid(format!("attachment `{}` is not a nozzle", a.id)));
     };
     let host = r.station(&a.host).ok_or_else(|| invalid(a, format!("no element `{}`", a.host)))?;
@@ -402,6 +449,33 @@ pub fn resolve(doc: &VesselDoc, r: &Resolved, a: &Attachment, tables: &TableSet)
             ),
         ));
     }
+    let flange = match flange {
+        Some(f) => Some(nozzle_flange(a, tables, nps, f, od, wall, &mut warnings, &mut unverified_table)?),
+        None => None,
+    };
+    if *neck_type != crate::model::NeckType::Pipe {
+        warnings.push(format!("nozzle `{}`: {:?} neck modelled as pipe of the same OD and wall in the beta", a.id, neck_type));
+    }
+    let s_neck_end = match flange {
+        None => s_face,
+        Some(f) => match f.kind {
+            FlangeKind::Wn | FlangeKind::Lwn | FlangeKind::Blind => f.back(s_face),
+            // The pipe stops one wall short of the ring face inside a slip-on (fillet weld).
+            FlangeKind::So | FlangeKind::Lj | FlangeKind::Sw => f.ring(s_face).0 - wall,
+        },
+    };
+    if let Some(f) = flange
+        && !(f.back(s_face) > clear + 1.0)
+    {
+        return Err(invalid(
+            a,
+            format!(
+                "the {} flange's back ({:.1} mm along the axis) is not outside the shell ({clear:.1}); lengthen the projection",
+                f.kind.code(),
+                f.back(s_face)
+            ),
+        ));
+    }
     let s_start = match attach {
         NozzleAttach::SetIn => f.s_inner - inside_projection_mm,
         NozzleAttach::SetOn if *inside_projection_mm > 0.0 => return Err(invalid(a, "a set-on neck has no inside projection")),
@@ -415,14 +489,88 @@ pub fn resolve(doc: &VesselDoc, r: &Resolved, a: &Attachment, tables: &TableSet)
         neck_wall: wall,
         s_start,
         s_face,
+        s_neck_end,
+        flange,
         attach: *attach,
         inside_projection: *inside_projection_mm,
         pad,
         manway: manway.is_some(),
+        davit: manway.is_some_and(|m| m.davit),
         unverified_table,
         warnings,
     };
     footprint_on_host(&doc.global, a, host, &g)?;
+    Ok(g)
+}
+
+/// The standard as the tables name it.
+fn standard_name(s: FlangeStandard) -> &'static str {
+    match s {
+        FlangeStandard::B16_5 => "B16.5",
+        FlangeStandard::B16_47A => "B16.47A",
+        FlangeStandard::B16_47B => "B16.47B",
+    }
+}
+
+/// The nozzle's flange from its table row.
+#[allow(clippy::too_many_arguments)]
+fn nozzle_flange(
+    a: &Attachment,
+    tables: &TableSet,
+    nps: &str,
+    f: &crate::model::NozzleFlange,
+    neck_od: f64,
+    wall: f64,
+    warnings: &mut Vec<String>,
+    unverified: &mut bool,
+) -> Result<NozzleFlangeGeom> {
+    let standard = standard_name(f.standard);
+    let class = f.class.to_string();
+    // Long weld necks are not in the tables: the WN row's ring and drilling, the hub as WN.
+    let kind = if f.kind == FlangeKind::Lwn {
+        warnings.push(format!("nozzle `{}`: LWN modelled with the WN row's dimensions in the beta", a.id));
+        FlangeKind::Wn
+    } else {
+        f.kind
+    };
+    let row = tables
+        .flange_in(standard, nps, &class, kind)
+        .ok_or_else(|| invalid(a, format!("no {standard} flange row {nps}/{class}/{} in the loaded tables", kind.code())))?;
+    if !row.verified.is_trusted() {
+        *unverified = true;
+        warnings.push(format!("nozzle `{}`: flange row {} is {:?} in its table", a.id, row.size_key(), row.verified));
+    }
+    let bolt_hole = row.bolt_hole_mm().ok_or_else(|| invalid(a, format!("cannot read the bolt size `{}`", row.bolt_size)))?;
+    let rf_h = match f.facing {
+        Facing::Ff => 0.0,
+        Facing::Rf | Facing::Rtj => row.raised_face_h,
+    };
+    if f.facing == Facing::Rtj {
+        warnings.push(format!("nozzle `{}`: RTJ facing modelled as a raised face (no ring groove) in the beta", a.id));
+    }
+    let g = NozzleFlangeGeom {
+        kind: f.kind,
+        od: row.od,
+        bolt_circle: row.bolt_circle,
+        bolt_count: row.bolt_count,
+        bolt_hole,
+        thickness: row.thickness,
+        hub_od: row.hub_od,
+        hub_weld_d: row.hub_weld_d.unwrap_or(neck_od),
+        length_through_hub: row.length_through_hub,
+        rf_d: if rf_h > 0.0 { row.raised_face_d } else { 0.0 },
+        rf_h,
+        bore: row.bore.unwrap_or(neck_od + 1.6),
+    };
+    let fits = g.thickness > 0.0
+        && g.bolt_count > 0
+        && g.bolt_circle / 2.0 + g.bolt_hole / 2.0 < g.od / 2.0
+        && (kind == FlangeKind::Blind || g.hub_od / 2.0 < g.bolt_circle / 2.0 - g.bolt_hole / 2.0)
+        && (g.rf_h == 0.0 || g.rf_d / 2.0 < g.bolt_circle / 2.0 - g.bolt_hole / 2.0)
+        && (kind == FlangeKind::Blind || g.hub_weld_d / 2.0 > neck_od / 2.0 - wall);
+    if !fits {
+        return Err(invalid(a, format!("flange row {} does not fit a neck of OD {neck_od}", row.size_key())));
+    }
     Ok(g)
 }
 
@@ -467,7 +615,7 @@ pub fn expected_change(gl: &Global, host: &Station, g: &NozzleGeom, n: usize) ->
     let r_foot = g.footprint_r();
     let (r_od, r_id) = (g.neck_od / 2.0, g.neck_id() / 2.0);
     let t = host.thickness;
-    let (lo, hi) = (g.frame.s_cavity, g.s_face);
+    let (lo, hi) = (g.frame.s_cavity, g.s_neck_end);
     let n = n.clamp(8, 2000);
     let step = (t / 6.0).clamp(0.02, 1.0);
     let samples = ((hi - lo) / step).ceil();
@@ -509,9 +657,9 @@ pub fn expected_change(gl: &Global, host: &Station, g: &NozzleGeom, n: usize) ->
                     g.pad.is_some_and(|pd| outer >= 0.0 && rr <= pd.od / 2.0 && surface_at(host, ax, p, t + pd.thickness).is_some_and(|v| v < 0.0));
                 // The neck: from its start (a set-in neck fills the wall; inside the vessel only
                 // as far as its inside projection) to the face.
-                let neck = rr <= r_od && s <= g.s_face && (outer >= 0.0 || (s >= g.s_start && (inner >= 0.0 || g.inside_projection > 0.0)));
-                // The bore is cut from inside the vessel (`s_cavity`) to the face.
-                let bore = rr <= r_id && s <= g.s_face;
+                let neck = rr <= r_od && s <= g.s_neck_end && (outer >= 0.0 || (s >= g.s_start && (inner >= 0.0 || g.inside_projection > 0.0)));
+                // The bore is cut from inside the vessel (`s_cavity`) to the neck's end.
+                let bore = rr <= r_id && s <= g.s_neck_end;
                 Some((metal || pad || neck) && !bore)
             };
             let len = |f: &dyn Fn(f64) -> Option<bool>| -> Option<f64> {
@@ -716,9 +864,9 @@ pub fn plan(gl: &Global, r: &Resolved, host: &Station, g: &mut NozzleGeom) -> Re
     };
     let neck = body_name(&id, "neck");
     match start {
-        Start::Plane(s0) => out.push(rod(&neck, None, g, r_od, s0, g.s_face, "join", &[hb])),
+        Start::Plane(s0) => out.push(rod(&neck, None, g, r_od, s0, g.s_neck_end, "join", &[hb])),
         Start::Trimmed => {
-            out.push(rod(&neck, Some(&neck), g, r_od, g.frame.s_cavity, g.s_face, "new", &[]));
+            out.push(rod(&neck, Some(&neck), g, r_od, g.frame.s_cavity, g.s_neck_end, "new", &[]));
             out.extend(mid_wall_cut(gl, r, host, g, &neck, &body_name(&id, "neck trim")));
             out.push(CommandCall {
                 id: "solid.combine".into(),
@@ -726,22 +874,116 @@ pub fn plan(gl: &Global, r: &Resolved, host: &Station, g: &mut NozzleGeom) -> Re
             });
         }
     }
-    out.push(rod(&body_name(&id, "bore"), None, g, g.neck_id() / 2.0, g.frame.s_cavity, g.s_face + 1.0, "cut", &[hb]));
+    out.push(rod(&body_name(&id, "bore"), None, g, g.neck_id() / 2.0, g.frame.s_cavity, g.s_neck_end + 1.0, "cut", &[hb]));
+    let first = out.len();
+    out.extend(flange_calls(gl, g, first));
     Ok(out)
 }
 
 /// The fallback (T3.5): the neck as its own body, square from where it meets the host to the
 /// face, bored through, with no boolean against the host.
-pub fn plan_separate(g: &NozzleGeom) -> Vec<CommandCall> {
+pub fn plan_separate(gl: &Global, g: &NozzleGeom) -> Vec<CommandCall> {
     let body = body_name(&g.id, "neck (separate)");
     let from = match g.attach {
         NozzleAttach::SetIn if g.inside_projection > 0.0 => g.s_start,
         _ => g.frame.s_outer,
     };
-    vec![
-        rod(&body, Some(&body), g, g.neck_od / 2.0, from, g.s_face, "new", &[]),
-        rod(&body_name(&g.id, "bore (separate)"), None, g, g.neck_id() / 2.0, from - 1.0, g.s_face + 1.0, "cut", &[body.as_str()]),
-    ]
+    let mut out = vec![
+        rod(&body, Some(&body), g, g.neck_od / 2.0, from, g.s_neck_end, "new", &[]),
+        rod(&body_name(&g.id, "bore (separate)"), None, g, g.neck_id() / 2.0, from - 1.0, g.s_neck_end + 1.0, "cut", &[body.as_str()]),
+    ];
+    let first = out.len();
+    out.extend(flange_calls(gl, g, first));
+    out
+}
+
+/// The flange's half-section in (radius from the nozzle axis, `s`), closed.
+pub fn flange_section(g: &NozzleGeom) -> Option<Vec<[f64; 2]>> {
+    let f = g.flange?;
+    let (face, back) = f.ring(g.s_face);
+    let hub_back = f.back(g.s_face);
+    let mut pts = match f.kind {
+        FlangeKind::Blind => vec![[0.0, back], [f.od / 2.0, back], [f.od / 2.0, face]],
+        FlangeKind::Wn | FlangeKind::Lwn => {
+            let rb = g.neck_id() / 2.0;
+            vec![[rb, hub_back], [f.hub_weld_d / 2.0, hub_back], [f.hub_od / 2.0, back], [f.od / 2.0, back], [f.od / 2.0, face]]
+        }
+        FlangeKind::So | FlangeKind::Lj | FlangeKind::Sw => {
+            let rb = f.bore / 2.0;
+            let mut v = vec![[rb, hub_back]];
+            if hub_back < back - 1e-9 {
+                v.push([f.hub_od / 2.0, hub_back]);
+                v.push([f.hub_od / 2.0, back]);
+            } else {
+                v.push([f.od / 2.0, back]);
+            }
+            v.push([f.od / 2.0, back]);
+            v.push([f.od / 2.0, face]);
+            v
+        }
+    };
+    if f.rf_h > 0.0 {
+        pts.push([f.rf_d / 2.0, face]);
+        pts.push([f.rf_d / 2.0, g.s_face]);
+    }
+    let inner = match f.kind {
+        FlangeKind::Blind => 0.0,
+        FlangeKind::Wn | FlangeKind::Lwn => g.neck_id() / 2.0,
+        _ => f.bore / 2.0,
+    };
+    pts.push([inner, g.s_face]);
+    pts.dedup();
+    Some(pts)
+}
+
+/// The plane the flange is sketched on: through the nozzle axis, its x along the vessel axis
+/// seen across the nozzle (so the bolt holes straddle the principal centrelines), or any
+/// perpendicular when the nozzle runs along the vessel axis.
+fn flange_x(gl: &Global, g: &NozzleGeom) -> V3 {
+    let ax = vessel_axis(gl.orientation);
+    let d = g.frame.dir;
+    unit(sub(ax, mul(d, dot(ax, d)))).unwrap_or_else(|| perpendiculars(d).0)
+}
+
+/// The flange as its own body: its section revolved about the nozzle axis, one bolt hole cut
+/// through the ring and patterned (holes straddle the centrelines: the first at 180°/n).
+/// Numbered from `first` for `$ref`s.
+pub fn flange_calls(gl: &Global, g: &NozzleGeom, first: usize) -> Vec<CommandCall> {
+    let (Some(f), Some(pts)) = (g.flange, flange_section(g)) else { return Vec::new() };
+    let x = flange_x(gl, g);
+    let y = g.frame.dir;
+    let body = body_name(&g.id, "flange");
+    let mut out = vec![CommandCall {
+        id: "sketch.create".into(),
+        params: json!({"name": body_name(&g.id, "flange section"), "plane": {"origin": g.frame.origin, "x_dir": x, "y_dir": y}}),
+    }];
+    for i in 0..pts.len() {
+        if let (Some(a), Some(b)) = (pts.get(i), pts.get((i + 1) % pts.len())) {
+            out.push(CommandCall { id: "sketch.line".into(), params: json!({"points": [a, b]}) });
+        }
+    }
+    out.push(CommandCall { id: "sketch.finish".into(), params: json!({}) });
+    out.push(CommandCall {
+        id: "solid.revolve".into(),
+        params: json!({"sketch": format!("{}{first}.sketch", crate::emit::REF), "axis": "y", "angle": "360 deg", "operation": "new", "name": body, "body_name": body}),
+    });
+    let (face, back) = f.ring(g.s_face);
+    let a = std::f64::consts::PI / f64::from(f.bolt_count.max(1));
+    let z = cross(y, x);
+    let off = add(mul(x, f.bolt_circle / 2.0 * a.cos()), mul(z, f.bolt_circle / 2.0 * a.sin()));
+    let hole = body_name(&g.id, "bolt hole");
+    out.push(CommandCall {
+        id: "solid.cylinder".into(),
+        params: json!({"radius": f.bolt_hole / 2.0, "height": face - back + 2.0, "base": add(g.frame.at(back - 1.0), off), "axis": y,
+            "operation": "cut", "targets": [body], "name": hole}),
+    });
+    if f.bolt_count > 1 {
+        out.push(CommandCall {
+            id: "solid.pattern.circular".into(),
+            params: json!({"features": [hole], "axis": {"origin": g.frame.origin, "dir": y}, "count": f.bolt_count, "name": body_name(&g.id, "bolt holes")}),
+        });
+    }
+    out
 }
 
 /// The tolerance (mm³) on the measured change of the host's volume: 2 % of the expected change
@@ -771,6 +1013,13 @@ pub fn parameters(vessel_id: &str, gl: &Global, a: &Attachment, g: &NozzleGeom) 
     if let Some(p) = g.pad {
         push("pad_od", p.od, "mm", "pad outside diameter");
         push("pad_thk", p.thickness, "mm", "pad thickness");
+    }
+    if let Some(f) = g.flange {
+        push("flange_od", f.od, "mm", "flange outside diameter");
+        push("bolt_circle", f.bolt_circle, "mm", "bolt circle diameter");
+        push("bolt_count", f64::from(f.bolt_count), "", "bolt count");
+        push("bolt_hole", f.bolt_hole, "mm", "bolt hole diameter");
+        push("flange_thk", f.thickness, "mm", "flange ring thickness");
     }
     out
 }

@@ -314,7 +314,9 @@ fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
                     Ok(g) => json!({
                         "id": g.id, "host": g.host, "origin": g.frame.origin, "dir": g.frame.dir, "s_inner": g.frame.s_inner,
                         "s_outer": g.frame.s_outer, "s_start": g.s_start, "s_face": g.s_face, "neck_od": g.neck_od, "neck_wall": g.neck_wall,
-                        "pad": g.pad.map(|p| json!({"od": p.od, "thickness": p.thickness})), "manway": g.manway,
+                        "pad": g.pad.map(|p| json!({"od": p.od, "thickness": p.thickness})), "manway": g.manway, "davit": g.davit,
+                        "s_neck_end": g.s_neck_end, "flange": g.flange.map(|f| json!({"kind": f.kind.code(), "od": f.od, "bolt_circle": f.bolt_circle,
+                            "bolt_count": f.bolt_count, "bolt_hole": f.bolt_hole, "thickness": f.thickness, "hub_od": f.hub_od, "rf_d": f.rf_d, "rf_h": f.rf_h})),
                     }),
                     Err(e) => json!({"id": a.id, "error": e.to_string()}),
                 })
@@ -493,12 +495,13 @@ fn build_nozzle(
             s.accept_computed(trial);
             features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
             steps.extend(st);
-            json!({"id": g.id, "built": "joined", "expected_mm3": expected, "measured_mm3": change})
+            json!({"id": g.id, "built": "joined", "expected_mm3": expected, "measured_mm3": change, "manway": g.manway, "davit": g.davit,
+                "bolt_count": g.flange.map(|f| f.bolt_count)})
         }
         Err(why) => {
             let mut trial = s.scratch();
             let (mut f, mut st) = (Vec::new(), Vec::new());
-            match run_calls(&mut trial, &nozzle::plan_separate(g), &mut f, &mut st) {
+            match run_calls(&mut trial, &nozzle::plan_separate(&doc.global, g), &mut f, &mut st) {
                 Ok(()) => {
                     s.accept_computed(trial);
                     features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());

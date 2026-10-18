@@ -135,6 +135,13 @@ How the frames are read (T3.3, `triya-vessel/src/nozzle.rs`):
 - Pads are built on cylinders only in the beta (on a head: a warning; the pad is drawn on the
   sheet).
 
+- Flanges (T3.4) are their own body (`Vessel <id> flange`), the B16.5/B16.47 row's section
+  revolved about the nozzle axis with its bolt holes (straddling the centrelines). `projection`
+  ends at the gasket face: the top of the raised face (RF; RTJ is modelled as RF, no groove) or
+  the flat face (FF). The neck ends at a weld neck's weld end, one wall inside a slip-on
+  (or lap-joint/socket-weld) ring face, or at a blind's back. LWN uses the WN row in the beta.
+  A manway's `davit` is a reference for the drawing and BOM; no davit geometry in the beta.
+
 ### 4.2 Kinds
 | kind | fields |
 |---|---|
