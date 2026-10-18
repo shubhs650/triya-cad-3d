@@ -1,5 +1,5 @@
 diff --git a/Cargo.toml b/Cargo.toml
-index d48e8a6..70ddb61 100644
+index d48e8a619e249f85182d0cfca8069b2a37a1fc30..70ddb61c2eb3d6b4bc96d88c8dea47ee7f817577 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
 @@ -1,6 +1,6 @@
@@ -24,7 +24,7 @@ index d48e8a6..70ddb61 100644
  # foundation
  thiserror = "2"
 diff --git a/assets/locales/en.json b/assets/locales/en.json
-index ffbe52a..08d37c0 100644
+index ffbe52a36c94dbc49b8ae5a0bb32199ae5586d9a..08d37c098b5f4adb2e8c4ed63f659fb4adf72bdc 100644
 --- a/assets/locales/en.json
 +++ b/assets/locales/en.json
 @@ -1160,6 +1160,7 @@
@@ -36,7 +36,7 @@ index ffbe52a..08d37c0 100644
    "ui.hide": "Hide",
    "ui.hideAxes": "Hide Axes",
 diff --git a/assets/locales/ja.json b/assets/locales/ja.json
-index 4bb4502..33807a9 100644
+index 4bb4502fe9974a30f73b2e9a9025e1d64337dd2c..33807a9169ea32b7907a25bfe0fcf174b09919f4 100644
 --- a/assets/locales/ja.json
 +++ b/assets/locales/ja.json
 @@ -1160,6 +1160,7 @@
@@ -48,7 +48,7 @@ index 4bb4502..33807a9 100644
    "ui.hide": "非表示",
    "ui.hideAxes": "軸を非表示",
 diff --git a/assets/locales/zh.json b/assets/locales/zh.json
-index b310f83..c7eaf9a 100644
+index b310f839a4c1fba0bdd071f79b811c2d4240158b..c7eaf9a7b9f51f32a266bece0307ad75b51be5cb 100644
 --- a/assets/locales/zh.json
 +++ b/assets/locales/zh.json
 @@ -1160,6 +1160,7 @@
@@ -60,7 +60,7 @@ index b310f83..c7eaf9a 100644
    "ui.hide": "隐藏",
    "ui.hideAxes": "隐藏轴",
 diff --git a/crates/engine/src/cmd/mod.rs b/crates/engine/src/cmd/mod.rs
-index a37f226..7ad991f 100644
+index a37f226a785c5805a7779fb7dc2ffd4b41b528fc..7ad991f582ab6941e8a121ecfaaa12a7a910cca6 100644
 --- a/crates/engine/src/cmd/mod.rs
 +++ b/crates/engine/src/cmd/mod.rs
 @@ -75,6 +75,7 @@ mod sketch_project;
@@ -81,7 +81,7 @@ index a37f226..7ad991f 100644
  
 diff --git a/crates/engine/src/cmd/triya_extra.rs b/crates/engine/src/cmd/triya_extra.rs
 new file mode 100644
-index 0000000..5adbb55
+index 0000000000000000000000000000000000000000..5adbb55f41773a97d2140a45bbf37d0ebea10148
 --- /dev/null
 +++ b/crates/engine/src/cmd/triya_extra.rs
 @@ -0,0 +1,53 @@
@@ -139,7 +139,7 @@ index 0000000..5adbb55
 +    }
 +}
 diff --git a/crates/ui-egui/src/toolbar.rs b/crates/ui-egui/src/toolbar.rs
-index 56cf016..f4c66ff 100644
+index 56cf0166cead00eed35c91abfad914ec30465c01..f4c66ffb5afbefad4ee4d5f19aedb31d43559d40 100644
 --- a/crates/ui-egui/src/toolbar.rs
 +++ b/crates/ui-egui/src/toolbar.rs
 @@ -8,7 +8,7 @@ use serde_json::json;
@@ -152,7 +152,7 @@ index 56cf016..f4c66ff 100644
  /// The accent stroke colour for a panel's icons: constraint commands use the same red as the
  /// constraint glyphs they draw in the sketch (`glyph_text`), sketch tools otherwise keep
 diff --git a/xtask/src/layers.rs b/xtask/src/layers.rs
-index 2118c8e..4fd3a4e 100644
+index 2118c8e0dd8a5f291adc08a7c61f35e17379a5e7..4fd3a4e4b59b89e345861d03527cece8de88ecc9 100644
 --- a/xtask/src/layers.rs
 +++ b/xtask/src/layers.rs
 @@ -53,12 +53,27 @@ pub const TABLE: &[(&str, Class)] = &[
@@ -185,7 +185,7 @@ index 2118c8e..4fd3a4e 100644
  fn intra_layer_allowed(from: &str, to: &str) -> bool {
      let (from, to) = (short_name(from), short_name(to));
 diff --git a/xtask/src/web_offline.rs b/xtask/src/web_offline.rs
-index 86fa54b..095480b 100644
+index 86fa54b9638867242d75c0facfe6543a4b51dfb2..095480bb6e27e6ccd6fcc1048089266bf96bcd29 100644
 --- a/xtask/src/web_offline.rs
 +++ b/xtask/src/web_offline.rs
 @@ -73,7 +73,9 @@ pub fn retire(root: &Path, dir: &Path) -> Result<(), String> {

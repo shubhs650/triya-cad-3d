@@ -16,10 +16,11 @@ cd "$ROOT"
 # Same row format as check-patch-whitelist.sh: the first backticked cell of each numbered row.
 mapfile -t FILES < <(grep -E '^\| *[0-9]+ *\|' triya/patches/PATCHES.md | sed -nE 's/^\| *[0-9]+ *\| *`([^`]+)`.*/\1/p' | grep -vx 'Cargo.lock' | sort -u)
 
+# --full-index: abbreviated blob ids grow with the object count, so they differ between clones.
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-git diff "$BASE" -- "${FILES[@]}" > "$tmp/0001-seams.patch"
-git diff "$BASE" -- Cargo.lock > "$tmp/0002-cargo-lock.patch"
+git -c core.quotePath=false -c diff.noprefix=false diff --no-color --no-ext-diff --full-index "$BASE" -- "${FILES[@]}" > "$tmp/0001-seams.patch"
+git -c diff.noprefix=false diff --no-color --no-ext-diff --full-index "$BASE" -- Cargo.lock > "$tmp/0002-cargo-lock.patch"
 
 status=0
 for p in 0001-seams.patch 0002-cargo-lock.patch; do
