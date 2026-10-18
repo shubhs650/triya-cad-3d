@@ -16,29 +16,34 @@ offline, no login, no cookies.
 - Everything SolidCraft 0.14 does: sketcher with constraints, parametric timeline, extrude /
   revolve / sweep / loft / shell / fillet / patterns / assemblies, STEP AP242 & IGES I/O, MCP
   server for AI agents, desktop and web.
-- **Vessel tab**: build a vessel as an ordered element stack plus attachments (PV-Elite-style
-  from/to nodes, COMPRESS-style datum choice), all dimensions as editable parameters, standards
-  tables with provenance, private company-standard table import.
-- **Drawing tab**: GA sheet generated from the vessel model — elevation, plan, section, stacked
+- **Vessel tab** (being built, Phases 2–5): build a vessel as an ordered element stack plus
+  attachments (from/to nodes, a selectable datum), all dimensions as editable parameters,
+  standards tables with provenance, private company-standard table import.
+- **Drawing tab** (Phase 6): GA sheet generated from the vessel model — elevation, plan, section, stacked
   tangent-line dimensions, nozzle schedule, BOM with weights, design-data block — exported as
   SVG, DXF and PDF.
 - Agent-friendly: every vessel operation is a command reachable from the UI, JSON scripts, the
   CLI and MCP (`vessel.new`, `vessel.set`, `vessel.regenerate`, `drawing.generate_ga`, …).
 
 ## Quick start
-Web: open the app from the Pages URL in `triya/PROGRESS.md`, *Install app* from the File menu.
+Web: open <https://shubhs650.github.io/triya-cad-3d/app/> (once GitHub Pages is enabled, see
+`triya/PROGRESS.md`), then *Install app* from the File menu.
 Local:
 ```bash
 rustup target add wasm32-unknown-unknown && cargo install trunk --version 0.21.14 --locked
-cd triya/apps/triya-web && trunk serve        # http://127.0.0.1:8781
+cd triya/apps/triya-web && trunk serve        # http://127.0.0.1:8782
+cargo run -p triya -- --sample                # desktop app
 ```
-Headless: `cargo run -p solidcraft-cli -- run triya/crates/triya-vessel/examples/vessel_a.json --out vessel_a.step`.
+Headless: `cargo run -p triya-cli -- run triya/crates/triya-vessel/examples/cylinder.json --out cylinder.step`
+(`triya-cli` is upstream's CLI with the `vessel.*` commands registered). For AI agents:
+`cargo run -p triya-cli -- mcp` (MCP server on stdio, reports itself as `triya-cad-3d`).
 
 ## Repository layout
 Upstream SolidCraft lives in `crates/`, `apps/`, `xtask/`, … and is modified only at the one-line
 seams listed in [`triya/patches/PATCHES.md`](triya/patches/PATCHES.md). Everything Triya adds is
 under [`triya/`](triya/): crates `triya-brand`, `triya-stdlib`, `triya-vessel`, `triya-drawing`,
-`triya-ui`; apps `triya-web`, `triya`; plan, ADRs and docs. Read
+`triya-ui`; apps `triya-web` (PWA), `triya` (desktop), `triya-cli` (headless + MCP); plan, ADRs and
+docs. Read
 [`triya/ARCHITECTURE.md`](triya/ARCHITECTURE.md) first.
 
 ## Limitations (beta)
@@ -47,6 +52,11 @@ DXF dimensions are exploded lines + text; heat exchangers and hex meshing are po
 other proprietary standard sheets are not included — import your own tables (see
 `triya/docs/standards-library.md`). Files are saved as `.solidcraft` on purpose: they open in
 SolidCraft too.
+
+## Brand assets
+The Triya mark is drawn in code (`triya/crates/triya-brand/src/mark.rs`); the web icons are exports
+of it, each with a row in [`ATTRIBUTION.md`](ATTRIBUTION.md). No SolidCraft or third-party artwork is
+used for Triya's branding.
 
 ## Licence
 MIT OR Apache-2.0, at your option — both for the upstream code and for Triya's additions. Data

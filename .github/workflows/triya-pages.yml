@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
 # Triya CAD 3D on GitHub Pages: the web app at /<repo>/app/ and a small landing page at /<repo>/.
 # Replaces upstream's `Pages` workflow (disable that one in Settings → Actions).
 # Needs Settings → Pages → Source = GitHub Actions.

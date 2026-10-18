@@ -17,3 +17,7 @@ MIT OR Apache-2.0 at your option.
 Standards data under triya/crates/triya-stdlib/data/ consists of dimensional facts of public
 standards, re-keyed from the sources recorded per row (including gumyr/bd_warehouse, Apache-2.0).
 Verify values against the current edition of the relevant standard before use.
+
+The Triya CAD 3D mark is original artwork drawn in code (triya/crates/triya-brand/src/mark.rs);
+the web app's icon files are exports of it (ATTRIBUTION.md, "Triya CAD 3D files"). It contains no
+SolidCraft artwork and no artwork from commercial CAD products.

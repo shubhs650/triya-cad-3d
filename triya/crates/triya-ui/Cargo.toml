@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 Triya CAD 3D contributors
 [package]
 name = "triya-ui"
 description = "Triya CAD 3D UI hooks on the SolidCraft egui front end: command registration, the Vessel panel and the brand/About text"

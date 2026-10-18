@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
 # Triya CAD 3D — fork-specific gates. Upstream's CI workflow still runs (it tests the whole
 # workspace, Triya crates included); this one adds the overlay rules and the web shell.
 name: Triya CI
@@ -36,9 +37,9 @@ jobs:
         run: bash triya/ci/check-patch-whitelist.sh v0.14.0
       - name: Seam patches match the tree
         run: bash triya/ci/refresh-seam-patches.sh --check v0.14.0
-      - name: SPDX headers on Triya Rust files
+      - name: SPDX headers on Triya files (Rust, TOML, shell, JS, HTML, Triya workflows)
         run: |
-          missing=$(grep -rL "SPDX-License-Identifier: MIT OR Apache-2.0" --include='*.rs' triya/ || true)
+          missing=$(grep -rL "SPDX-License-Identifier: MIT OR Apache-2.0" --include='*.rs' --include='*.toml' --include='*.sh' --include='*.js' --include='*.html' --include='*.yml' triya/ .github/workflows/triya-*.yml .github/workflows/upstream-sync.yml || true)
           if [ -n "$missing" ]; then echo "Missing SPDX header:"; echo "$missing"; exit 1; fi
       - name: No illustrative table rows outside tests
         # The kickoff skeleton ships placeholder rows; T3.1 replaces them and deletes the marker file.

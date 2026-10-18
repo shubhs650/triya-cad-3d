@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 Triya CAD 3D contributors
 # Triya CAD 3D — fail if any upstream file differs from the baseline unless it is listed in
 # triya/patches/PATCHES.md (the seam whitelist) or is one of the root files the fork owns
 # outright (.gitattributes merge=ours set).

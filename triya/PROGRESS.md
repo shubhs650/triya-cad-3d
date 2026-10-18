@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
 **Phase:** 1 — Rebrand + PWA shell · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T1.4. Phase 0 is done except the Pages deploy, which waits on the owner (see Owner decisions).
+**Next task:** T1.5. Phase 0 is done except the Pages deploy, which waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -20,6 +20,7 @@
 | T1.1 | Web shell finished: Triya mark drawn in code (`triya-brand::mark`, egui wrappers `triya-ui::icons`), 5 PNG exports (32/192/256/512 + 512 maskable) checked pixel-for-pixel by `triya-ui` test `icons`, manifest `purpose`s, og/twitter tags on the Pages host; ATTRIBUTION rows (seam 14) | #7 | 18 Oct | Chrome (CDP `Page.getInstallabilityErrors`, Chromium 1194, persistent profile) reports **no installability errors**; removing the 192 icon gives `no-acceptable-icon`, so the check bites. `sw.js` cache prefix stays `solidcraft-app` (T0.3 decision); web-offline-test runs in Triya CI |
 | T1.2 | Brand in the shells: `triya-ui::about::About` takes over upstream's Help ▸ About (`app.help.about`) and shows the mark, Triya version, `about_text()`, links, attributions and licences; web shell wired; `triya-cli mcp` answers `serverInfo {name: "triya-cad-3d", title: "Triya CAD 3D", version}` through a line-rewriting stdout (`src/triya_mcp.rs`, hooked by a 4th `build.rs` anchor) — no seam; `triya_brand::{VERSION, MCP_SERVER_NAME}`, `HOMEPAGE`/`REPO` point at the real repo and Pages | #8 | 18 Oct | tests: `triya-ui/tests/about.rs` (painted text of the window contains the attribution sentence, not "About SolidCraft"), `triya-cli/tests/cli.rs::mcp_handshake_…`. Update checker: web has `http_get: None` already; desktop in T1.3. The Help menu item still reads "About SolidCraft" (upstream literal; upstream proposal #2) |
 | T1.3 | Desktop shell `triya/apps/triya` (~200 lines): `SolveApp` + `vessel.*` registered + Vessel panel + Triya About; title "Triya CAD 3D", app id `in.openengtools.triya`, window icon from `triya-brand::mark`, own settings folder, OS title bar (`custom_titlebar = false`), `http_get`/`http_download` `None`; upstream's `control_server.rs` compiled unchanged via `#[path]`; layers row `triya` exempt (seam 10) | #9 | 18 Oct | Xvfb run: `xwininfo` shows `"Triya CAD 3D": ("" "in.openengtools.triya")`; control channel `vessel.new` + `vessel.regenerate` built the cylinder; `ui.help about` opened Triya's About (screenshot in the thread). Left out (upstream's, not needed for the beta): Windows native crash filter/resize border, macOS Finder events, Space Mouse, safe-mode counter, API agents/keychain. Upstream chrome still says SolidCraft: app-bar name/logo (`toolbar.rs:247`), start page (`home.rs:359`), Help menu label (owner decision below) |
+| T1.4 | Root `README.md` (quick start for web/desktop/CLI/MCP, port 8782, no commercial-product names, brand-assets note), `NOTICE` (mark provenance), SPDX + copyright headers on every Triya `.rs/.toml/.sh/.js/.html` and the Triya workflows (`manifest.webmanifest.license` sidecar for the JSON); Triya CI's SPDX step now covers those types | #10 | 18 Oct | `cargo xtask assets` green (95 files); `reuse lint-file` over `triya/`: only "missing license MIT/Apache-2.0" (REUSE wants a `LICENSES/` folder; the repo keeps upstream's root `LICENSE-MIT`/`LICENSE-APACHE`, whole-repo `reuse lint` is not a goal). No screenshots committed (PR template: no review artifacts in the tree) |
 
 ## In progress
 | id | task | branch | started | owner |
@@ -109,3 +110,4 @@
 - 2026-10-18 — Phase 1 started (thread "Phase 1 implementation"); owner-question defaults picked (Decisions). T1.1: code-drawn mark + icons, Chrome reports the web app installable.
 - 2026-10-18 — T1.2: Triya About window and MCP `serverInfo` name, no new seams.
 - 2026-10-18 — T1.3: desktop shell runs under Xvfb with the Triya title, vessel regenerates over the control channel.
+- 2026-10-18 — T1.4: README/NOTICE/SPDX pass.

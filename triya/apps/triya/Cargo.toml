@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 Triya CAD 3D contributors
 [package]
 name = "triya"
 description = "Triya CAD 3D desktop app: a thin shell around SolidCraft's SolveApp with the vessel commands and Triya branding"

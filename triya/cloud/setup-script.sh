@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 Triya CAD 3D contributors
 # Triya CAD 3D — Claude Code cloud environment setup script.
 # Paste into: claude.ai/code → Settings → Cloud environments → triya-cad → Setup script.
 # Must finish in < ~5 minutes to be cached as the environment snapshot. Do NOT build the workspace here.

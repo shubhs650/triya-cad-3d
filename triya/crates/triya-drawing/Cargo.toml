@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 Triya CAD 3D contributors
 [package]
 name = "triya-drawing"
 description = "Triya CAD 3D 2D drawing model (sheets, views, edges, dimensions, tables) and plotters (SVG); no UI toolkit"

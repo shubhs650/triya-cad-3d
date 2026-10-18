@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
 # Triya CAD 3D — daily merge of tangency-labs/solidcraft into a sync branch, gated, as a PR.
 # FROZEN until the beta ships (ADR-0002): the cron line is commented out. To arm it after the
 # tag triya-v0.1.0-beta exists, uncomment the `schedule` block. Until then run it by hand

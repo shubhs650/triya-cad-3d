@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 Triya CAD 3D contributors
 [package]
 name = "triya-web"
 description = "Triya CAD 3D in the browser (eframe web runner, WebGPU with WebGL2 fallback); a copy of SolidCraft's apps/solidcraft-web with the Triya overlay"
