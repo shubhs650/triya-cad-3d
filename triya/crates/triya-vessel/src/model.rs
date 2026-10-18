@@ -989,6 +989,14 @@ impl VesselDoc {
     }
 
     pub fn from_value(v: &serde_json::Value) -> Result<VesselDoc> {
+        // Refuse oversized lists before copying them into the model.
+        let len = |key: &str| v.get(key).and_then(serde_json::Value::as_array).map_or(0, Vec::len);
+        if len("elements") > MAX_ELEMENTS {
+            return Err(VesselError::Invalid(format!("at most {MAX_ELEMENTS} elements (got {})", len("elements"))));
+        }
+        if len("attachments") > MAX_ATTACHMENTS {
+            return Err(VesselError::Invalid(format!("at most {MAX_ATTACHMENTS} attachments (got {})", len("attachments"))));
+        }
         let doc: VesselDoc = serde_json::from_value(v.clone())?;
         doc.validate()?;
         Ok(doc)

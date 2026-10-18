@@ -111,13 +111,39 @@ fn invalid_documents_are_errors() {
     assert!(eval::resolve(&outside).is_err(), "no inside diameter left");
 }
 
+/// A value nested `n` arrays deep.
+fn deep(n: usize) -> Value {
+    (0..n).fold(json!(1), |v, _| json!([v]))
+}
+
 /// Every vessel command, every documented key, every hostile value: no panic (an
 /// `EngineError::Internal` is a panic the engine caught).
 #[test]
 fn vessel_commands_never_panic_on_hostile_params() {
     registered();
-    let keys =
-        ["doc", "diameter_mm", "thickness_mm", "length_mm", "name", "replace", "element", "attachment", "global", "remove", "schema", "elements"];
+    // Every `vessel.*` command the engine knows is one of ours, and each is exercised below.
+    let known: Vec<&str> = solidcraft_engine::command_specs().iter().map(|c| c.id).filter(|id| id.starts_with("vessel.")).collect();
+    let ours: Vec<&str> = commands::COMMANDS.iter().map(|c| c.id).collect();
+    assert_eq!(known, ours, "a vessel command outside COMMANDS would escape this test");
+    let keys = [
+        "doc",
+        "diameter_mm",
+        "thickness_mm",
+        "length_mm",
+        "name",
+        "replace",
+        "element",
+        "attachment",
+        "global",
+        "remove",
+        "schema",
+        "elements",
+        "attachments",
+        "chunks",
+        "generated",
+        "features",
+        "group",
+    ];
     let hostile = [
         Value::Null,
         json!(true),
@@ -138,20 +164,49 @@ fn vessel_commands_never_panic_on_hostile_params() {
         json!({"schema": "triya.vessel/0.1", "elements": [{"id": "a", "kind": "head", "preset": "custom_torispherical", "crown_radius_mm": 1, "knuckle_radius_mm": 4.9, "diameter_mm": 10, "thickness_mm": 1}]}),
         json!({"id": "S1", "kind": "cone", "diameter_small_mm": -5, "diameter_large_mm": 100, "thickness_mm": 5, "length_mm": 50}),
         json!({"id": "N1", "kind": "nozzle", "host": "S1", "axial": {"ref": "host_from", "mm": -1e300}, "angle_deg": 0, "frame": {"type": "radial"}, "nps": "2", "projection": {"from": "cl", "mm": 150}}),
+        json!({"id": "S1", "kind": "cylinder", "diameter_mm": 1000, "thickness_mm": 10, "length_mm": 1e7}),
+        json!({"id": "F1", "kind": "body_flange", "thickness_mm": 10, "explicit": {"od_mm": 1, "bolt_circle_mm": 1e9, "bolt_count": 4_000_000_000u64, "bolt_hole_mm": -1, "thickness_mm": 0, "hub_od_mm": 0, "hub_len_mm": 0}}),
+        json!({"schema": "triya.vessel/0.1", "elements": vec![json!({"id": "x"}); 5000]}),
+        json!({"schema": "triya.vessel/0.1", "attachments": vec![json!(1); 5000]}),
+        json!("x".repeat(70 * 1024)),
+        deep(300),
+    ];
+    let broken = |head: Value, chunk: Option<Value>| {
+        move |s: &mut Session| {
+            let _ = s.execute("vessel.new", &json!({}));
+            let mut m = s.doc.metadata.clone();
+            let _ = m.set(commands::METADATA_KEY, head.clone());
+            if let Some(c) = &chunk {
+                let _ = m.set(&commands::chunk_key(1), c.clone());
+            }
+            s.doc_mut().metadata = m;
+        }
+    };
+    let states: Vec<Box<dyn Fn(&mut Session)>> = vec![
+        Box::new(|_: &mut Session| {}),
+        Box::new(|s: &mut Session| {
+            let _ = s.execute("vessel.new", &json!({}));
+        }),
+        Box::new(broken(json!({"chunks": 99}), None)),
+        Box::new(broken(json!({"chunks": 2}), Some(json!({"text": "{\"schema\""})))),
+        Box::new(broken(json!({"chunks": 1}), Some(json!({"text": 7})))),
+        Box::new(broken(json!({"doc": {"schema": "triya.vessel/0.1", "elements": "no"}}), None)),
+        Box::new(broken(
+            json!({"doc": VesselDoc::cylinder("S1", 1000.0, 10.0, 2000.0).to_value().unwrap(), "generated": {"features": [1, 2, u64::MAX, -1, "x"], "group": u64::MAX}}),
+            None,
+        )),
     ];
     let mut internal = Vec::new();
     for spec in commands::COMMANDS {
         for v in &hostile {
             for k in keys {
                 for (label, p) in [("keyed", json!({ k: v.clone() })), ("whole", v.clone())] {
-                    // With and without a vessel already in the design.
-                    for with_vessel in [false, true] {
+                    // With no vessel, a good one, and stored data someone broke.
+                    for (state, prepare) in states.iter().enumerate() {
                         let mut s = Session::default();
-                        if with_vessel {
-                            let _ = s.execute("vessel.new", &json!({}));
-                        }
+                        prepare(&mut s);
                         if let Err(EngineError::Internal(id, msg)) = s.execute(spec.id, &p) {
-                            internal.push(format!("{id} {label} {p}: {msg}"));
+                            internal.push(format!("{id} {label} state {state} {p}: {msg}"));
                         }
                     }
                 }
@@ -1107,4 +1162,46 @@ fn inspect_warns_when_a_parameter_drifted() {
     assert!(drift(&mut s), "a changed parameter is reported");
     run(&mut s, "vessel.regenerate", json!({}));
     assert!(!drift(&mut s), "regenerate rewrites it");
+}
+
+// ---- T2.6: caps ---------------------------------------------------------------------------
+
+#[test]
+fn element_and_attachment_counts_are_capped() {
+    use crate::model::{MAX_ATTACHMENTS, MAX_ELEMENTS};
+    registered();
+    let mut doc = VesselDoc::cylinder("S0", 1000.0, 10.0, 10.0);
+    for i in 1..MAX_ELEMENTS {
+        let mut e = doc.elements[0].clone();
+        e.id = format!("S{i}");
+        doc.elements.push(e);
+    }
+    assert!(doc.validate().is_ok(), "{MAX_ELEMENTS} elements are allowed");
+    let host = doc.elements[0].id.clone();
+    let nozzle = |i: usize| -> crate::model::Attachment {
+        serde_json::from_value(json!({"id": format!("N{i}"), "kind": "nozzle", "host": host, "axial": {"ref": "host_from", "mm": 5},
+            "angle_deg": 0, "frame": {"type": "radial"}, "nps": "2", "projection": {"from": "od", "mm": 150}}))
+        .unwrap()
+    };
+    doc.attachments = (0..MAX_ATTACHMENTS).map(nozzle).collect();
+    assert!(doc.validate().is_ok(), "{MAX_ATTACHMENTS} attachments are allowed");
+    let mut s = Session::default();
+    run(&mut s, "vessel.new", json!({"doc": doc.to_value().unwrap()}));
+
+    // One more of either is refused, through every way in, and the design is left alone.
+    let mut more = doc.clone();
+    more.attachments.push(nozzle(MAX_ATTACHMENTS));
+    assert!(more.validate().is_err());
+    let before = s.doc.clone();
+    let e = s.execute("vessel.set", &json!({"attachment": serde_json::to_value(nozzle(MAX_ATTACHMENTS)).unwrap()})).unwrap_err().to_string();
+    assert!(e.contains("at most 500 attachments"), "{e}");
+    let mut e201 = doc.elements[0].clone();
+    e201.id = "S_extra".into();
+    let e = s.execute("vessel.set", &json!({"element": serde_json::to_value(&e201).unwrap()})).unwrap_err().to_string();
+    assert!(e.contains("at most 200 elements"), "{e}");
+    assert_eq!(*before, *s.doc);
+    let mut big = doc.to_value().unwrap();
+    big["elements"] = json!(vec![json!({"id": "x"}); 100_000]);
+    let e = s.execute("vessel.new", &json!({"doc": big, "replace": true})).unwrap_err().to_string();
+    assert!(e.contains("at most 200 elements (got 100000)"), "refused before it is read: {e}");
 }
