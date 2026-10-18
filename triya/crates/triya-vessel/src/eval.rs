@@ -332,7 +332,9 @@ pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
             }
             _ => {
                 let d = e.diameter_mm.or(inherited).ok_or_else(|| invalid(e, "needs `diameter_mm` (nothing to inherit)"))?;
-                let di = inside(doc, d, t);
+                // A flat cover's own thickness is a plate, not a wall: its radius comes from its
+                // neighbours below.
+                let di = inside(doc, d, if matches!(e.kind, ElementKind::FlatCover { .. }) { 0.0 } else { t });
                 if !(di > 0.0) {
                     return Err(invalid(e, format!("the wall {t} leaves no inside diameter in {d}")));
                 }
@@ -377,6 +379,20 @@ pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
         }
         inherited = Some(st.diameter_mm);
         stations.push(st);
+    }
+
+    // A flat cover is a disc out to the adjacent shell's outside radius (the previous element's,
+    // or the next one's when the cover comes first).
+    for i in 0..stations.len() {
+        if stations.get(i).is_none_or(|s| s.kind != "flat_cover") {
+            continue;
+        }
+        let prev = i.checked_sub(1).and_then(|j| stations.get(j)).filter(|s| s.kind != "flat_cover").map(|s| s.r_to + s.thickness);
+        let next = stations.get(i + 1).filter(|s| s.kind != "flat_cover").map(|s| s.r_from + s.thickness);
+        if let (Some(r), Some(st)) = (prev.or(next), stations.get_mut(i)) {
+            st.r_from = r;
+            st.r_to = r;
+        }
     }
 
     let bottom = stations.first().filter(|s| s.kind == "head");

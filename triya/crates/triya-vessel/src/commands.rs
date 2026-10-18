@@ -39,7 +39,8 @@ pub static COMMANDS: &[CommandSpec] = &[
     ),
     CommandSpec::new("vessel.regenerate", "Regenerate Vessel", regenerate).at(TAB, "MAKE").icon("compute").enabled(has_vessel).params(
         "→ steps: [{command, params, reply}], features: [ids] (what it built; the features of the previous regeneration are deleted \
-         first). One undo step. Refused (not supported yet) for elements other than cylinders and for attachments",
+         first). One undo step. Also writes every dimension as a user parameter V<vessel>_<element>_<field> (mm) → parameters. Refused (not supported yet) \
+         for body flanges and attachments",
     ),
     CommandSpec::new("vessel.inspect", "Inspect Vessel", inspect).at(TAB, "INSPECT").icon("measure").noundo().doc_only().params(
         "→ doc, stations: [{id, kind, z_from, z_to, r_from, r_to, thickness}], plan: [{command, params}] | plan_error, generated: [feature ids]",
@@ -214,8 +215,16 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         steps.push(json!({"command": call.id, "params": params, "reply": reply}));
         replies.push(reply);
     }
+    // Every dimension as a user parameter (created or updated; nothing drives from them yet).
+    let mut parameters = Vec::new();
+    for p in emit::parameters(&doc.id, &resolved) {
+        let params = json!({"name": p.name, "expression": p.value, "unit": p.unit, "comment": p.comment});
+        sub(s, &CommandCall { id: "parameters.change".into(), params })
+            .map_err(|e| EngineError::Other(format!("vessel parameter `{}`: {e}", p.name)))?;
+        parameters.push(p.name);
+    }
     // A sketch left open by a failed plan would be odd; the plan closes its own.
     s.active_sketch = None;
     store(s, &doc, &features)?;
-    Ok(json!({"steps": steps, "features": features}))
+    Ok(json!({"steps": steps, "features": features, "parameters": parameters}))
 }
