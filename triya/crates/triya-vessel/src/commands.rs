@@ -17,7 +17,7 @@ use solidcraft_engine::{CommandSpec, EngineError, Session};
 
 use crate::emit::{CommandCall, substitute};
 use crate::model::{AttachmentKind, VesselDoc};
-use crate::{VesselError, emit, eval, nozzle};
+use crate::{VesselError, emit, eval, nozzle, support};
 
 /// The reverse-DNS metadata key the vessel JSON is kept under.
 pub const METADATA_KEY: &str = "in.openengtools.triya.vessel";
@@ -279,7 +279,7 @@ fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     let mut out = json!({
         "doc": doc.to_value()?, "flags": flags,
         "generated": generated.features, "group": generated.group,
-        "stations": [], "plan": null, "plan_error": null, "warnings": [], "parameters": [], "nozzles": [],
+        "stations": [], "plan": null, "plan_error": null, "warnings": [], "parameters": [], "nozzles": [], "supports": [],
     });
     match eval::resolve(&doc) {
         Ok(r) => {
@@ -321,6 +321,18 @@ fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
                     Err(e) => json!({"id": a.id, "error": e.to_string()}),
                 })
                 .collect();
+            out["supports"] = doc
+                .attachments
+                .iter()
+                .filter(|a| !matches!(a.kind, AttachmentKind::Nozzle { .. }))
+                .map(|a| match support::resolve(&doc, &r, a, &tables) {
+                    Ok(g) => json!({
+                        "id": g.id, "kind": g.kind, "host": g.host, "volume_mm3": g.volume(), "warnings": g.warnings,
+                        "parts": g.parts.iter().map(|p| json!({"name": p.name, "what": p.what, "volume_mm3": p.volume})).collect::<Vec<_>>(),
+                    }),
+                    Err(e) => json!({"id": a.id, "kind": a.kind.name(), "error": e.to_string()}),
+                })
+                .collect();
         }
         Err(e) => out["plan_error"] = json!(e.to_string()),
     }
@@ -352,6 +364,19 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     for a in &doc.attachments {
         if matches!(a.kind, AttachmentKind::Nozzle { .. }) {
             nozzles.push(nozzle::resolve(&doc, &resolved, a, &tables)?);
+        }
+    }
+    // Likewise every support and detail; a kind the beta does not build yet is reported.
+    let mut supports = Vec::new();
+    let mut pending = Vec::new();
+    for a in &doc.attachments {
+        if matches!(a.kind, AttachmentKind::Nozzle { .. }) {
+            continue;
+        }
+        match support::resolve(&doc, &resolved, a, &tables) {
+            Ok(g) => supports.push(g),
+            Err(VesselError::NotSupportedYet(what)) => pending.push(format!("attachment `{}` ({}): not built yet ({what})", a.id, a.kind.name())),
+            Err(e) => return Err(e.into()),
         }
     }
     let plan = emit::plan(&resolved)?;
@@ -403,11 +428,22 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         }
         built_nozzles.push(report);
     }
-    for a in &doc.attachments {
-        if !matches!(a.kind, AttachmentKind::Nozzle { .. }) {
-            warnings.push(format!("attachment `{}` ({}): not built yet (supports and details come in Phase 4)", a.id, a.kind.name()));
+    // Supports and details: one body per part, placed against the shell, never joined to it.
+    let mut built_supports = Vec::new();
+    for g in &supports {
+        let report = build_support(s, g, &mut features, &mut steps);
+        if let Some(a) = doc.attachments.iter_mut().find(|a| a.id == g.id) {
+            a.flags.boolean_failed = report.get("built").and_then(Value::as_str) != Some("built");
+            a.flags.unverified_table = g.unverified_table;
         }
+        warnings.extend(g.warnings.iter().cloned());
+        if let Some(w) = report.get("warning").and_then(Value::as_str) {
+            warnings.push(w.to_string());
+        }
+        extra_params.extend(g.params.iter().cloned());
+        built_supports.push(report);
     }
+    warnings.extend(pending);
     // The features go into the vessel's own timeline folder: the previous one when it is still
     // there (the user may have renamed or moved it), else a new one.
     let built: Vec<u64> = features.iter().copied().filter(|id| s.doc.feature(*id).is_some()).collect();
@@ -435,7 +471,8 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         parameters.push(p.name);
     }
     store(s, &doc, &Generated { features: features.clone(), group })?;
-    Ok(json!({"steps": steps, "features": features, "group": group, "parameters": parameters, "nozzles": built_nozzles, "warnings": warnings}))
+    Ok(json!({"steps": steps, "features": features, "group": group, "parameters": parameters, "nozzles": built_nozzles,
+        "supports": built_supports, "warnings": warnings}))
 }
 
 /// The host body's measured volume.
@@ -550,6 +587,57 @@ fn build_nozzle(
             };
             out["flange_warning"] = json!(format!("nozzle `{}`: flange {what} ({})", g.id, why.join("; ")));
         }
+    }
+    out
+}
+
+/// Build a support's parts (all in one go, else part by part so one kernel failure costs only
+/// that part) and check each body's measured volume. → `{id, kind, built: built|partly|none,
+/// parts: [{name, what, expected_mm3, measured_mm3}], warning?}`.
+fn build_support(s: &mut Session, g: &support::SupportGeom, features: &mut Vec<u64>, steps: &mut Vec<Value>) -> Value {
+    let mut built: Vec<&support::Part> = Vec::new();
+    let mut why: Vec<String> = Vec::new();
+    let mut trial = s.scratch();
+    let (mut f, mut st) = (Vec::new(), Vec::new());
+    let all = g.parts.iter().try_for_each(|p| run_calls(&mut trial, &p.calls, &mut f, &mut st));
+    if all.is_ok() {
+        s.accept_computed(trial);
+        features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
+        steps.extend(st);
+        built.extend(g.parts.iter());
+    } else {
+        for p in &g.parts {
+            let mut trial = s.scratch();
+            let (mut f, mut st) = (Vec::new(), Vec::new());
+            match run_calls(&mut trial, &p.calls, &mut f, &mut st) {
+                Ok(()) => {
+                    s.accept_computed(trial);
+                    features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
+                    steps.extend(st);
+                    built.push(p);
+                }
+                Err(e) => why.push(format!("{}: {e}", p.name)),
+            }
+        }
+    }
+    let mut parts = Vec::new();
+    for p in &built {
+        let measured = volume(s, &p.name).ok();
+        if let Some(m) = measured
+            && (m - p.volume).abs() > support::tolerance(p.volume)
+        {
+            why.push(format!("{} measures {m:.0} mm³, {:.0} mm³ expected", p.name, p.volume));
+        }
+        parts.push(json!({"name": p.name, "what": p.what, "expected_mm3": p.volume, "measured_mm3": measured}));
+    }
+    let state = match built.len() {
+        n if n == g.parts.len() => "built",
+        0 => "none",
+        _ => "partly",
+    };
+    let mut out = json!({"id": g.id, "kind": g.kind, "built": state, "parts": parts});
+    if !why.is_empty() {
+        out["warning"] = json!(format!("{} `{}`: {}", g.kind, g.id, why.join("; ")));
     }
     out
 }

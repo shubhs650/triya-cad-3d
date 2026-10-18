@@ -142,6 +142,28 @@ How the frames are read (T3.3, `triya-vessel/src/nozzle.rs`):
   (or lap-joint/socket-weld) ring face, or at a blind's back. LWN uses the WN row in the beta.
   A manway's `davit` is a reference for the drawing and BOM; no davit geometry in the beta.
 
+### 4.1a Supports and details (Phase 4, `triya-vessel/src/support.rs`)
+Every support or detail is built from separate bodies, one per plate, pipe or ring, named
+`Vessel <id> <part>` (`Vessel S1 web`, `Vessel S1 rib 2a`, `Vessel S1 wear plate`). They touch the
+shell's outside surface (or a wear plate's) and never overlap it or each other; nothing is joined
+to the shell (welds are drawn on the sheet). Each body's measured volume is checked against its
+closed form (0.5 %); a part the kernel cannot build is left out with a warning and
+`flags.boolean_failed`, and the rest of the regeneration goes on. `vessel.regenerate` reports
+`supports: [{id, kind, built: built|partly|none, parts: [{name, what, expected_mm3, measured_mm3}]}]`;
+`vessel.inspect` lists each support's parts and volumes. Parameters: `V<vessel>_<id>_<field>`.
+
+- `saddle` (T4.1): on a cylinder of a horizontal vessel, centred at `axial`; always under the
+  vessel (−Z), `angle_deg` is not used. `height_mm` runs from the base plate's underside to the
+  shell's bottom (outside). Contact radius = shell OD/2 (+ wear plate thickness); horns at
+  ±`contact_angle_deg`/2 from the bottom. Parts: the web (across the vessel, `web_thk_mm`, from
+  the base plate up to the contact arc between the horns); `rib_count` ribs along the axis,
+  horn to horn (one rib: at the bottom), `width_mm` long, each in two halves either side of the
+  web (`rib Na`, `rib Nb`), up to the contact arc at the rib face nearer the bottom; the base
+  plate (`len_mm` across, `wid_mm` along the axis) with `anchor_bolts.count` holes of bolt
+  diameter + 6 mm in a row across, midway between the web and the plate's +axis edge; the wear
+  plate (a cylinder sector on the shell, inside radius = shell OD/2, `width_mm` along the axis,
+  `angle_deg` about the bottom). Two saddles are two attachments (`axial` from `left_tl`).
+
 ### 4.2 Kinds
 | kind | fields |
 |---|---|
