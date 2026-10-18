@@ -1,30 +1,39 @@
 # Standards library (`triya-stdlib`)
 
 Policy: ADR-0007. This file defines the table format, sources and verification rules. The
-kickoff skeleton ships three tiny tables marked `illustrative` (`data/flanges.json`,
-`data/pipe_schedules.json`, `data/head_presets.json`) — they must be replaced in T3.1/T3.2; CI
-forbids `illustrative` rows outside `tests/`.
+kickoff skeleton's `illustrative` placeholder tables were replaced in T3.1 by
+`data/asme-b16.5.json` and `data/asme-b36.10.json`; CI forbids `illustrative` rows outside `tests/`.
 
 ## 1. Table set format (`data/*.json` and private imports)
+One file per standard. The table carries the standard's provenance; every row carries its own
+`source` list and `verified` grade (T3.1 shape, `triya-stdlib::tables`):
 ```jsonc
 {
-  "schema": "triya.tables/0.1",
-  "name": "asme-b16.5-wn",                 // unique key
-  "org": "ASME", "standard": "B16.5", "edition": "2020",   // provenance of the *standard*
-  "licence_note": "Dimensions re-keyed from public sources listed per row; verify against the current edition.",
-  "columns": ["nps","class","type","od_mm","bolt_circle_mm","bolt_count","bolt_size","thickness_mm","hub_od_mm","hub_len_mm","rf_dia_mm","bore_mm"],
+  "source": "ASME B16.5 (metric tables) Class 150 and 300: values re-keyed from bd_warehouse 0.4.0 …",
+  "note": "Lengths in mm. thickness = tf without the raised face; …",
+  "standard": { "org": "ASME", "number": "B16.5", "rev": "2020" },
   "rows": [
-    { "nps": "4", "class": 150, "type": "wn", "od_mm": 228.6, "bolt_circle_mm": 190.5, "bolt_count": 8, "bolt_size": "5/8", "thickness_mm": 23.9, "hub_od_mm": 135.0, "hub_len_mm": 76.0, "rf_dia_mm": 157.2, "bore_mm": null,
-      "source": ["bd_warehouse flange.py (Apache-2.0), 2026-10", "wermac.org B16.5 class 150 WN, 2026-10"], "verified": "two-source" }
+    { "nps": "4", "class": "150", "kind": "wn", "od": 230.0, "bolt_circle": 190.5, "bolt_count": 8,
+      "bolt_size": "5/8", "bolt_hole": 19.1, "thickness": 22.3, "hub_od": 135.0, "hub_weld_d": 114.3,
+      "raised_face_d": 157.2, "raised_face_h": 2.0, "length_through_hub": 75.0,
+      "source": ["bd_warehouse 0.4.0 flange.py (gumyr, Apache-2.0), …", "wermac.org/flanges/dim_wnflg_b16-5_4.html, …"],
+      "verified": "two-source" }
   ]
 }
 ```
+Flange rows: `nps` (canonical `1-1/4` form), `class`, `kind` (`wn`·`so`·`blind`·`lj`·`sw`·`lwn`),
+`od`, `bolt_circle`, `bolt_count`, `bolt_size` (inch fraction or `M{n}`), `bolt_hole`, `thickness`
+(ring `tf` **without** the raised face), `hub_od` (0 for blinds), `hub_weld_d` (WN `A`),
+`raised_face_d`, `raised_face_h` (B16.5 metric: 2 mm Cl 150/300, 7 mm Cl 400+), `length_through_hub`
+(also without the raised face), `bore` (SO/SW/LJ), `socket_depth` (SW), `note`. Pipe rows: `nps`,
+`dn`, `od`, `schedule` (`STD`·`XS`·`XXS`·`40`·`80`…), `wall`.
 `verified` ∈ `two-source` · `single-source` · `derived` (computed from other rows/formula) ·
 `illustrative` (placeholder, never shipped). Rows may carry `note` (e.g. "sources disagree on
 hub_len: 76 vs 76.2; kept 76").
 
-Private sets (EIL etc.) use the same format with `"private": true`; `vessel.import_tables`
-loads them at runtime (OPFS/file) and they override shipped presets by `name` + `sizeKey`.
+Private sets (EIL etc.) use the same format; `TableSet::with_private` (behind `vessel.import_tables`,
+T4.4) loads them at runtime (OPFS/file) and searches them before the shipped tables, so they
+override shipped rows of the same key. Private rows without `verified` count as `unverified`.
 
 ## 2. Shipped tables (beta)
 | name | content | seed source | target `verified` |
@@ -40,7 +49,10 @@ loads them at runtime (OPFS/file) and they override shipped presets by `name` + 
 | `materials` | density and BOM names | public | — |
 
 ## 3. Keys
-- Flange: `size_key = "NPS{nps}-{class}-{type}"` (e.g. `NPS4-150-wn`). B16.47: `"NPS{nps}-{class}-{A|B}-{type}"`.
+- Flange: `size_key = "{nps}/{class}/{kind}"` (e.g. `4/150/wn`, `1-1/4/300/so`), the key the vessel
+  model already used in Phase 2; the standard is chosen by the table (`flange_ref.standard` /
+  `flange.standard` = `B16.5`, `B16.47A`, `B16.47B`). NPS spellings `1 1/4`, `1.1/4`, `1-1/4` and
+  `1¼` all resolve to `1-1/4`.
 - Supports/attachments: free `size_key` strings matched against the set's `sizeKey` column
   (e.g. EIL `"7-12-0024/LL-25"`); presets use `"OD1600"` style keys with nearest-lower lookup.
 
@@ -48,16 +60,24 @@ loads them at runtime (OPFS/file) and they override shipped presets by `name` + 
 - Every row has `source[]` (≥ 1) and `verified`; `two-source` requires ≥ 2 distinct sources.
 - Monotonic sanity: OD, BC and bolt count non-decreasing with NPS within a class; BC < OD;
   rf_dia < BC.
-- Unit sanity: all lengths in mm with ≤ 1 decimal; bolt sizes as fraction strings or `M{n}`.
+- Hub and holes fit: `hub_od < bolt_circle − bolt_hole`, `bolt_circle + bolt_hole < od`.
+- Unit sanity: flange lengths in mm with ≤ 1 decimal, pipe walls ≤ 2 decimals (B36.10M lists
+  walls to 0.01 mm); bolt sizes as fraction strings or `M{n}`.
 - No `illustrative` rows outside `tests/` (also enforced by `Triya CI`).
 
 ## 5. Sources log (append as tables are keyed)
 | table | source A | source B | disagreements |
 |---|---|---|---|
-| b16.5 cl150 wn | bd_warehouse | wermac.org | — |
+| B16.5 Cl 150/300 WN, SO, blind, LJ, SW (T3.1, 184 rows, 168 two-source) | bd_warehouse 0.4.0 `flange.py` (Tables 7–10, metric) | wermac.org per-NPS pages (`dim_{wn,bl,so,lj,sw}flg_b16-5_*.html`, mm) | wermac's thicknesses and hub lengths include the 1.6 mm (1/16 in) raised face (B16.5's metric tables: tf without the 2 mm RF) and were compared after subtracting it. 14 rows differ beyond 0.15/0.6 mm, each noted in its row, bd_warehouse kept: NPS 2 WN tf (wermac's NPS 2 page omits the RF), NPS 2½ SO hub length (+1.6), NPS 14 Cl 150 SO hole (wermac 31.8 = 1¼ in, B16.5 1⅛ in), hub diameters NPS 3/3½/5/16/20 (±2 mm). NPS 5 blind/SO/LJ and SW above NPS 2½ have no wermac page: `single-source`. RF diameters: wermac only (bd_warehouse has none). OD: B16.5's metric table rounds (NPS 4 Cl 150: 230, inch table 9.00 in = 228.6); Triya ships the metric values |
+| B36.10M carbon steel, NPS ⅛–42 (T3.1, 279 rows, 224 two-source) | bd_warehouse 0.4.0 `pipe.csv` (inches × 25.4) | wermac.org `dim_b36.10_pipes_part-{a…k}.html` (mm column) | walls within 0.05 mm take wermac's mm value (the B36.10M column: e.g. NPS ½ Sch 160 4.78, inch 0.187 × 25.4 = 4.75); NPS 34 Sch 10 differs (8.74 vs 7.92), bd_warehouse kept and noted; sizes without a wermac row are `single-source` |
+
+The conversion was done once by a throw-away script (bd_warehouse's dict literals and CSV, the
+wermac HTML tables) that is not committed (Rust-only rule); the JSON is the record, and its rows
+say where each value came from.
 
 ## 6. Attribution rows to add to `ATTRIBUTION.md`
-- `triya/crates/triya-stdlib/data/asme-b16.5-*.json` — values re-keyed from gumyr/bd_warehouse
-  (Apache-2.0); dimensions are facts of the public standard; verified against vendor tables.
+- `triya/crates/triya-stdlib/data/asme-b16.5.json`, `asme-b36.10.json` — values re-keyed from
+  gumyr/bd_warehouse (Apache-2.0); dimensions are facts of the public standard; cross-checked
+  against wermac.org (rows added in T3.1).
 - OET title-block template SVGs — original work, MIT OR Apache-2.0.
 - Triya icons — drawn in code in `triya-ui::icons`, original; any rasterised icon files, too.

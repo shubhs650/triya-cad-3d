@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
-**Phase:** 2 — Vessel core · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T3.1 (Phase 3: standards library + nozzles). Phase 2's exit test passes (vessel A's shell → STEP). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
+**Phase:** 3 — Standards library + nozzles · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
+**Next task:** T3.2 (B16.5 Cl 400–2500, B16.47 A/B). T3.1 shipped the B16.5 Cl 150/300 and B36.10M tables. Phases 0–2 are done (#2–#17); the Pages deploy waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -28,6 +28,7 @@
 | T2.4 | Body flange: weld-neck section revolved (bore = shell ID, hub from shell OD to `hub_od`, ring to OD) from a table row (`flange_ref`) or `explicit`, bolt holes = one hole cut through the ring + `solid.pattern.circular`; a following flange faces back (pair). Skirt: one L-shaped profile (shell on its base ring) | #15 | 18 Oct | AT: `explicit_body_flange_matches_analytic_volume_and_bolt_count` (28 holes, both flanges of a pair), `table_body_flange_takes_the_rows_bolt_count` (row 2/150/wn: 4 holes), `skirt_with_base_ring_matches_analytic_volume`; all within 0.1 % |
 | T2.5 | Regenerate hardening: the vessel's features go in the timeline folder `Vessel <id>` and the metadata records `{features, group}`; regenerate deletes only those (user features stay, even inside the folder) and reuses the folder; vessel JSON over 60 KiB is split into ≤ 4 chunk keys; `vessel.inspect` returns full stations (profile, TL, half-apex, flange/base-ring detail), extent, warnings incl. parameter drift, attachment flags, parameters | #16 | 18 Oct | AT: `regenerate_replaces_only_its_own_features` (count unchanged), `one_undo_takes_the_vessel_away`, `a_saved_design_regenerates_in_place_after_opening`, `a_70_kib_document_is_chunked_and_round_trips` (and 300 KiB refused cleanly), `inspect_reports_resolved_stations_warnings_and_flags`, `inspect_warns_when_a_parameter_drifted` |
 | T2.6 | Hostile params: the sibling test asserts it covers every `vessel.*` command in the registry, runs each with 17 keys × 25 hostile values (huge lists, 70 KiB strings, 300-deep nesting, absurd flanges) in 7 session states (none, good vessel, broken chunk heads/texts, garbage generated ids); caps ≤ 200 elements / ≤ 500 attachments refused before deserialising | #17 | 18 Oct | AT: `vessel_commands_never_panic_on_hostile_params`, `element_and_attachment_counts_are_capped` |
+| T3.1 | `triya-stdlib` tables: `data/asme-b16.5.json` (Cl 150/300 WN/SO/blind/LJ/SW, NPS ½–24, 184 rows, 168 two-source) and `data/asme-b36.10.json` (279 rows, 224 two-source), re-keyed from bd_warehouse 0.4.0 (Apache-2.0) and cross-checked against wermac.org; rows carry `source[]` + `verified`, holes, RF height, bores, socket depths; the loader refuses rows without provenance, placeholders and one-source "two-source" rows; illustrative tables and the CI allowance marker deleted; head presets' source restated | — | 18 Oct | AT `triya-stdlib/tests/tables.rs` (row counts, NPS 4 Cl 150 WN 230 / 8 × 5/8 on 190.5 / holes 19.1, sanity rules of `standards-library.md` §4). Body flanges now take the table's hole (no derived-hole warning) and look up by `flange_ref.standard` |
 | P2 exit | Vessel A's shell (skirt, 2:1 head, two courses, toriconical cone, F&D head) regenerates from `examples/vessel-a-shell.json` and exports STEP (101 KB, 7 solids, 7 s); Triya CI runs it | #17 | 18 Oct | CI step "Phase 2 exit vessel to STEP" |
 
 ## In progress
@@ -85,6 +86,11 @@
 - 2026-10-18 — T2.5: chunks are `{"text": …}` objects (upstream requires an object under a reverse-DNS key), ≤ 60 KiB escaped each, at most 4 (240 KiB, under upstream's 256 KiB total); a larger document is refused with its size.
 - 2026-10-18 — T2.6: `VesselDoc::from_value` checks list lengths before deserialising (a 100 000-element list is refused without being copied); runtime-registered commands are proved covered by comparing the registry's `vessel.*` ids with `COMMANDS`.
 - 2026-10-18 — Owner: after Phase 2, Phases 3–5 run serially; every agent suggestion or ADR along the way is accepted (recorded here, no owner wait).
+
+- 2026-10-18 — T3.1: Triya ships B16.5's **metric** values (NPS 4 Cl 150 OD 230; PLAN's 228.6 is the inch table's 9.00 in × 25.4). `thickness` is tf without the raised face, `raised_face_h` 2 mm (Cl 150/300) / 7 mm (400+) as in the metric tables; wermac's figures include the 1.6 mm RF and were compared after subtracting it.
+- 2026-10-18 — T3.1: table format is the loader's (`{source, note, standard, rows[]}`, rows with `source[]`/`verified`), one file per standard; `standards-library.md` §1 now documents it instead of the earlier `columns`/`name` sketch. Size keys stay `nps/class/kind` (`1-1/4/300/so`), the Phase 2 key; NPS spellings are canonicalised (`1 1/4`, `1.1/4`, `1¼` → `1-1/4`).
+- 2026-10-18 — T3.1: where the two sources disagree the row keeps bd_warehouse and says so in `note` (14 flange rows); pipe walls within 0.05 mm take the B36.10M mm column. RF diameters come from wermac only (bd_warehouse has none) — rows stay `two-source` for their other dimensions, the table note says so.
+- 2026-10-18 — T3.1: the one-off conversion script (Python over bd_warehouse's literals and wermac's HTML) is not committed (Rust-only rule); the JSON with per-row sources is the record. Private tables (`TableSet::with_private`) are searched first and may omit provenance (rows count as `unverified`).
 
 ## Owner decisions
 | opened | question | status | answer |
@@ -147,3 +153,4 @@
 - 2026-10-18 — T2.2 evaluator and T2.3 emitter: every head preset, cones and flat covers regenerate within 0.02 % of analytic volume; one kernel case captured (arcs on the axis), worked around with conics.
 - 2026-10-18 — T2.5: regenerate replaces only its own features (timeline folder + metadata tag), chunked vessel JSON, full `vessel.inspect`.
 - 2026-10-18 — T2.6: hostile-params coverage and caps; Phase 2 exit met (vessel A shell → STEP in CI).
+- 2026-10-18 — Phase 3 started (thread "Phase 3 implementation"). T3.1: B16.5 Cl 150/300 and B36.10M tables replace the illustrative ones.

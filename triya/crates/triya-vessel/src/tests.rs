@@ -952,8 +952,8 @@ fn explicit_body_flange_matches_analytic_volume_and_bolt_count() {
     assert!(reply["parameters"].as_array().unwrap().contains(&json!("V1_F1_bolt_count")));
 }
 
-/// A flange from the (illustrative) table: NPS 2 Cl 150 WN, 4 × M16 on 120, OD 150, ring 18,
-/// hub 84 × 44 (length through hub 62 − 18); holes 18 (M16 + 2). On a 52.5 ID × 3.91 shell.
+/// A flange from the B16.5 table: NPS 2 Cl 150 WN, 4 × 5/8 in on 120.7 in 19.1 holes, OD 150,
+/// ring tf 17.5, hub 78 × 44.5 (length through hub 62 − 17.5). On a 52.5 ID × 3.91 shell.
 #[test]
 fn table_body_flange_takes_the_rows_bolt_count() {
     let mut doc = VesselDoc::cylinder("S1", 52.5, 3.91, 200.0);
@@ -962,16 +962,18 @@ fn table_body_flange_takes_the_rows_bolt_count() {
     let row = tables.flange("2", "150", triya_stdlib::FlangeKind::Wn).unwrap();
     let r = eval::resolve(&doc).unwrap();
     let eval::Detail::Flange(g) = r.station("F1").unwrap().detail else { panic!() };
-    assert_eq!((g.bolt_count, g.bolt_hole, g.hub_len), (row.bolt_count, 18.0, 44.0));
-    assert!(r.warnings.iter().any(|w| w.contains("illustrative")), "{:?}", r.warnings);
+    assert_eq!((g.bolt_count, g.bolt_hole, g.hub_len), (row.bolt_count, 19.1, 44.5));
+    assert!(!r.warnings.iter().any(|w| w.contains("derived") || w.contains("F1")), "{:?}", r.warnings);
     let (_, v, reply) = regenerate_doc(&doc, "Vessel F1");
-    let section = [[26.25, 200.0], [30.16, 200.0], [42.0, 244.0], [75.0, 244.0], [75.0, 262.0], [26.25, 262.0]];
-    within(v, revolved_polygon(&section) - 4.0 * PI * 81.0 * 18.0, "table body flange");
+    let section = [[26.25, 200.0], [30.16, 200.0], [39.0, 244.5], [75.0, 244.5], [75.0, 262.0], [26.25, 262.0]];
+    within(v, revolved_polygon(&section) - 4.0 * PI * 9.55 * 9.55 * 17.5, "table body flange");
     let pattern = reply["steps"].as_array().unwrap().iter().find(|x| x["command"] == "solid.pattern.circular").cloned().unwrap();
     assert_eq!(pattern["params"]["count"], json!(row.bolt_count));
     // A row that is not in the tables, and a flange too small for its shell, are errors.
     let mut missing = doc.clone();
-    missing.elements[1] = flange("F1", None, Some(json!({"standard": "B16.5", "nps_or_dn": "3", "class": 150, "type": "wn"})), 3.91);
+    missing.elements[1] = flange("F1", None, Some(json!({"standard": "B16.5", "nps_or_dn": "2", "class": 125, "type": "wn"})), 3.91);
+    assert!(eval::resolve(&missing).is_err());
+    missing.elements[1] = flange("F1", None, Some(json!({"standard": "EN 1092-1", "nps_or_dn": "2", "class": 150, "type": "wn"})), 3.91);
     assert!(eval::resolve(&missing).is_err());
     let mut big = doc.clone();
     big.elements[0].diameter_mm = Some(100.0);
