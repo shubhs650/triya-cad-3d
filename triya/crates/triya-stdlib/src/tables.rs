@@ -23,6 +23,8 @@ pub const MAX_ROWS: usize = 100_000;
 pub const MAX_TABLES: usize = 64;
 
 const B16_5_JSON: &str = include_str!("../data/asme-b16.5.json");
+const B16_47A_JSON: &str = include_str!("../data/asme-b16.47a.json");
+const B16_47B_JSON: &str = include_str!("../data/asme-b16.47b.json");
 const B36_10_JSON: &str = include_str!("../data/asme-b36.10.json");
 const HEAD_PRESETS_JSON: &str = include_str!("../data/head_presets.json");
 
@@ -138,10 +140,10 @@ pub fn parse_pipe_table(text: &str, strict: bool) -> Result<Table<PipeScheduleRo
 }
 
 impl TableSet {
-    /// The tables compiled into the crate (ASME B16.5, B36.10M, head presets).
+    /// The tables compiled into the crate (ASME B16.5, B16.47 Series A and B, B36.10M, head presets).
     pub fn embedded() -> Result<TableSet> {
         Ok(TableSet {
-            flanges: vec![parse_flange_table(B16_5_JSON, true)?],
+            flanges: vec![parse_flange_table(B16_5_JSON, true)?, parse_flange_table(B16_47A_JSON, true)?, parse_flange_table(B16_47B_JSON, true)?],
             pipe_schedules: vec![parse_pipe_table(B36_10_JSON, true)?],
             head_presets: parse_table("head_presets", HEAD_PRESETS_JSON)?,
         })
