@@ -4564,6 +4564,7 @@ name = "triya-ui"
 version = "0.14.0"
 dependencies = [
  "egui",
+ "png",
  "serde_json",
  "solidcraft-engine",
  "solidcraft-ui-egui",

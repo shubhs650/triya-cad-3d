@@ -13,8 +13,11 @@
 //!   a text box and New / Apply / Regenerate buttons. It reads engine state and acts only through
 //!   `app.run(id, params)`, like every upstream panel.
 //! - [`about_text`]: the brand and attribution sentence for the app shell's About page.
+//! - [`icons`]: the code-drawn Triya mark as egui images and the window icon.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
+
+pub mod icons;
 
 use egui::RichText;
 use serde_json::{Value, json};

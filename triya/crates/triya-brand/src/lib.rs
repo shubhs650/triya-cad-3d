@@ -7,6 +7,8 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
+pub mod mark;
+
 /// The product name shown to people.
 pub const APP_NAME: &str = "Triya CAD 3D";
 /// Reverse-DNS application id (desktop entries, the web manifest `id`, metadata keys).
