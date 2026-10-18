@@ -128,7 +128,7 @@ panel can do, MCP can do with the same JSON — the UI is a convenience, the com
 ## 6. Web/PWA
 `triya/apps/triya-web` is upstream's web shell with Triya branding: trunk build to
 `dist/triya-web`, `wasm32-unknown-unknown`, single-threaded (upstream limitation), OPFS for
-designs and private table sets, service worker with the `triya-app` cache prefix and SHA-verified
+designs and private table sets, service worker (upstream's `solidcraft-app` cache names, kept as identifiers per ADR-0006; PATH separates the sites) and SHA-verified
 updates (upstream's `xtask web-offline` hook via seam 5), manifest `id` distinct from upstream so
 both can be installed side by side; `index.html` keeps upstream's element ids because the shared
 `loading.css` styles them. Heavy regenerates block the UI thread: show a progress overlay, keep
