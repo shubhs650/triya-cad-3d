@@ -60,6 +60,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("triya-vessel", Class::Layer(4)),
     ("triya-drawing", Class::Layer(4)),
     ("triya-ui", Class::Layer(5)),
+    ("triya-cli", Class::Exempt),
     ("triya-web", Class::Exempt),
 ];
 

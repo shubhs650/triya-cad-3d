@@ -18,6 +18,7 @@ command, the UI is thin, `cargo xtask layers` passes, wasm32 builds.
 | `crates/triya-vessel` | L4 (beside engine) | `VesselDoc` model (`triya.vessel/0.1`), `resolve()` → axial stations, `plan()` → engine command calls, the `vessel.*` commands |
 | `crates/triya-drawing` | L4 | 2D sheet model, `Plotter` trait, `SvgPlotter`; vessel views stubbed |
 | `crates/triya-ui` | L5 (beside ui-egui) | `register()` the commands, the `VesselPanel` window, About text |
+| `apps/triya-cli` | app | upstream's `solidcraft-cli` source compiled with `vessel.*` registered first (`build.rs` rewrites only `main` → `upstream_main` and module paths); `run`, `eval`, `snapshot`, `commands`, `mcp`, … all know the vessel commands |
 | `apps/triya-web` | app | copy of `apps/solidcraft-web` with Triya branding and the overlay wired in |
 
 ## Commands
@@ -37,6 +38,7 @@ export CARGO_TARGET_DIR=$PWD/target
 cargo check -p triya-brand -p triya-stdlib -p triya-drawing -p triya-vessel -p triya-ui -p triya-web --profile ci
 cargo test  -p triya-brand -p triya-stdlib -p triya-drawing -p triya-vessel -p triya-ui --profile ci
 cargo xtask layers
+cargo run -p triya-cli -- run triya/crates/triya-vessel/examples/cylinder.json --out /tmp/cyl.step
 cd triya/apps/triya-web && trunk serve --release        # browser build (wasm32), not run here
 cargo check -p triya-vessel --target wasm32-unknown-unknown   # the wasm gate for the lower crates
 ```
