@@ -85,6 +85,18 @@ jobs:
       - name: wasm check (Triya crates)
         run: cargo check --target wasm32-unknown-unknown -p triya-vessel -p triya-drawing -p triya-ui -p triya-stdlib
 
+  phase3-exit:
+    name: Phase 3 exit (vessel A's six nozzles)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: triya }
+      - name: vessel A regenerates with every nozzle built or degraded gracefully
+        run: cargo test -p triya-vessel --test phase3_exit -- --ignored --nocapture
+
   web-shell:
     name: Triya web shell (trunk build + offline test)
     runs-on: ubuntu-24.04

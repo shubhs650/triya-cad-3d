@@ -1,0 +1,65 @@
+{
+ "note": "T3.3 kernel trial (18 Oct 2026): a pad rod (r 134.15 along +X from x 790 to 840) cut by the shell's outside cylinder (R 812, about Z) is refused after 164 s ('boolean Cut: implausible result volume 1729183'); intersecting a rod from x 800 with the cylinder R 824 is refused likewise ('boolean Intersect: implausible result volume 1191928', 137 s). The same cut on a 6 in rod (r 84.15, by R 800) works in 1.1 s. Fallback in triya-vessel::nozzle::plan: the pad rod starts on a plane inside the wall when one fits, else it is trimmed at the mid-wall radius; its outside is cut by a coaxial tube (R_out + t_pad \u2026 R_big), which works (1.9 s); a failing pad sends the whole nozzle to the separate-body fallback with flags.boolean_failed.",
+ "commands": [
+  {
+   "command": "vessel.new",
+   "params": {
+    "doc": {
+     "schema": "triya.vessel/0.1",
+     "id": "K",
+     "elements": [
+      {
+       "id": "S1",
+       "kind": "cylinder",
+       "diameter_mm": 1600,
+       "length_mm": 3000,
+       "thickness_mm": 12
+      }
+     ]
+    }
+   }
+  },
+  {
+   "command": "vessel.regenerate",
+   "params": {}
+  },
+  {
+   "command": "solid.cylinder",
+   "params": {
+    "diameter": 268.3,
+    "height": 50,
+    "base": [
+     790.0,
+     0.0,
+     1500.0
+    ],
+    "axis": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "operation": "new",
+    "name": "pad",
+    "body_name": "pad"
+   }
+  },
+  {
+   "command": "solid.cylinder",
+   "params": {
+    "radius": 812,
+    "height": 3000,
+    "base": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "axis": "Z",
+    "operation": "cut",
+    "targets": [
+     "pad"
+    ],
+    "name": "pad in"
+   }
+  }
+ ]
+}
