@@ -1,4 +1,4 @@
-// Triya CAD 3D's service worker (a copy of SolidCraft v0.14.0 apps/solidcraft-web/sw.js, MIT OR Apache-2.0; only the constants below changed): the web app keeps working offline and updates itself.
+// Triya CAD 3D's service worker (a copy of SolidCraft v0.14.0 apps/solidcraft-web/sw.js, MIT OR Apache-2.0; unchanged apart from this line — the cache names stay upstream's identifiers, which xtask web-offline-test checks, and PATH keeps them apart from any SolidCraft site): the web app keeps working offline and updates itself.
 //
 // `cargo xtask web-offline` (Trunk's post_build hook) writes the build into the line below: the
 // version (workspace version + a hash of every built file) and the files to keep, each with its
@@ -30,10 +30,10 @@
 const RETIRE = VERSION === "dev";
 
 const PATH = new URL(self.registration.scope).pathname;
-const CACHE_PREFIX = `triya-app ${PATH} `;
+const CACHE_PREFIX = `solidcraft-app ${PATH} `;
 const CACHE = CACHE_PREFIX + VERSION;
 /** Which build each open page started: page id → cache name (or NETWORK). */
-const PAGES = `triya-app-pages ${PATH}`;
+const PAGES = `solidcraft-app-pages ${PATH}`;
 /** A page that came from the network gets its files from there too. */
 const NETWORK = "network";
 const NAVIGATE_TIMEOUT_MS = 4000;
