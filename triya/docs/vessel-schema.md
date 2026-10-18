@@ -144,6 +144,20 @@ parameter table; `vessel.inspect` reports a drift warning when a parameter no lo
 document (the next regenerate rewrites it; `vessel.adopt_parameters` copies parameter values back
 into the document — post-beta).
 
+### 6.1 Storage and regeneration (T2.5)
+- The document is kept in the design's metadata under `in.openengtools.triya.vessel` as
+  `{schema, doc, generated: {features, group}}`. When its compact JSON is over 60 KiB, `doc` is
+  replaced by `chunks: n` and the JSON text is split over `in.openengtools.triya.vessel.chunk-1…n`
+  (each `{"text": …}`, at most 4 chunks: upstream limits one value to 64 KiB and all metadata to
+  256 KiB). Upstream opens and saves such a design unchanged; it just doesn't read it.
+- `vessel.regenerate` puts what it builds in the timeline folder `Vessel <id>` and records the
+  feature ids and the folder id in `generated`; the next regeneration deletes exactly those
+  features (a feature the user adds, even inside the folder, stays) and reuses the folder.
+  The whole regeneration is one undo step.
+- `vessel.inspect` reports the resolved stations (profile, tangent line, half-apex, flange or base
+  ring detail), the extent and TL–TL, warnings (cone angle, joint mismatch, derived bolt holes,
+  parameters changed in the table), attachment flags, the parameters it would write and the plan.
+
 ## 7. Analytic checks used by tests (inside dimensions)
 - Cylinder metal volume: π/4·(OD² − ID²)·L (skeleton test: 1000 ID × 10 t × 2000 L → 63.46e6 mm³).
 - Head volume (inside, excl. SF): hemi π·D³/12; 2:1 ellipsoidal π·D³/24; torispherical via the

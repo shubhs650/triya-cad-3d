@@ -38,12 +38,14 @@ pub static COMMANDS: &[CommandSpec] = &[
          remove: id (an element or attachment), global: {…} (fields to change); the result is validated before it is stored → doc",
     ),
     CommandSpec::new("vessel.regenerate", "Regenerate Vessel", regenerate).at(TAB, "MAKE").icon("compute").enabled(has_vessel).params(
-        "→ steps: [{command, params, reply}], features: [ids] (what it built; the features of the previous regeneration are deleted \
-         first). One undo step. Also writes every dimension as a user parameter V<vessel>_<element>_<field> (mm) → parameters. Refused (not supported yet) \
+        "→ steps: [{command, params, reply}], features: [ids] (what it built, kept in the timeline folder `Vessel <id>` → group; only \
+         the features of the previous regeneration are deleted first). One undo step. Also writes every dimension as a user parameter V<vessel>_<element>_<field> (mm) → parameters. Refused (not supported yet) \
          for attachments",
     ),
     CommandSpec::new("vessel.inspect", "Inspect Vessel", inspect).at(TAB, "INSPECT").icon("measure").noundo().doc_only().params(
-        "→ doc, stations: [{id, kind, z_from, z_to, r_from, r_to, thickness}], plan: [{command, params}] | plan_error, generated: [feature ids]",
+        "→ doc, stations: [{id, kind, z_from, z_to, r_from, r_to, thickness, diameter_mm, envelope, tl, half_apex_deg, profile, detail}], \
+         extent: {z_min, z_max, tl_bottom, tl_top, tl_to_tl}, warnings (parameter drift included), flags: [{id, boolean_failed, unverified_table}], parameters: \
+         [{name, value, unit}], plan: [{command, params}] | plan_error, generated: [feature ids], group",
     ),
 ];
 
@@ -51,26 +53,105 @@ fn has_vessel(s: &Session) -> std::result::Result<(), String> {
     if s.doc.metadata.get(METADATA_KEY).is_some() { Ok(()) } else { Err("the design has no vessel (vessel.new first)".into()) }
 }
 
-/// The stored vessel and the features its last regeneration made.
-fn load(s: &Session) -> solidcraft_engine::Result<(VesselDoc, Vec<u64>)> {
+/// The features a regeneration made, and the timeline folder that holds them.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Generated {
+    pub features: Vec<u64>,
+    /// The timeline folder (`Vessel <id>`) the features sit in; the metadata entry is the tag.
+    pub group: Option<u64>,
+}
+
+/// The vessel JSON goes into numbered chunk keys when the document serialises to more than this
+/// (one metadata value is limited to 64 KiB upstream).
+pub const CHUNK_BYTES: usize = 60 * 1024;
+/// At most this many chunks (upstream limits all metadata to 256 KiB).
+pub const MAX_CHUNKS: usize = 4;
+
+/// The metadata key of chunk `n` (1-based); it holds `{"text": <a piece of the JSON>}`.
+pub fn chunk_key(n: usize) -> String {
+    format!("{METADATA_KEY}.chunk-{n}")
+}
+
+/// `text` split into pieces whose JSON string form stays within `limit` bytes.
+fn split_escaped(text: &str, limit: usize) -> Vec<String> {
+    let mut pieces = Vec::new();
+    let mut piece = String::new();
+    let mut cost = 2; // the quotes
+    for c in text.chars() {
+        let n = match c {
+            '"' | '\\' | '\n' | '\r' | '\t' => 2,
+            c if (c as u32) < 0x20 => 6,
+            c => c.len_utf8(),
+        };
+        if cost + n > limit && !piece.is_empty() {
+            pieces.push(std::mem::take(&mut piece));
+            cost = 2;
+        }
+        piece.push(c);
+        cost += n;
+    }
+    if !piece.is_empty() {
+        pieces.push(piece);
+    }
+    pieces
+}
+
+/// The stored vessel and what its last regeneration made.
+fn load(s: &Session) -> solidcraft_engine::Result<(VesselDoc, Generated)> {
     let v = s.doc.metadata.get(METADATA_KEY).ok_or_else(|| EngineError::Other("the design has no vessel (vessel.new first)".into()))?;
-    let doc = v.get("doc").ok_or_else(|| EngineError::Other(format!("`{METADATA_KEY}` holds no `doc`")))?;
-    let doc = VesselDoc::from_value(doc)?;
-    let generated = v
-        .get("generated")
+    let doc = match (v.get("doc"), v.get("chunks").and_then(Value::as_u64)) {
+        (Some(doc), _) => VesselDoc::from_value(doc)?,
+        (None, Some(n)) if (1..=MAX_CHUNKS as u64).contains(&n) => {
+            let mut text = String::new();
+            for i in 1..=n as usize {
+                let part = s.doc.metadata.get(&chunk_key(i)).and_then(|c| c.get("text")).and_then(Value::as_str);
+                text.push_str(part.ok_or_else(|| EngineError::Other(format!("the vessel's chunk {i} of {n} is missing")))?);
+            }
+            VesselDoc::from_json(&text)?
+        }
+        (None, Some(n)) => return Err(EngineError::Other(format!("the vessel is stored in {n} chunks; at most {MAX_CHUNKS} are read"))),
+        (None, None) => return Err(EngineError::Other(format!("`{METADATA_KEY}` holds no `doc`"))),
+    };
+    let g = v.get("generated");
+    let features = g
         .and_then(|g| g.get("features"))
         .and_then(Value::as_array)
         .map(|a| a.iter().take(crate::emit::MAX_STEPS).filter_map(Value::as_u64).collect())
         .unwrap_or_default();
-    Ok((doc, generated))
+    let group = g.and_then(|g| g.get("group")).and_then(Value::as_u64);
+    Ok((doc, Generated { features, group }))
 }
 
-/// Store the vessel (validated) and the generated feature ids in the design's metadata.
-fn store(s: &mut Session, doc: &VesselDoc, generated: &[u64]) -> solidcraft_engine::Result<()> {
+/// Store the vessel (validated) and what was generated in the design's metadata: inline when
+/// the document is small, else as up to [`MAX_CHUNKS`] text chunks of its JSON.
+fn store(s: &mut Session, doc: &VesselDoc, generated: &Generated) -> solidcraft_engine::Result<()> {
     doc.validate()?;
-    let value = json!({"schema": crate::model::SCHEMA, "doc": doc.to_value()?, "generated": {"features": generated}});
+    let value = doc.to_value()?;
+    let text = serde_json::to_string(&value).map_err(|e| EngineError::Other(e.to_string()))?;
+    let gen_ = json!({"features": generated.features, "group": generated.group});
     let mut next = s.doc.metadata.clone();
-    next.set(METADATA_KEY, value).map_err(|e| EngineError::Other(format!("cannot store the vessel: {e}")))?;
+    for i in 1..=MAX_CHUNKS {
+        next.remove(&chunk_key(i));
+    }
+    let fail = |e: solidcraft_engine::doc::DocError| EngineError::Other(format!("cannot store the vessel: {e}"));
+    let head = if text.len() <= CHUNK_BYTES {
+        json!({"schema": crate::model::SCHEMA, "doc": value, "generated": gen_})
+    } else {
+        // Upstream wants an object under each key: `{"text": …}`, the wrapper inside the budget.
+        let pieces = split_escaped(&text, CHUNK_BYTES - 16);
+        if pieces.len() > MAX_CHUNKS {
+            return Err(EngineError::Other(format!(
+                "the vessel document is {} KiB; at most {} KiB can be kept in a design",
+                text.len() / 1024,
+                MAX_CHUNKS * CHUNK_BYTES / 1024
+            )));
+        }
+        for (i, piece) in pieces.iter().enumerate() {
+            next.set(&chunk_key(i + 1), json!({"text": piece})).map_err(fail)?;
+        }
+        json!({"schema": crate::model::SCHEMA, "chunks": pieces.len(), "generated": gen_})
+    };
+    next.set(METADATA_KEY, head).map_err(fail)?;
     if next != s.doc.metadata {
         s.doc_mut().metadata = next;
     }
@@ -93,7 +174,7 @@ fn new(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value> {
             doc
         }
     };
-    store(s, &doc, &[])?;
+    store(s, &doc, &Generated::default())?;
     Ok(json!({"doc": doc.to_value()?}))
 }
 
@@ -152,25 +233,78 @@ fn set(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value> {
     Ok(json!({"doc": doc.to_value()?}))
 }
 
+fn station_json(st: &eval::Station) -> Value {
+    let profile = match st.profile {
+        eval::Profile::Straight => json!({"type": "straight"}),
+        eval::Profile::Conical { knuckle_from, knuckle_to } => json!({"type": "conical", "knuckle_from": knuckle_from, "knuckle_to": knuckle_to}),
+        eval::Profile::Head { side, sf, dish, shape } => {
+            let side = match side {
+                eval::HeadSide::CrownAtStart => "crown_at_start",
+                eval::HeadSide::CrownAtEnd => "crown_at_end",
+            };
+            let shape = match shape {
+                eval::HeadShape::Torispherical { crown_r, knuckle_r } => json!({"type": "torispherical", "crown_r": crown_r, "knuckle_r": knuckle_r}),
+                eval::HeadShape::Ellipsoidal => json!({"type": "ellipsoidal"}),
+            };
+            json!({"type": "head", "side": side, "sf": sf, "dish": dish, "shape": shape})
+        }
+    };
+    let detail = match st.detail {
+        eval::Detail::None => Value::Null,
+        eval::Detail::Flange(f) => json!({
+            "type": "flange", "od": f.od, "bolt_circle": f.bolt_circle, "bolt_count": f.bolt_count, "bolt_hole": f.bolt_hole,
+            "thickness": f.thickness, "hub_od": f.hub_od, "hub_len": f.hub_len, "gap": f.gap, "hub_at_start": f.hub_at_start,
+        }),
+        eval::Detail::BaseRing { id, od, thickness } => json!({"type": "base_ring", "id": id, "od": od, "thickness": thickness}),
+    };
+    json!({
+        "id": st.id, "kind": st.kind, "z_from": st.z_from, "z_to": st.z_to, "r_from": st.r_from, "r_to": st.r_to,
+        "thickness": st.thickness, "diameter_mm": st.diameter_mm, "envelope": st.envelope, "tl": st.tl,
+        "half_apex_deg": st.half_apex_deg, "profile": profile, "detail": detail,
+    })
+}
+
 fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     let (doc, generated) = load(s)?;
-    let resolved = eval::resolve(&doc);
-    let (stations, plan, plan_error) = match &resolved {
+    let flags: Vec<Value> = doc
+        .attachments
+        .iter()
+        .filter(|a| a.flags != crate::model::Flags::default())
+        .map(|a| json!({"id": a.id, "boolean_failed": a.flags.boolean_failed, "unverified_table": a.flags.unverified_table}))
+        .collect();
+    let mut out = json!({
+        "doc": doc.to_value()?, "flags": flags,
+        "generated": generated.features, "group": generated.group,
+        "stations": [], "plan": null, "plan_error": null, "warnings": [], "parameters": [],
+    });
+    match eval::resolve(&doc) {
         Ok(r) => {
-            let stations: Vec<Value> = r
-                .stations
-                .iter()
-                .map(|st| json!({"id": st.id, "kind": st.kind, "z_from": st.z_from, "z_to": st.z_to, "r_from": st.r_from, "r_to": st.r_to, "thickness": st.thickness}))
-                .collect();
-            match emit::plan(r) {
-                Ok(p) => (stations, Some(p), None),
-                Err(e) => (stations, None, Some(e.to_string())),
+            out["stations"] = r.stations.iter().map(station_json).collect();
+            out["extent"] = json!({"z_min": r.z_min, "z_max": r.z_max, "tl_bottom": r.tl_bottom, "tl_top": r.tl_top, "tl_to_tl": r.tl_to_tl()});
+            let emitted = emit::parameters(&doc.id, &r);
+            // A parameter the user changed in the table no longer matches the document; the next
+            // regenerate rewrites it (`vessel-schema.md` §6).
+            let table = sub(s, &CommandCall { id: "parameters.list".into(), params: json!({"filter": "user"}) }).unwrap_or(Value::Null);
+            let mut warnings = r.warnings.clone();
+            for row in table.get("parameters").and_then(Value::as_array).into_iter().flatten() {
+                let (Some(name), Some(value)) = (row.get("name").and_then(Value::as_str), row.get("value").and_then(Value::as_f64)) else { continue };
+                if let Some(p) = emitted.iter().find(|p| p.name == name)
+                    && (p.value - value).abs() > 1e-6 * p.value.abs().max(1.0)
+                {
+                    warnings
+                        .push(format!("parameter `{name}` is {value} in the design but {} in the vessel (the next regenerate rewrites it)", p.value));
+                }
+            }
+            out["warnings"] = json!(warnings);
+            out["parameters"] = emitted.into_iter().map(|p| json!({"name": p.name, "value": p.value, "unit": p.unit})).collect();
+            match emit::plan(&r) {
+                Ok(p) => out["plan"] = p.into_iter().map(|c| json!({"command": c.id, "params": c.params})).collect(),
+                Err(e) => out["plan_error"] = json!(e.to_string()),
             }
         }
-        Err(e) => (Vec::new(), None, Some(e.to_string())),
-    };
-    let plan: Option<Vec<Value>> = plan.map(|p| p.into_iter().map(|c| json!({"command": c.id, "params": c.params})).collect());
-    Ok(json!({"doc": doc.to_value()?, "stations": stations, "plan": plan, "plan_error": plan_error, "generated": generated}))
+        Err(e) => out["plan_error"] = json!(e.to_string()),
+    }
+    Ok(out)
 }
 
 /// Run another command's body inside this one (the outer command owns the undo step), the way
@@ -183,6 +317,11 @@ fn sub(s: &mut Session, call: &CommandCall) -> solidcraft_engine::Result<Value> 
     Ok(r)
 }
 
+/// The timeline folder name the vessel's features are kept in.
+pub fn group_name(doc: &VesselDoc) -> String {
+    format!("Vessel {}", doc.id)
+}
+
 fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     let (doc, previous) = load(s)?;
     let resolved = eval::resolve(&doc)?;
@@ -192,10 +331,11 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         );
     }
     let plan = emit::plan(&resolved)?;
-    // The last regeneration's features go first (sketches take their revolves with them).
-    let stale: Vec<Value> = previous.iter().filter(|id| s.doc.feature(**id).is_some()).map(|id| json!({"type": "feature", "id": id})).collect();
+    // Only what the last regeneration made goes (sketches take their revolves with them); a
+    // feature the user added, even one moved into the vessel's folder, stays.
+    let stale: Vec<u64> = previous.features.iter().copied().filter(|id| s.doc.feature(*id).is_some()).collect();
     if !stale.is_empty() {
-        sub(s, &CommandCall { id: "selection.delete".into(), params: json!({"items": stale}) })?;
+        sub(s, &CommandCall { id: "timeline.delete".into(), params: json!({"features": stale}) })?;
     }
     let mut replies: Vec<Value> = Vec::with_capacity(plan.len());
     let mut steps: Vec<Value> = Vec::with_capacity(plan.len());
@@ -215,6 +355,26 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         steps.push(json!({"command": call.id, "params": params, "reply": reply}));
         replies.push(reply);
     }
+    // A sketch left open by a failed plan would be odd; the plan closes its own.
+    s.active_sketch = None;
+    // The features go into the vessel's own timeline folder: the previous one when it is still
+    // there (the user may have renamed or moved it), else a new one.
+    let built: Vec<u64> = features.iter().copied().filter(|id| s.doc.feature(*id).is_some()).collect();
+    let new_group = |s: &mut Session, built: &[u64]| -> solidcraft_engine::Result<Option<u64>> {
+        let r = sub(s, &CommandCall { id: "timeline.group".into(), params: json!({"name": group_name(&doc), "features": built}) })?;
+        Ok(r.get("group").and_then(Value::as_u64))
+    };
+    let kept = previous.group.filter(|g| s.doc.timeline_groups.iter().any(|x| x.id == *g));
+    let group = match kept {
+        _ if built.is_empty() => kept,
+        Some(g) => {
+            // Refused when the folder would stop being one run (the user put a feature of their
+            // own in it): the new features get a folder of their own.
+            let moved = sub(s, &CommandCall { id: "timeline.move_to_group".into(), params: json!({"features": built, "group": g}) });
+            if moved.is_ok() { Some(g) } else { new_group(s, &built)? }
+        }
+        None => new_group(s, &built)?,
+    };
     // Every dimension as a user parameter (created or updated; nothing drives from them yet).
     let mut parameters = Vec::new();
     for p in emit::parameters(&doc.id, &resolved) {
@@ -223,8 +383,6 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
             .map_err(|e| EngineError::Other(format!("vessel parameter `{}`: {e}", p.name)))?;
         parameters.push(p.name);
     }
-    // A sketch left open by a failed plan would be odd; the plan closes its own.
-    s.active_sketch = None;
-    store(s, &doc, &features)?;
-    Ok(json!({"steps": steps, "features": features, "parameters": parameters}))
+    store(s, &doc, &Generated { features: features.clone(), group })?;
+    Ok(json!({"steps": steps, "features": features, "group": group, "parameters": parameters}))
 }

@@ -922,3 +922,189 @@ fn table_body_flange_takes_the_rows_bolt_count() {
     big.elements[0].diameter_mm = Some(100.0);
     assert!(eval::resolve(&big).is_err());
 }
+
+// ---- T2.5: regenerate hardening ----------------------------------------------------------
+
+/// A two-element vessel (2:1 head under a course): cheap to build, more than one body.
+fn small_vessel() -> VesselDoc {
+    let mut doc = VesselDoc::cylinder("S1", 1000.0, 10.0, 1500.0);
+    doc.id = "V-7".into();
+    doc.elements.insert(0, head("H1", HeadPresetId::Ellipsoidal21, Some(40.0)));
+    doc
+}
+
+/// A box of the user's own, away from the vessel.
+fn user_box(s: &mut Session) -> u64 {
+    let sk = run(s, "sketch.create", json!({"plane": "XY", "name": "Mine"}))["sketch"].as_u64().unwrap();
+    run(s, "sketch.rectangle.two_point", json!({"p0": [3000, 0], "p1": [3100, 100], "sketch": sk}));
+    run(s, "sketch.finish", json!({}));
+    run(s, "solid.extrude", json!({"sketch": sk, "distance": 50, "name": "My box", "body_name": "My box"}))["feature"].as_u64().unwrap()
+}
+
+fn body_names(s: &Session) -> Vec<String> {
+    s.model.state().bodies.iter().map(|b| b.name.clone()).collect()
+}
+
+fn vessel_group(s: &Session) -> Option<solidcraft_engine::doc::TimelineGroup> {
+    s.doc.timeline_groups.iter().find(|g| g.name == "Vessel V-7").cloned()
+}
+
+#[test]
+fn regenerate_replaces_only_its_own_features() {
+    registered();
+    let mut s = Session::default();
+    run(&mut s, "vessel.new", json!({"doc": small_vessel().to_value().unwrap()}));
+    let mine = user_box(&mut s);
+
+    let r1 = run(&mut s, "vessel.regenerate", json!({}));
+    let count = s.doc.features.len();
+    let group = vessel_group(&s).expect("the vessel's features sit in their folder");
+    let built: Vec<u64> = r1["features"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
+    assert_eq!(group.features, built);
+    assert_eq!(r1["group"], json!(group.id));
+    assert_eq!(body_names(&s).len(), 3, "{:?}", body_names(&s));
+
+    // Regenerating again replaces the vessel's features and nothing else.
+    let r2 = run(&mut s, "vessel.regenerate", json!({}));
+    assert_eq!(s.doc.features.len(), count, "regenerate twice: feature count unchanged");
+    assert_ne!(r2["features"], r1["features"]);
+    assert_eq!(r2["group"], json!(group.id), "the same folder is reused");
+    assert_eq!(s.doc.timeline_groups.len(), 1);
+    assert!(s.doc.feature(mine).is_some(), "the user's box stays");
+    assert!(body_names(&s).contains(&"My box".to_string()));
+
+    // A feature of the user's own moved into the vessel's folder is not the vessel's.
+    run(&mut s, "timeline.move_to_group", json!({"features": [mine], "group": group.id}));
+    run(&mut s, "vessel.regenerate", json!({}));
+    assert!(s.doc.feature(mine).is_some(), "moved into the folder, still the user's");
+    assert_eq!(s.doc.features.len(), count);
+}
+
+#[test]
+fn one_undo_takes_the_vessel_away() {
+    registered();
+    let mut s = Session::default();
+    run(&mut s, "vessel.new", json!({"doc": small_vessel().to_value().unwrap()}));
+    user_box(&mut s);
+    let before = (s.doc.features.len(), s.doc.timeline_groups.len());
+    run(&mut s, "vessel.regenerate", json!({}));
+    assert_eq!(body_names(&s).len(), 3);
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(body_names(&s), ["My box"], "one undo: the vessel's bodies are gone");
+    assert_eq!((s.doc.features.len(), s.doc.timeline_groups.len()), before);
+    let parameters = run(&mut s, "parameters.list", json!({"filter": "user"}));
+    assert!(parameters["parameters"].as_array().is_none_or(|p| p.iter().all(|p| !p["name"].as_str().unwrap_or("").starts_with("V7_"))));
+    // The vessel document itself stays (it came from vessel.new) and regenerates again.
+    run(&mut s, "vessel.regenerate", json!({}));
+    assert_eq!(body_names(&s).len(), 3);
+}
+
+#[test]
+fn a_saved_design_regenerates_in_place_after_opening() {
+    registered();
+    let mut s = Session::default();
+    run(&mut s, "vessel.new", json!({"doc": small_vessel().to_value().unwrap()}));
+    run(&mut s, "vessel.regenerate", json!({}));
+    let count = s.doc.features.len();
+    let text = s.doc.to_json();
+    let back = solidcraft_engine::doc::Document::from_json(&text).unwrap();
+    let mut s2 = Session::new(back);
+    let inspect = run(&mut s2, "vessel.inspect", json!({}));
+    assert_eq!(VesselDoc::from_value(&inspect["doc"]).unwrap(), small_vessel(), "save/open keeps the JSON");
+    run(&mut s2, "vessel.regenerate", json!({}));
+    assert_eq!(s2.doc.features.len(), count, "the reopened design knows which features are the vessel's");
+    assert_eq!(s2.doc.timeline_groups.len(), 1);
+}
+
+/// A document of about `kib` KiB (long notes with quotes and backslashes, which grow when
+/// escaped).
+fn big_vessel(kib: usize) -> VesselDoc {
+    let mut doc = small_vessel();
+    let note = "Note \"quoted\" and a back\\slash, ünïcode; ".repeat(90);
+    while serde_json::to_string(&doc).unwrap().len() < kib * 1024 {
+        doc.notes.push(note.clone());
+    }
+    doc
+}
+
+fn chunk_keys(s: &Session) -> Vec<String> {
+    (1..=commands::MAX_CHUNKS + 1).map(commands::chunk_key).filter(|k| s.doc.metadata.get(k).is_some()).collect()
+}
+
+#[test]
+fn a_70_kib_document_is_chunked_and_round_trips() {
+    registered();
+    let doc = big_vessel(70);
+    let mut s = Session::default();
+    run(&mut s, "vessel.new", json!({"doc": doc.to_value().unwrap()}));
+    let head = s.doc.metadata.get(commands::METADATA_KEY).cloned().unwrap();
+    assert!(head.get("doc").is_none() && head["chunks"] == json!(2), "{}", head);
+    assert_eq!(chunk_keys(&s).len(), 2);
+    for k in chunk_keys(&s) {
+        let n = serde_json::to_string(s.doc.metadata.get(&k).unwrap()).unwrap().len();
+        assert!(n <= commands::CHUNK_BYTES, "{k}: {n} bytes");
+    }
+    // Through the design file and back.
+    let back = solidcraft_engine::doc::Document::from_json(&s.doc.to_json()).unwrap();
+    let mut s2 = Session::new(back);
+    let inspect = run(&mut s2, "vessel.inspect", json!({}));
+    assert_eq!(VesselDoc::from_value(&inspect["doc"]).unwrap(), doc);
+    run(&mut s2, "vessel.regenerate", json!({}));
+    assert_eq!(chunk_keys(&s2).len(), 2, "regenerate keeps the chunks");
+    assert_eq!(VesselDoc::from_value(&run(&mut s2, "vessel.inspect", json!({}))["doc"]).unwrap(), doc);
+
+    // Shrinking it back drops the chunks; growing past the cap is refused cleanly.
+    run(&mut s2, "vessel.set", json!({"doc": small_vessel().to_value().unwrap()}));
+    assert!(chunk_keys(&s2).is_empty());
+    assert!(s2.doc.metadata.get(commands::METADATA_KEY).unwrap().get("doc").is_some());
+    let before = s2.doc.clone();
+    let e = s2.execute("vessel.set", &json!({"doc": big_vessel(300).to_value().unwrap()})).unwrap_err().to_string();
+    assert!(e.contains("KiB"), "{e}");
+    assert_eq!(*before, *s2.doc);
+}
+
+#[test]
+fn inspect_reports_resolved_stations_warnings_and_flags() {
+    registered();
+    let mut s = Session::default();
+    let mut doc = reference(0);
+    if let Some(a) = doc.attachments.first_mut() {
+        a.flags.boolean_failed = true;
+    }
+    let first = doc.attachments.first().map(|a| a.id.clone()).unwrap();
+    run(&mut s, "vessel.new", json!({"doc": doc.to_value().unwrap()}));
+    let r = run(&mut s, "vessel.inspect", json!({}));
+    let stations = r["stations"].as_array().unwrap();
+    assert_eq!(stations.len(), 7);
+    let e1 = &stations[1];
+    assert_eq!(e1["profile"]["type"], json!("head"));
+    assert_eq!(e1["profile"]["shape"]["type"], json!("ellipsoidal"));
+    assert!(e1["tl"].is_number());
+    let skirt = &stations[0];
+    assert_eq!(skirt["detail"]["type"], json!("base_ring"));
+    assert_eq!(skirt["envelope"], json!(false));
+    let cone = stations.iter().find(|st| st["kind"] == "cone").unwrap();
+    assert!((cone["half_apex_deg"].as_f64().unwrap() - 21.002).abs() < 1e-3, "{cone}");
+    assert!(r["extent"]["tl_to_tl"].is_number());
+    assert!(r["warnings"].is_array());
+    assert_eq!(r["flags"], json!([{"id": first, "boolean_failed": true, "unverified_table": false}]));
+    assert!(r["parameters"].as_array().unwrap().iter().any(|p| p["name"] == "V101_E2_length"));
+    assert!(r["generated"].as_array().unwrap().is_empty() && r["group"].is_null());
+}
+
+#[test]
+fn inspect_warns_when_a_parameter_drifted() {
+    registered();
+    let mut s = Session::default();
+    run(&mut s, "vessel.new", json!({"doc": small_vessel().to_value().unwrap()}));
+    run(&mut s, "vessel.regenerate", json!({}));
+    let drift = |s: &mut Session| {
+        let r = run(s, "vessel.inspect", json!({}));
+        r["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap_or("").contains("V7_S1_length"))
+    };
+    assert!(!drift(&mut s));
+    run(&mut s, "parameters.change", json!({"name": "V7_S1_length", "expression": "1600 mm"}));
+    assert!(drift(&mut s), "a changed parameter is reported");
+    run(&mut s, "vessel.regenerate", json!({}));
+    assert!(!drift(&mut s), "regenerate rewrites it");
+}

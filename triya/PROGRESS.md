@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
 **Phase:** 2 — Vessel core · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T2.5 (regenerate hardening). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
+**Next task:** T2.6 (hostile-params coverage, caps). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -26,6 +26,7 @@
 | T2.2 | Evaluator: datums (bottom TL / bottom seam / skirt base / plant elevation / left TL), stations with TLs, skirt hung below the bottom TL (OD = head OD by default), diameter inheritance stopping at cones, ID/OD basis, `radius_at(z)` through heads and toriconical knuckles, warnings (cone > 30°, joint mismatch) | #13 | 18 Oct | AT `stations_of_a_seven_element_vertical_vessel_match_hand_calc` (vessel A, E6 F&D depth 372.543, cone half-apex 21.00° with the knuckle); `head_depths_match_the_din_worked_examples` (exact 188.89 / 248.26 vs DIN fits 188.95 / 248.65, within 0.5 mm); datum, inheritance, outside-basis tests |
 | T2.3 | Emitter: 2:1 ellipsoidal (true ellipse: quarter conic, ρ = √2 − 1), UG-32 0.9D/0.17D, ASME F&D, Klöpper, Korbbogen, 80:10, custom torispherical, hemispherical, cones bare and toriconical (knuckles at either end), welded flat cover; each a half-profile revolved 360°, inside and outside curves; every dimension written as a user parameter `V<vessel>_<element>_<field>` via `parameters.change` | #14 | 18 Oct | AT: `ellipsoidal_and_hemispherical_heads_match_analytic_volume`, `torispherical_heads_match_analytic_volume` (6 presets), `cones_match_analytic_volume`, `flat_cover_matches_analytic_volume`: all within 0.1 % (measured −0.001 … −0.018 %); `vessel_a_shell_regenerates` (7 bodies, parameters in the table, top head crown at 8776.54) |
 | T2.4 | Body flange: weld-neck section revolved (bore = shell ID, hub from shell OD to `hub_od`, ring to OD) from a table row (`flange_ref`) or `explicit`, bolt holes = one hole cut through the ring + `solid.pattern.circular`; a following flange faces back (pair). Skirt: one L-shaped profile (shell on its base ring) | #15 | 18 Oct | AT: `explicit_body_flange_matches_analytic_volume_and_bolt_count` (28 holes, both flanges of a pair), `table_body_flange_takes_the_rows_bolt_count` (row 2/150/wn: 4 holes), `skirt_with_base_ring_matches_analytic_volume`; all within 0.1 % |
+| T2.5 | Regenerate hardening: the vessel's features go in the timeline folder `Vessel <id>` and the metadata records `{features, group}`; regenerate deletes only those (user features stay, even inside the folder) and reuses the folder; vessel JSON over 60 KiB is split into ≤ 4 chunk keys; `vessel.inspect` returns full stations (profile, TL, half-apex, flange/base-ring detail), extent, warnings incl. parameter drift, attachment flags, parameters | #16 | 18 Oct | AT: `regenerate_replaces_only_its_own_features` (count unchanged), `one_undo_takes_the_vessel_away`, `a_saved_design_regenerates_in_place_after_opening`, `a_70_kib_document_is_chunked_and_round_trips` (and 300 KiB refused cleanly), `inspect_reports_resolved_stations_warnings_and_flags`, `inspect_warns_when_a_parameter_drifted` |
 
 ## In progress
 | id | task | branch | started | owner |
@@ -77,6 +78,9 @@
 
 - 2026-10-18 — T2.4: bolt-hole diameter derived from the row's bolt size until the tables carry it (T3.1): metric + 2 mm up to M24, + 3 mm above; inch + 1/8 in. Flagged as a warning on every table flange. Holes straddle the centrelines (first at 180°/n).
 - 2026-10-18 — T2.4: `flange_ref.standard` is not used for the lookup yet (one table set; T3.x adds per-standard sets); a flange whose next element is also a body flange faces it (hub away), so a pair needs no orientation field.
+
+- 2026-10-18 — T2.5: the "vessel group" tag is the metadata entry (`generated.group` = the folder id, `generated.features`), not the folder's name; the folder is named `Vessel <id>` for people. Renaming or moving the folder keeps it the vessel's; if a user feature placed in it would make the folder non-contiguous, the new features get a fresh folder instead of failing.
+- 2026-10-18 — T2.5: chunks are `{"text": …}` objects (upstream requires an object under a reverse-DNS key), ≤ 60 KiB escaped each, at most 4 (240 KiB, under upstream's 256 KiB total); a larger document is refused with its size.
 
 ## Owner decisions
 | opened | question | status | answer |
@@ -137,3 +141,4 @@
 - 2026-10-18 — T1.5: upstream issue drafts written. Phase 1 complete pending merges.
 - 2026-10-18 — Phase 2 started (thread "Phase 2 implementation"). T2.1: full vessel model, schema file, reference vessels.
 - 2026-10-18 — T2.2 evaluator and T2.3 emitter: every head preset, cones and flat covers regenerate within 0.02 % of analytic volume; one kernel case captured (arcs on the axis), worked around with conics.
+- 2026-10-18 — T2.5: regenerate replaces only its own features (timeline folder + metadata tag), chunked vessel JSON, full `vessel.inspect`.
