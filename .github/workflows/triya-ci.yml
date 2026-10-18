@@ -70,6 +70,11 @@ jobs:
         run: cargo clippy -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui -p triya-cli --all-targets -- -D warnings
       - name: tests (Triya crates)
         run: cargo test -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui -p triya-cli
+      - name: Example cylinder to STEP (size and measured volume, PLAN T0.5)
+        run: |
+          cargo run -q -p triya-cli -- run triya/crates/triya-vessel/examples/cylinder.json --out "$RUNNER_TEMP/cyl.step"
+          ls -la "$RUNNER_TEMP/cyl.step"
+          cargo run -q -p triya-cli -- eval triya/crates/triya-vessel/examples/cylinder.json
       - name: layers + assets (upstream xtask)
         run: cargo xtask layers && cargo xtask assets
       - name: wasm check (Triya crates)
