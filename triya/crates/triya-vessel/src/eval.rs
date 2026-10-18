@@ -34,7 +34,9 @@
 //! the bottom TL at `plant_elevation_mm`. Without a bottom head, the TL datums are the start of
 //! the first envelope element.
 
-use crate::model::{Datum, DiameterBasis, Element, ElementKind, HeadOrientation, HeadPresetId, Orientation, VesselDoc};
+use triya_stdlib::TableSet;
+
+use crate::model::{Datum, DiameterBasis, Element, ElementKind, HeadOrientation, HeadPresetId, Orientation, Rating, VesselDoc};
 use crate::{Result, VesselError};
 
 /// Half-apex angle above which a cone gets a warning (ASME VIII-1 UG-33/1-5 territory).
@@ -71,6 +73,38 @@ pub enum Profile {
     Head { side: HeadSide, sf: f64, dish: f64, shape: HeadShape },
 }
 
+/// A weld-neck body flange, resolved (all mm).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FlangeGeom {
+    pub od: f64,
+    pub bolt_circle: f64,
+    pub bolt_count: u32,
+    pub bolt_hole: f64,
+    /// Ring thickness.
+    pub thickness: f64,
+    pub hub_od: f64,
+    /// Hub length below the ring (to the weld end).
+    pub hub_len: f64,
+    /// Axial gap left at the face for the gasket.
+    pub gap: f64,
+    /// The hub (weld end) is at `z_from` and the face toward `z_to`; false when the previous
+    /// element is a body flange too (the mating flange of a pair faces back).
+    pub hub_at_start: bool,
+}
+
+/// Kind-specific geometry a station carries beyond its profile.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Detail {
+    None,
+    Flange(FlangeGeom),
+    /// A skirt's base ring: inside and outside diameter, thickness.
+    BaseRing {
+        id: f64,
+        od: f64,
+        thickness: f64,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Station {
     pub index: usize,
@@ -91,6 +125,7 @@ pub struct Station {
     pub tl: Option<f64>,
     /// A cone's half-apex angle (degrees) along its straight part.
     pub half_apex_deg: Option<f64>,
+    pub detail: Detail,
 }
 
 /// A cone's straight part, knuckles included: everything `radius_at` needs.
@@ -259,8 +294,83 @@ pub fn head_dish(preset: HeadPresetId, di: f64, t: f64, crown: Option<f64>, knuc
     Ok((HeadShape::Torispherical { crown_r: l, knuckle_r: r }, dish))
 }
 
-/// Stack the elements from the datum and work out each one's station.
+/// A body flange's dimensions: from the table row its `flange_ref` names, or `explicit`.
+fn body_flange(tables: &TableSet, e: &Element, r_in: f64, warnings: &mut Vec<String>) -> Result<FlangeGeom> {
+    let ElementKind::BodyFlange { flange_ref, explicit, gasket_gap_mm } = &e.kind else {
+        return Err(invalid(e, "not a body flange"));
+    };
+    let t = e.thickness_mm;
+    let g = match (flange_ref, explicit) {
+        (_, Some(f)) => FlangeGeom {
+            od: f.od_mm,
+            bolt_circle: f.bolt_circle_mm,
+            bolt_count: f.bolt_count,
+            bolt_hole: f.bolt_hole_mm,
+            thickness: f.thickness_mm,
+            hub_od: f.hub_od_mm,
+            hub_len: f.hub_len_mm,
+            gap: *gasket_gap_mm,
+            hub_at_start: true,
+        },
+        (Some(r), None) => {
+            let class = match &r.class {
+                Rating::Class(c) => c.to_string(),
+                Rating::Named(s) => s.clone(),
+            };
+            let row = tables
+                .flange(&r.nps_or_dn, &class, r.kind)
+                .ok_or_else(|| invalid(e, format!("no flange row {}/{class}/{} in the loaded tables", r.nps_or_dn, r.kind.code())))?;
+            if row.hub_od <= 0.0 {
+                return Err(invalid(e, "the table row has no hub (a blind flange is a flat cover)"));
+            }
+            let bolt_hole = row.bolt_hole_mm().ok_or_else(|| invalid(e, format!("cannot read the bolt size `{}`", row.bolt_size)))?;
+            if tables.flanges.is_illustrative() {
+                warnings.push(format!("element `{}`: flange row {} comes from an illustrative table", e.id, row.size_key()));
+            }
+            warnings.push(format!("element `{}`: bolt holes {bolt_hole} mm derived from bolt {} (clearance rule)", e.id, row.bolt_size));
+            FlangeGeom {
+                od: row.od,
+                bolt_circle: row.bolt_circle,
+                bolt_count: row.bolt_count,
+                bolt_hole,
+                thickness: row.thickness,
+                hub_od: row.hub_od,
+                hub_len: (row.length_through_hub - row.thickness).max(0.0),
+                gap: *gasket_gap_mm,
+                hub_at_start: true,
+            }
+        }
+        (None, None) => return Err(invalid(e, "a body flange needs `flange_ref` or `explicit`")),
+    };
+    let r_out = r_in + t;
+    if !(g.hub_od / 2.0 >= r_out - 1e-9
+        && g.bolt_circle / 2.0 - g.bolt_hole / 2.0 > g.hub_od / 2.0
+        && g.bolt_circle / 2.0 + g.bolt_hole / 2.0 < g.od / 2.0)
+    {
+        return Err(invalid(
+            e,
+            format!(
+                "flange (OD {}, bolt circle {}, holes {}, hub {}) does not fit a shell of OD {}: the hub must be at least the shell OD and the holes between hub and rim",
+                g.od,
+                g.bolt_circle,
+                g.bolt_hole,
+                g.hub_od,
+                2.0 * r_out
+            ),
+        ));
+    }
+    Ok(g)
+}
+
+/// Stack the elements from the datum and work out each one's station, with the embedded tables.
 pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
+    let tables = TableSet::embedded()?;
+    resolve_with(doc, &tables)
+}
+
+/// Stack the elements from the datum and work out each one's station; body flanges look their
+/// rows up in `tables`.
+pub fn resolve_with(doc: &VesselDoc, tables: &TableSet) -> Result<Resolved> {
     doc.validate()?;
     let mut warnings = Vec::new();
     let skirt = doc.elements.first().filter(|e| matches!(e.kind, ElementKind::Skirt { .. }));
@@ -296,6 +406,7 @@ pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
             envelope: true,
             tl: None,
             half_apex_deg: None,
+            detail: Detail::None,
         };
         let len = match &e.kind {
             ElementKind::Cone { length_mm, diameter_small_mm: ds, diameter_large_mm: dl, knuckle_large_mm, knuckle_small_mm } => {
@@ -344,7 +455,11 @@ pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
                 match &e.kind {
                     ElementKind::Cylinder { length_mm } => *length_mm,
                     ElementKind::FlatCover { .. } => t,
-                    ElementKind::BodyFlange { explicit, .. } => explicit.as_ref().map_or(t, |f| f.thickness_mm),
+                    ElementKind::BodyFlange { .. } => {
+                        let g = body_flange(tables, e, st.r_from, &mut warnings)?;
+                        st.detail = Detail::Flange(g);
+                        g.hub_len + g.thickness + g.gap
+                    }
                     ElementKind::Head { preset, straight_flange_mm, crown_radius_mm, knuckle_radius_mm, orientation } => {
                         let (side, expected, word) = if k == 0 && last > 0 {
                             (HeadSide::CrownAtStart, HeadOrientation::Down, "down")
@@ -381,6 +496,14 @@ pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
         stations.push(st);
     }
 
+    // The mating flange of a pair faces back toward the first.
+    for i in 1..stations.len() {
+        let prev_is_flange = stations.get(i - 1).is_some_and(|s| matches!(s.detail, Detail::Flange(_)));
+        if let Some(Station { detail: Detail::Flange(g), .. }) = stations.get_mut(i) {
+            g.hub_at_start = !prev_is_flange;
+        }
+    }
+
     // A flat cover is a disc out to the adjacent shell's outside radius (the previous element's,
     // or the next one's when the cover comes first).
     for i in 0..stations.len() {
@@ -413,6 +536,20 @@ pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
         if !(ri > 0.0) {
             return Err(invalid(e, "the skirt has no inside diameter"));
         }
+        if let ElementKind::Skirt { base_ring, .. } = &e.kind
+            && !(base_ring.id_mm / 2.0 <= ri && base_ring.od_mm / 2.0 >= ri + t && base_ring.thickness_mm < *height_mm)
+        {
+            return Err(invalid(
+                e,
+                format!(
+                    "the base ring ({} … {}) must span the skirt wall ({} … {}) and be thinner than the skirt is high",
+                    base_ring.id_mm,
+                    base_ring.od_mm,
+                    2.0 * ri,
+                    2.0 * (ri + t)
+                ),
+            ));
+        }
         let top = tl_bottom.unwrap_or(stack_start) - top_offset_mm.unwrap_or(0.0);
         let d = match doc.global.diameter_basis {
             DiameterBasis::Inside => 2.0 * ri,
@@ -434,6 +571,12 @@ pub fn resolve(doc: &VesselDoc) -> Result<Resolved> {
                 envelope: false,
                 tl: None,
                 half_apex_deg: None,
+                detail: match &e.kind {
+                    ElementKind::Skirt { base_ring, .. } => {
+                        Detail::BaseRing { id: base_ring.id_mm, od: base_ring.od_mm, thickness: base_ring.thickness_mm }
+                    }
+                    _ => Detail::None,
+                },
             },
         );
     }
