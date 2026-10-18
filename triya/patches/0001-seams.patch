@@ -171,10 +171,10 @@ index 56cf0166cead00eed35c91abfad914ec30465c01..f4c66ffb5afbefad4ee4d5f19aedb31d
  /// The accent stroke colour for a panel's icons: constraint commands use the same red as the
  /// constraint glyphs they draw in the sketch (`glyph_text`), sketch tools otherwise keep
 diff --git a/xtask/src/layers.rs b/xtask/src/layers.rs
-index 2118c8e0dd8a5f291adc08a7c61f35e17379a5e7..4fd3a4e4b59b89e345861d03527cece8de88ecc9 100644
+index 2118c8e0dd8a5f291adc08a7c61f35e17379a5e7..93ca0aa1b27265532492725004e66d8877ea5731 100644
 --- a/xtask/src/layers.rs
 +++ b/xtask/src/layers.rs
-@@ -53,12 +53,27 @@ pub const TABLE: &[(&str, Class)] = &[
+@@ -53,12 +53,28 @@ pub const TABLE: &[(&str, Class)] = &[
      ("cli", Class::Exempt),
      ("web", Class::Exempt),
      ("xtask", Class::Exempt),
@@ -185,6 +185,7 @@ index 2118c8e0dd8a5f291adc08a7c61f35e17379a5e7..4fd3a4e4b59b89e345861d03527cece8
 +    ("triya-vessel", Class::Layer(4)),
 +    ("triya-drawing", Class::Layer(4)),
 +    ("triya-ui", Class::Layer(5)),
++    ("triya", Class::Exempt),
 +    ("triya-cli", Class::Exempt),
 +    ("triya-web", Class::Exempt),
  ];

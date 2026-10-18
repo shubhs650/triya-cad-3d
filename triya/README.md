@@ -45,8 +45,10 @@ cargo check -p triya-vessel --target wasm32-unknown-unknown   # the wasm gate fo
 
 ## Desktop app
 
-`apps/solidcraft` is ~2 700 lines (control server, crash capture, native frame, Space Mouse,
-startup checks) and not a small copy, so there is no `triya/apps/triya` yet. The intended route:
-copy `apps/solidcraft` as `triya/apps/triya`, call `triya_ui::register()` before the first
-`Session`, draw `triya_ui::VesselPanel` after `app.ui(ui)` (as `triya-web/src/main.rs` does), and
-take `APP_NAME`/`APP_ID` from `triya-brand` for the window title, settings and crash folders.
+`triya/apps/triya` (`cargo run -p triya -- [--sample] [--control PORT] [files…]`) is a thin shell
+around upstream's `SolveApp`, not a copy of the ~2,700-line `apps/solidcraft`. It registers the
+`vessel.*` commands, draws the Vessel panel and Triya's About window around `app.ui`, uses the
+Triya title, icon, app id and settings folder, never checks for SolidCraft updates, and compiles
+upstream's control server (`apps/solidcraft/src/control_server.rs`) unchanged. Upstream's
+Windows crash filter and resize border, macOS Finder events, Space Mouse and safe-mode counter
+are left out for the beta.

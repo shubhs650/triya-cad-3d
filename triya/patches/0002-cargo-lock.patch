@@ -1,11 +1,27 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index 1fa23852da6d0c504360f08f1e4017e1cc892fe9..06dc21399ee62c3854e5821990d2a339ce6071bb 100644
+index 1fa23852da6d0c504360f08f1e4017e1cc892fe9..6ab402f70c9ce74f4eb024deca46afbbadfb09d7 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -4525,6 +4525,84 @@ dependencies = [
+@@ -4525,6 +4525,100 @@ dependencies = [
   "once_cell",
  ]
  
++[[package]]
++name = "triya"
++version = "0.14.0"
++dependencies = [
++ "eframe",
++ "egui",
++ "getrandom 0.3.4",
++ "log",
++ "rfd",
++ "serde_json",
++ "solidcraft-engine",
++ "solidcraft-ui-egui",
++ "triya-brand",
++ "triya-ui",
++]
++
 +[[package]]
 +name = "triya-brand"
 +version = "0.14.0"

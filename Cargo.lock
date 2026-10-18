@@ -4526,6 +4526,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "triya"
+version = "0.14.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "getrandom 0.3.4",
+ "log",
+ "rfd",
+ "serde_json",
+ "solidcraft-engine",
+ "solidcraft-ui-egui",
+ "triya-brand",
+ "triya-ui",
+]
+
+[[package]]
 name = "triya-brand"
 version = "0.14.0"
 

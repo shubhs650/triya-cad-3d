@@ -67,7 +67,7 @@ jobs:
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy (Triya crates)
-        run: cargo clippy -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui -p triya-cli --all-targets -- -D warnings
+        run: cargo clippy -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui -p triya-cli -p triya --all-targets -- -D warnings
       - name: tests (Triya crates)
         run: cargo test -p triya-brand -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui -p triya-cli
       - name: Example cylinder to STEP (size and measured volume, PLAN T0.5)
