@@ -51,13 +51,15 @@ fn rewrite(text: &str, src: &Path) -> Result<String, String> {
             out.push_str("fn upstream_main() -> ExitCode {\n");
             continue;
         }
-        if let Some(name) = t.strip_prefix("mod ").and_then(|r| r.strip_suffix(';')) {
-            if !was_after_path && !line.starts_with(' ') && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                mods += 1;
-                let file = src.join(format!("{name}.rs"));
-                out.push_str(&format!("#[path = {:?}]\n{line}\n", file.display().to_string()));
-                continue;
-            }
+        if let Some(name) = t.strip_prefix("mod ").and_then(|r| r.strip_suffix(';'))
+            && !was_after_path
+            && !line.starts_with(' ')
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            mods += 1;
+            let file = src.join(format!("{name}.rs"));
+            out.push_str(&format!("#[path = {:?}]\n{line}\n", file.display().to_string()));
+            continue;
         }
         if let Some(rel) = t.strip_prefix("#[path = \"").and_then(|r| r.strip_suffix("\"]")) {
             let file = src.join(rel);
