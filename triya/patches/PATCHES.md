@@ -5,7 +5,8 @@ Base: SolidCraft v0.14.0, commit `2bb9c81` (`git diff v0.14.0` → `0001-seams.p
 comments carries `// Modified by Triya CAD 3D: <why>`. JSON has no comment syntax, so the three
 catalog lines are recorded only here.
 
-Re-apply on a new upstream release: `git apply triya/patches/0001-seams.patch` from the repo
+Refresh both patches after changing a seam: `bash triya/ci/refresh-seam-patches.sh` (Triya CI runs it
+with `--check`). Re-apply on a new upstream release: `git apply triya/patches/0001-seams.patch` from the repo
 root, then `cargo update --workspace` (or let cargo regenerate the lock) instead of `0002`.
 
 | # | File | Anchor | Change | Reason |
