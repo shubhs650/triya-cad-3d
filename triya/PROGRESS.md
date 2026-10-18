@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
 **Phase:** 1 — Rebrand + PWA shell · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T1.2. Phase 0 is done except the Pages deploy, which waits on the owner (see Owner decisions).
+**Next task:** T1.3. Phase 0 is done except the Pages deploy, which waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -18,6 +18,7 @@
 | T0.5 | `examples/cylinder.json` → `triya-cli run … --out cyl.step`: STEP 12,602 bytes, one solid; `eval` volume 63,448,965.4 mm³ vs analytic 63,460,171.6 (−0.018 %) | #5 | 18 Oct | Triya CI prints both on every PR |
 | T0.6 | `triya-pages.yml` builds with relative URLs and passes the offline/update test; wasm 38.1 MiB | #6 | 18 Oct | deploy blocked: Pages not enabled (owner) |
 | T1.1 | Web shell finished: Triya mark drawn in code (`triya-brand::mark`, egui wrappers `triya-ui::icons`), 5 PNG exports (32/192/256/512 + 512 maskable) checked pixel-for-pixel by `triya-ui` test `icons`, manifest `purpose`s, og/twitter tags on the Pages host; ATTRIBUTION rows (seam 14) | #7 | 18 Oct | Chrome (CDP `Page.getInstallabilityErrors`, Chromium 1194, persistent profile) reports **no installability errors**; removing the 192 icon gives `no-acceptable-icon`, so the check bites. `sw.js` cache prefix stays `solidcraft-app` (T0.3 decision); web-offline-test runs in Triya CI |
+| T1.2 | Brand in the shells: `triya-ui::about::About` takes over upstream's Help ▸ About (`app.help.about`) and shows the mark, Triya version, `about_text()`, links, attributions and licences; web shell wired; `triya-cli mcp` answers `serverInfo {name: "triya-cad-3d", title: "Triya CAD 3D", version}` through a line-rewriting stdout (`src/triya_mcp.rs`, hooked by a 4th `build.rs` anchor) — no seam; `triya_brand::{VERSION, MCP_SERVER_NAME}`, `HOMEPAGE`/`REPO` point at the real repo and Pages | #8 | 18 Oct | tests: `triya-ui/tests/about.rs` (painted text of the window contains the attribution sentence, not "About SolidCraft"), `triya-cli/tests/cli.rs::mcp_handshake_…`. Update checker: web has `http_get: None` already; desktop in T1.3. The Help menu item still reads "About SolidCraft" (upstream literal; upstream proposal #2) |
 
 ## In progress
 | id | task | branch | started | owner |
@@ -48,6 +49,10 @@
 - 2026-10-18 — VESSEL ribbon tab: keep the dedicated tab (seam rows 6–9); T5.1 fills its panels.
 - 2026-10-18 — Brand mark lives in `triya-brand::mark` (pure Rust, no deps, coverage rasteriser over a unit-square shape list), not in `triya-ui`: the desktop window icon, the About dialog and the PNG exports all draw from it; `triya-ui::icons` wraps it for egui. PNGs are committed (Trunk copies `icons/` before any build script could run) and a test keeps them equal to the code.
 - 2026-10-18 — `ATTRIBUTION.md` becomes seam 14 (one appended section): `cargo xtask assets` reads only that file, and every asset needs a row.
+
+- 2026-10-18 — MCP name without a seam: `triya-cli`'s `build.rs` routes upstream's `Server::serve` output through `triya_mcp::Renamed`, which rewrites only a response carrying `result.serverInfo`; build fails if the anchor `.serve(stdin.lock(), stdout.lock())` disappears.
+- 2026-10-18 — About without a seam: the shells clear `app.help.about` and open Triya's window (`About::intercept` before `app.ui`, `About::show` after). Upstream's menu label is left as is until upstream centralises brand strings.
+- 2026-10-18 — `triya_brand::VERSION = "0.1.0-dev"` is Triya's own version (tags `triya-vX.Y.Z`); crates keep upstream's workspace version 0.14.0.
 
 ## Owner decisions
 | opened | question | status | answer |
@@ -98,3 +103,4 @@
 - 2026-10-18 — T0.2 merged (#2). T0.3 merged (#3): triya-cli tests (commands/run→STEP/eval) and triya-ui test pass on Actions; Triya web shell green after the TRUNK_SOURCE_DIR + cache-name fixes.
 - 2026-10-18 — T0.4 merged (#4). T0.5 (#5): STEP 12,602 B, volume −0.018 %. T0.6 (#6): Pages build and offline test green; deploy waits on Pages being enabled; wasm 38.1 MiB. Phase 0 is done apart from that deploy.
 - 2026-10-18 — Phase 1 started (thread "Phase 1 implementation"); owner-question defaults picked (Decisions). T1.1: code-drawn mark + icons, Chrome reports the web app installable.
+- 2026-10-18 — T1.2: Triya About window and MCP `serverInfo` name, no new seams.
