@@ -1,0 +1,28 @@
+[package]
+name = "triya"
+description = "Triya CAD 3D desktop app: a thin shell around SolidCraft's SolveApp with the vessel commands and Triya branding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# The control server is upstream's file compiled here (src/main.rs `#[path]`); its unit tests stay upstream's.
+[[bin]]
+name = "triya"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+solidcraft-engine = { workspace = true }
+solidcraft-ui-egui = { workspace = true }
+triya-brand = { workspace = true }
+triya-ui = { workspace = true }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11", "links"] }
+egui = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+rfd = { workspace = true }
+getrandom = "0.3"
