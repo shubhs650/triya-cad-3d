@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
-**Phase:** 1 — Rebrand + PWA shell · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T1.5. Phase 0 is done except the Pages deploy, which waits on the owner (see Owner decisions).
+**Phase:** 1 — Rebrand + PWA shell (done) → 2 — Vessel core · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
+**Next task:** T2.1 (Phase 2). Phase 1 (M1) is done once #8–#11 merge. Phase 0 is done except the Pages deploy, which waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -21,6 +21,7 @@
 | T1.2 | Brand in the shells: `triya-ui::about::About` takes over upstream's Help ▸ About (`app.help.about`) and shows the mark, Triya version, `about_text()`, links, attributions and licences; web shell wired; `triya-cli mcp` answers `serverInfo {name: "triya-cad-3d", title: "Triya CAD 3D", version}` through a line-rewriting stdout (`src/triya_mcp.rs`, hooked by a 4th `build.rs` anchor) — no seam; `triya_brand::{VERSION, MCP_SERVER_NAME}`, `HOMEPAGE`/`REPO` point at the real repo and Pages | #8 | 18 Oct | tests: `triya-ui/tests/about.rs` (painted text of the window contains the attribution sentence, not "About SolidCraft"), `triya-cli/tests/cli.rs::mcp_handshake_…`. Update checker: web has `http_get: None` already; desktop in T1.3. The Help menu item still reads "About SolidCraft" (upstream literal; upstream proposal #2) |
 | T1.3 | Desktop shell `triya/apps/triya` (~200 lines): `SolveApp` + `vessel.*` registered + Vessel panel + Triya About; title "Triya CAD 3D", app id `in.openengtools.triya`, window icon from `triya-brand::mark`, own settings folder, OS title bar (`custom_titlebar = false`), `http_get`/`http_download` `None`; upstream's `control_server.rs` compiled unchanged via `#[path]`; layers row `triya` exempt (seam 10) | #9 | 18 Oct | Xvfb run: `xwininfo` shows `"Triya CAD 3D": ("" "in.openengtools.triya")`; control channel `vessel.new` + `vessel.regenerate` built the cylinder; `ui.help about` opened Triya's About (screenshot in the thread). Left out (upstream's, not needed for the beta): Windows native crash filter/resize border, macOS Finder events, Space Mouse, safe-mode counter, API agents/keychain. Upstream chrome still says SolidCraft: app-bar name/logo (`toolbar.rs:247`), start page (`home.rs:359`), Help menu label (owner decision below) |
 | T1.4 | Root `README.md` (quick start for web/desktop/CLI/MCP, port 8782, no commercial-product names, brand-assets note), `NOTICE` (mark provenance), SPDX + copyright headers on every Triya `.rs/.toml/.sh/.js/.html` and the Triya workflows (`manifest.webmanifest.license` sidecar for the JSON); Triya CI's SPDX step now covers those types | #10 | 18 Oct | `cargo xtask assets` green (95 files); `reuse lint-file` over `triya/`: only "missing license MIT/Apache-2.0" (REUSE wants a `LICENSES/` folder; the repo keeps upstream's root `LICENSE-MIT`/`LICENSE-APACHE`, whole-repo `reuse lint` is not a goal). No screenshots committed (PR template: no review artifacts in the tree) |
+| T1.5 | `triya/docs/upstream-proposals.md`: four issue drafts for upstream (command registration slot, brand constants, `space_mouse` test timing with the fix, runtime toolbar tabs), each naming the seam or workaround it would remove | #11 | 18 Oct | owner posts them (AGENTS.md §4) |
 
 ## In progress
 | id | task | branch | started | owner |
@@ -67,6 +68,7 @@
 | 2026-10-18 | Enable GitHub Pages: Settings → Pages → Source = GitHub Actions. On 18 Oct `actions/configure-pages` answered 404 "Get Pages site failed" (run 39124263629), so the repo has no Pages site yet. If the repo is private, Pages needs a paid plan or a public repo. Then re-run `Triya Pages` and the app is at `https://shubhs650.github.io/triya-cad-3d/app/`. | open | |
 | 2026-10-18 | Disable upstream's `Pages` workflow (Settings → Actions → Pages → Disable): it fails on every push to main and would compete with `triya-pages.yml` for the Pages site. | default (agent), owner action | disable (one click by the owner) |
 | 2026-10-18 | Upstream test `apps/solidcraft/src/space_mouse.rs` `each_frame_hands_the_view_its_motion_through_the_drivers_mapping` is timing-dependent: it builds the `Reading` before `SolveApp::new` (~0.5 s on CI) and `STALE_AFTER` is 150 ms, so it fails when startup is slow (red on main 3fa507f, local run; green on #2). Fix = build the reading after `SolveApp::new`; outside the seam whitelist → propose upstream (draft text on request) or accept the occasional re-run. | default (agent) | re-run on flake; issue draft in T1.5 |
+| 2026-10-18 | Post the upstream issue drafts in `triya/docs/upstream-proposals.md` on `tangency-labs/solidcraft` (agents don't post in the owner's name). | open | |
 | 2026-10-18 | Upstream UI chrome still shows "SolidCraft" in the app bar (name + logo, `ui-egui/src/toolbar.rs:247`), the start page title (`home.rs:359`) and the Help menu's "About SolidCraft" label. Options: (a) wait for upstream proposal #2 (brand constants); (b) a 3-line seam: a `pub static APP_NAME: OnceLock<&str>` in `toolbar.rs` read at those sites, set by the Triya shells. | default (agent) | (a) until T7.1; take (b) before the beta tag if upstream hasn't answered |
 | 2026-10-18 | Ribbon: dedicated `VESSEL` tab (keeps 4 seam rows) or commands inside an existing tab (zero UI seams)? Decide by T5.1. | default (agent) | keep the VESSEL tab |
 
@@ -111,3 +113,4 @@
 - 2026-10-18 — T1.2: Triya About window and MCP `serverInfo` name, no new seams.
 - 2026-10-18 — T1.3: desktop shell runs under Xvfb with the Triya title, vessel regenerates over the control channel.
 - 2026-10-18 — T1.4: README/NOTICE/SPDX pass.
+- 2026-10-18 — T1.5: upstream issue drafts written. Phase 1 complete pending merges.
