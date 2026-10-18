@@ -2,9 +2,12 @@
 // Copyright (c) 2026 Triya CAD 3D contributors
 //! Triya CAD 3D headless command line: upstream's `solidcraft-cli` (every subcommand: `run`,
 //! `eval`, `snapshot`, `commands`, `mcp`, …) with the overlay's `vessel.*` commands registered
-//! before the first `Session`. The upstream source is compiled as is (see `build.rs`).
+//! before the first `Session`, and the MCP server reporting `serverInfo.name = "triya-cad-3d"`
+//! ([`triya_mcp`]). The upstream source is compiled as is (see `build.rs`).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
+
+mod triya_mcp;
 
 include!(concat!(env!("OUT_DIR"), "/upstream_cli.rs"));
 

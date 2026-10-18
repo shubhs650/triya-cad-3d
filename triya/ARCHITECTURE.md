@@ -55,7 +55,9 @@ around `SolveApp`, so `triya/apps/triya` sets the window title, draws About and 
 panels **around** `SolveApp::ui` with the pub API (`frame::window`, `theme::Tokens`,
 `app.run/start/set_status/session`); the web shell is a copy (`index.html`, manifest, `sw.js`,
 icons, `Trunk.toml`); MCP `serverInfo.name` (`crates/mcp/src/server.rs:145`) is set by the
-`triya-cli` wrapper if the constructor allows, otherwise it becomes one more seam row. The desktop
+`triya-cli` wrapper: the constructor has no name parameter, so `build.rs` hands `Server::serve` a
+stdout that rewrites `serverInfo` in the `initialize` answer (`triya-cli/src/triya_mcp.rs`, no seam).
+About: the shells take over upstream's `app.help.about` request and show `triya_ui::about::About`. The desktop
 update checker polls `bherbruck/solidcraft` releases unless `Services::http_get` is `None` — the
 Triya shells pass `None`.
 

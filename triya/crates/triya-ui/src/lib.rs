@@ -13,10 +13,12 @@
 //!   a text box and New / Apply / Regenerate buttons. It reads engine state and acts only through
 //!   `app.run(id, params)`, like every upstream panel.
 //! - [`about_text`]: the brand and attribution sentence for the app shell's About page.
+//! - [`about::About`]: the About window, which takes over upstream's Help ▸ About.
 //! - [`icons`]: the code-drawn Triya mark as egui images and the window icon.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
+pub mod about;
 pub mod icons;
 
 use egui::RichText;

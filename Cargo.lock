@@ -4537,6 +4537,7 @@ dependencies = [
  "solidcraft-engine",
  "solidcraft-gpu",
  "solidcraft-mcp",
+ "triya-brand",
  "triya-vessel",
 ]
 

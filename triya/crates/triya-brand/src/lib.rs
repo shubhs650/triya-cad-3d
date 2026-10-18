@@ -15,10 +15,15 @@ pub const APP_NAME: &str = "Triya CAD 3D";
 pub const APP_ID: &str = "in.openengtools.triya";
 /// The organisation that publishes Triya CAD 3D.
 pub const ORG: &str = "Open Engineering Tools";
-/// The product's home page.
-pub const HOMEPAGE: &str = "https://openengtools.com";
+/// Triya CAD 3D's own version (the `triya-vX.Y.Z` tag it is released as). The crates keep
+/// upstream's workspace version, which says which SolidCraft release is underneath.
+pub const VERSION: &str = "0.1.0-dev";
+/// The product's home page (the GitHub Pages site for the beta; PROGRESS.md "Decisions").
+pub const HOMEPAGE: &str = "https://shubhs650.github.io/triya-cad-3d/";
 /// The product's source repository.
-pub const REPO: &str = "https://github.com/openengtools/triya-cad-3d";
+pub const REPO: &str = "https://github.com/shubhs650/triya-cad-3d";
+/// The name the MCP server reports in `serverInfo.name` (`triya-cli mcp`).
+pub const MCP_SERVER_NAME: &str = "triya-cad-3d";
 /// The upstream project Triya CAD 3D is a downstream fork of.
 pub const UPSTREAM_NAME: &str = "SolidCraft";
 /// The upstream release this overlay was built against.

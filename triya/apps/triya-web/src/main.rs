@@ -78,6 +78,7 @@ mod web {
         space_mouse: SpaceMouse,
         /// Triya CAD 3D: the Vessel panel (shown while the VESSEL tab is active).
         vessel: triya_ui::VesselPanel,
+        about: triya_ui::about::About,
     }
 
     impl Shell {
@@ -404,9 +405,13 @@ mod web {
             self.app.raw_input_hook(raw);
         }
         fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+            // Triya's About replaces upstream's (Help ▸ About): a request from the last frame is taken
+            // before the app draws, one made while it draws right after.
+            self.about.intercept(&mut self.app);
             self.app.ui(ui);
             let ctx = ui.ctx().clone();
             self.vessel.show(&mut self.app, &ctx);
+            self.about.show(&mut self.app, &ctx);
             self.file_panel(&ctx);
             self.recovery_prompt(&ctx);
             self.watch_text_for_font(&ctx);
@@ -539,6 +544,7 @@ mod web {
                             font_result: Rc::new(std::cell::RefCell::new(None)),
                             space_mouse: SpaceMouse::default(),
                             vessel: triya_ui::VesselPanel::default(),
+                            about: triya_ui::about::About::default(),
                         }))
                     }),
                 )

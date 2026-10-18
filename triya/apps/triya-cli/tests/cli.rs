@@ -42,3 +42,34 @@ fn eval_measures_the_example_cylinder() {
     let text = v.to_string();
     assert!(text.contains("Vessel S1"), "{text}");
 }
+
+#[test]
+fn mcp_handshake_reports_triya_and_lists_the_vessel_commands() {
+    use std::io::Write;
+    let mut child = cli()
+        .arg("mcp")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        // Two requests in one write, the second split across writes, then EOF ends the server.
+        stdin
+            .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"t\",\"version\":\"0\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n")
+            .unwrap();
+        stdin.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"resources/read\",").unwrap();
+        stdin.write_all(b"\"params\":{\"uri\":\"solidcraft://commands\"}}\n").unwrap();
+    }
+    let out = child.wait_with_output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut lines = text.lines();
+    let init: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    let info = &init["result"]["serverInfo"];
+    assert_eq!(info["name"], "triya-cad-3d", "{init}");
+    assert_eq!(info["title"], "Triya CAD 3D");
+    assert_eq!(info["version"], triya_brand::VERSION);
+    let commands = lines.next().unwrap();
+    assert!(commands.contains("vessel.regenerate"), "{commands}");
+}
