@@ -54,7 +54,7 @@ which must state both ends).
 
 | `kind` | specific fields | geometry (profile revolved 360° about the axis) |
 |---|---|---|
-| `skirt` | `height_mm`, `base_ring {od_mm, id_mm, thickness_mm}`, `top_offset_mm?` (distance below the bottom tangent line where the skirt meets the head, default 0 → attaches at TL) | cylinder + base annulus |
+| `skirt` | `height_mm` (from the underside of the base ring to the skirt's top), `base_ring {od_mm, id_mm, thickness_mm}`, `top_offset_mm?` (distance below the bottom tangent line where the skirt meets the head, default 0 → attaches at TL); first element only; without `diameter_mm` its OD is the bottom head's OD | cylinder + base annulus |
 | `cylinder` | `length_mm` | rectangle (ID and OD lines) |
 | `head` | `preset` (§3.1), `straight_flange_mm` (default per preset: ≥ 3t), `crown_radius_mm?`, `knuckle_radius_mm?` (override), `orientation` = `up`·`down` (auto from position) | SF line → knuckle arc → crown arc, inside and outside curves |
 | `cone` | `length_mm` (axial), `diameter_small_mm`, `diameter_large_mm`, `knuckle_large_mm?`, `knuckle_small_mm?` (toriconical when > 0) | trapezoid ± knuckle arcs; warning when half-apex > 30° |
@@ -78,6 +78,17 @@ Inside curve: SF of length `straight_flange_mm` at radius D/2; knuckle arc centr
 computes both centres and the tangency point; tests cover the DIN worked examples within 0.5 mm
 and state which convention — exact geometry — is used). Outside curve: same construction with
 D + 2t, r + t, L + t.
+
+### 3.2 Resolution (`triya-vessel::eval`, T2.2)
+Stations run in document order; a head's station spans its seam to the inside of its crown, with
+the tangent line (TL) where the straight flange meets the knuckle (bottom head: `z_to − SF`; top
+head: `z_from + SF`). Datums: `bottom_tl`/`left_tl` = bottom (left) TL, `bottom_seam` = end of the
+bottom head's straight flange, `skirt_base` = underside of the base ring, `plant_elevation` =
+grade with the bottom TL at `plant_elevation_mm`. A cone's end nearer the inherited diameter comes
+first and the next element inherits its far end; a near-end mismatch > 0.5 mm and a half-apex
+angle > 30° (measured along the knuckle-tangent line) are warnings. Cone knuckles are inside radii;
+a small-end knuckle must exceed the wall thickness. ASME F&D's knuckle is `max(0.06 D, 3 t)`;
+default straight flanges are 3.5 s (Klöpper) and 3 t (others).
 
 ## 4. `attachments[]`
 Common fields:

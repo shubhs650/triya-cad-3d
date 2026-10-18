@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
 **Phase:** 2 — Vessel core · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T2.2 (evaluator). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
+**Next task:** T2.3 (head/cone/cover emitter). Phases 0 and 1 are done (#2–#11); the Pages deploy waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -23,6 +23,7 @@
 | T1.4 | Root `README.md` (quick start for web/desktop/CLI/MCP, port 8782, no commercial-product names, brand-assets note), `NOTICE` (mark provenance), SPDX + copyright headers on every Triya `.rs/.toml/.sh/.js/.html` and the Triya workflows (`manifest.webmanifest.license` sidecar for the JSON); Triya CI's SPDX step now covers those types | #10 | 18 Oct | `cargo xtask assets` green (95 files); `reuse lint-file` over `triya/`: only "missing license MIT/Apache-2.0" (REUSE wants a `LICENSES/` folder; the repo keeps upstream's root `LICENSE-MIT`/`LICENSE-APACHE`, whole-repo `reuse lint` is not a goal). No screenshots committed (PR template: no review artifacts in the tree) |
 | T1.5 | `triya/docs/upstream-proposals.md`: four issue drafts for upstream (command registration slot, brand constants, `space_mouse` test timing with the fix, runtime toolbar tabs), each naming the seam or workaround it would remove | #11 | 18 Oct | owner posts them (AGENTS.md §4) |
 | T2.1 | `triya.vessel/0.1` model complete per `docs/vessel-schema.md` (every element/attachment kind, frame, design data, notes, revisions, `extra`, unknown top-level fields kept); `schemars` schema checked in at `triya/crates/triya-vessel/vessel-schema.json` (test `schema_file_is_current`); reference vessels A/B/C + `every-kind.json` in `triya-vessel/tests/reference/` | #12 | 18 Oct | AT `reference_vessels_round_trip`: every input field survives, second trip stable, all 6 element kinds, 10 attachment kinds and 6 frames covered; also `documents_that_break_the_rules_are_refused`, `reference_vessel_survives_the_design_file`. Evaluator/emitter only ported (T2.2/T2.3 rewrite them) |
+| T2.2 | Evaluator: datums (bottom TL / bottom seam / skirt base / plant elevation / left TL), stations with TLs, skirt hung below the bottom TL (OD = head OD by default), diameter inheritance stopping at cones, ID/OD basis, `radius_at(z)` through heads and toriconical knuckles, warnings (cone > 30°, joint mismatch) | #13 | 18 Oct | AT `stations_of_a_seven_element_vertical_vessel_match_hand_calc` (vessel A, E6 F&D depth 372.543, cone half-apex 21.00° with the knuckle); `head_depths_match_the_din_worked_examples` (exact 188.89 / 248.26 vs DIN fits 188.95 / 248.65, within 0.5 mm); datum, inheritance, outside-basis tests |
 
 ## In progress
 | id | task | branch | started | owner |
@@ -65,6 +66,9 @@
 - 2026-10-18 — Schema gaps filled (doc silent): a body flange's dimensions go under `explicit {…}` (exactly one of `flange_ref` / `explicit`); `flange_ref.class` takes `150` or `"PN10"`; nozzle `flange` is optional (couplings); a limpet coil takes exactly one of `turns` / `end_axial_mm`; `left_tl` ⇔ horizontal.
 - 2026-10-18 — Caps set in T2.1 with the rewrite: 200 elements, 500 attachments (PLAN T2.6 tests them), counts 1…1000, text ≤ 4 KiB.
 - 2026-10-18 — Reference vessel B's cylinder is 4930 long so that TL–TL is the DoD's 5000 with two 35 mm straight flanges; vessel A's skirt states no diameter (T2.2 defaults a skirt's OD to the bottom head's OD).
+
+- 2026-10-18 — T2.2: the tangent line is the knuckle/straight-flange junction, not the head seam (the skeleton put datum zero at the seam); `bottom_seam` is the seam. Head depths use the exact geometry, not DIN's linear fits (difference 0.06 / 0.39 mm at Da 1000 / s 10, documented in `eval.rs`).
+- 2026-10-18 — T2.2: a cone's half-apex angle is measured on the straight line tangent to its knuckles (vessel A E4: 21.00°, vs 20.56° for the bare trapezoid); knuckle radii are inside radii.
 
 ## Owner decisions
 | opened | question | status | answer |

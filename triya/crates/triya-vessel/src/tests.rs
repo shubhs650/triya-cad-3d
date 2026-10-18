@@ -64,12 +64,13 @@ fn heads_cones_and_attachments_are_not_supported_yet_but_resolve() {
     doc.global.datum = crate::model::Datum::BottomTl;
     let r = eval::resolve(&doc).unwrap();
     let h = r.station("H1").unwrap();
-    assert!((h.z_from + 290.0).abs() < 1e-9 && h.z_to.abs() < 1e-9, "{h:?}");
-    assert_eq!(r.station("S1").map(|s| (s.z_from, s.z_to)), Some((0.0, 2000.0)));
+    // The datum is the tangent line: the dish below it, the straight flange above.
+    assert!((h.z_from + 250.0).abs() < 1e-9 && (h.z_to - 40.0).abs() < 1e-9 && h.tl == Some(0.0), "{h:?}");
+    assert_eq!(r.station("S1").map(|s| (s.z_from, s.z_to)), Some((40.0, 2040.0)));
     // The head's radius: full in the straight flange, the semi-ellipse's at its crown.
-    assert!((r.radius_at(-20.0).unwrap() - 500.0).abs() < 1e-9);
-    assert!(r.radius_at(-289.9).unwrap() < 20.0);
-    assert!((r.radius_at(-40.0 - 125.0).unwrap() - 500.0 * (0.75f64).sqrt()).abs() < 1e-6);
+    assert!((r.radius_at(20.0).unwrap() - 500.0).abs() < 1e-9);
+    assert!(r.radius_at(-249.9).unwrap() < 20.0);
+    assert!((r.radius_at(-125.0).unwrap() - 500.0 * (0.75f64).sqrt()).abs() < 1e-6);
     let e = emit::plan(&r).unwrap_err();
     assert!(matches!(e, crate::VesselError::NotSupportedYet(_)), "{e}");
 
@@ -398,4 +399,189 @@ fn schema_file_is_current() {
     let schema: Value = serde_json::from_str(&on_disk).unwrap();
     assert_eq!(schema["title"], json!("VesselDoc"));
     assert!(on_disk.contains("\"ellipsoidal_2_1_ug32_approx\"") && on_disk.contains("\"head_radial_at_r\""));
+}
+
+// ---------------------------------------------------------------------------------------------
+// T2.2: the evaluator
+
+fn reference(i: usize) -> VesselDoc {
+    VesselDoc::from_json(REFERENCE[i].1).unwrap()
+}
+
+fn close(a: f64, b: f64, tol: f64) -> bool {
+    (a - b).abs() <= tol
+}
+
+/// PLAN T2.2: vessel A's seven elements against a hand calculation (datum: bottom TL).
+///
+/// E1 2:1 head ID 1600: dish 400, SF 40 → −400 … 40, TL 0. E2 40 … 3040, E3 3040 … 5540,
+/// E4 cone 5540 … 6340 (r 800 → 1100), E5 6340 … 8340. E6 ASME F&D on ID 2200 (L 2200,
+/// r = max(0.06·2200, 3·14) = 132): h = 2200 − √(2068² − 968²) = 372.543; SF 50 → TL 8390,
+/// crown 8762.543. E0 skirt: top at the TL, 2500 down, OD = the head's OD 1624 → r_i 802.
+#[test]
+fn stations_of_a_seven_element_vertical_vessel_match_hand_calc() {
+    let r = eval::resolve(&reference(0)).unwrap();
+    let got: Vec<(&str, f64, f64, f64, f64)> = r.stations.iter().map(|s| (s.id.as_str(), s.z_from, s.z_to, s.r_from, s.r_to)).collect();
+    let h6 = 2200.0 - (2068.0f64.powi(2) - 968.0f64.powi(2)).sqrt();
+    assert!(close(h6, 372.543, 1e-3), "{h6}");
+    let want = [
+        ("E0", -2500.0, 0.0, 802.0, 802.0),
+        ("E1", -400.0, 40.0, 800.0, 800.0),
+        ("E2", 40.0, 3040.0, 800.0, 800.0),
+        ("E3", 3040.0, 5540.0, 800.0, 800.0),
+        ("E4", 5540.0, 6340.0, 800.0, 1100.0),
+        ("E5", 6340.0, 8340.0, 1100.0, 1100.0),
+        ("E6", 8340.0, 8390.0 + h6, 1100.0, 1100.0),
+    ];
+    assert_eq!(got.len(), want.len());
+    for (g, w) in got.iter().zip(want) {
+        assert_eq!(g.0, w.0);
+        for (a, b) in [(g.1, w.1), (g.2, w.2), (g.3, w.3), (g.4, w.4)] {
+            assert!(close(a, b, 1e-6), "{}: got {g:?}, want {w:?}", w.0);
+        }
+    }
+    assert_eq!(r.tl_bottom, Some(0.0));
+    assert!(close(r.tl_top.unwrap(), 8390.0, 1e-9));
+    assert!(close(r.tl_to_tl().unwrap(), 8390.0, 1e-9));
+    assert!(close(r.z_min, -2500.0, 1e-9) && close(r.z_max, 8390.0 + h6, 1e-6));
+    // The skirt is outside the pressure envelope: at −100 the radius is the bottom head's.
+    assert!(r.radius_at(-100.0).unwrap() < 800.0);
+    // The toriconical cone: half-apex from the knuckle-tangent line, 21.00° (20.56° without the
+    // knuckle), no warning below 30°.
+    let cone = r.station("E4").unwrap();
+    assert!(close(cone.half_apex_deg.unwrap(), 21.002, 1e-3), "{:?}", cone.half_apex_deg);
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+    // radius_at along the cone: the cylinder's at the large end, tangent knuckle, the line, the small end.
+    assert!(close(r.radius_at(6340.0).unwrap(), 1100.0, 1e-6));
+    assert!(close(cone.radius_at(5540.0).unwrap(), 800.0, 1e-6));
+    let mut last = 0.0;
+    for i in 0..=100 {
+        let x = cone.radius_at(5540.0 + 8.0 * f64::from(i)).unwrap();
+        assert!(x >= last - 1e-9, "the cone widens monotonically");
+        last = x;
+    }
+}
+
+#[test]
+fn datums_move_the_zero() {
+    let mut doc = reference(0);
+    let tl = |doc: &VesselDoc| eval::resolve(doc).unwrap().tl_bottom.unwrap();
+    doc.global.datum = crate::model::Datum::BottomSeam;
+    assert!(close(tl(&doc), -40.0, 1e-9));
+    doc.global.datum = crate::model::Datum::SkirtBase;
+    assert!(close(tl(&doc), 2500.0, 1e-9));
+    doc.global.datum = crate::model::Datum::PlantElevation;
+    assert!(close(tl(&doc), 300.0, 1e-9), "the bottom TL reads plant_elevation_mm");
+    // Without a skirt, skirt_base is an error.
+    let mut c = reference(2);
+    c.global.datum = crate::model::Datum::SkirtBase;
+    assert!(eval::resolve(&c).is_err());
+    // A horizontal vessel: left TL at 0, TL–TL 5000 (vessel B).
+    let b = eval::resolve(&reference(1)).unwrap();
+    assert_eq!(b.orientation, crate::model::Orientation::Horizontal);
+    assert_eq!(b.tl_bottom, Some(0.0));
+    assert!(close(b.tl_to_tl().unwrap(), 5000.0, 1e-9), "{:?}", b.tl_to_tl());
+}
+
+/// A change of E2's diameter flows to E3 and to the cone's near end, and stops there.
+#[test]
+fn diameter_inheritance_stops_at_the_cone() {
+    let mut doc = reference(0);
+    doc.elements[2].diameter_mm = Some(1500.0);
+    let r = eval::resolve(&doc).unwrap();
+    assert_eq!(r.station("E3").map(|s| s.r_from), Some(750.0));
+    assert_eq!(r.station("E5").map(|s| s.r_from), Some(1100.0));
+    assert_eq!(r.station("E6").map(|s| s.r_from), Some(1100.0));
+    assert!(r.warnings.iter().any(|w| w.contains("E4") && w.contains("does not meet")), "{:?}", r.warnings);
+    // E5 without a diameter inherits the cone's far end.
+    let mut doc = reference(0);
+    doc.elements[5].diameter_mm = None;
+    assert_eq!(eval::resolve(&doc).unwrap().station("E5").map(|s| s.r_from), Some(1100.0));
+    // The first shell element must state its diameter.
+    let mut doc = reference(2);
+    doc.elements[0].diameter_mm = None;
+    assert!(eval::resolve(&doc).is_err());
+}
+
+#[test]
+fn outside_basis_and_steep_cones() {
+    let mut doc = VesselDoc::cylinder("S1", 1020.0, 10.0, 1000.0);
+    doc.global.diameter_basis = crate::model::DiameterBasis::Outside;
+    doc.elements.push(Element {
+        id: "K1".into(),
+        kind: ElementKind::Cone {
+            length_mm: 200.0,
+            diameter_small_mm: 420.0,
+            diameter_large_mm: 1020.0,
+            knuckle_large_mm: None,
+            knuckle_small_mm: None,
+        },
+        thickness_mm: 10.0,
+        diameter_mm: None,
+        material: None,
+        description: None,
+    });
+    let r = eval::resolve(&doc).unwrap();
+    assert_eq!(r.station("S1").map(|s| s.r_from), Some(500.0));
+    assert_eq!(r.station("K1").map(|s| (s.r_from, s.r_to)), Some((500.0, 200.0)));
+    // atan(300 / 200) = 56.3°: warned.
+    assert!(r.warnings.iter().any(|w| w.contains("half-apex")), "{:?}", r.warnings);
+    assert!(r.tl_bottom.is_none() && r.tl_top.is_none());
+}
+
+/// DIN worked examples (Da 1000, s 10): the exact geometry Triya uses is within 0.5 mm of the
+/// published fits h2 = 0.1935 Da − 0.455 s = 188.95 (Klöpper) and 0.255 Da − 0.635 s = 248.65
+/// (Korbbogen); exact: 188.89 and 248.26.
+#[test]
+fn head_depths_match_the_din_worked_examples() {
+    for (preset, fit, exact) in [(HeadPresetId::KloepperDin28011, 188.95, 188.889), (HeadPresetId::KorbbogenDin28013, 248.65, 248.26)] {
+        let mut doc = VesselDoc::cylinder("S1", 1000.0, 10.0, 500.0);
+        doc.global.diameter_basis = crate::model::DiameterBasis::Outside;
+        let mut h = head("H1", preset, Some(35.0));
+        h.diameter_mm = None;
+        doc.elements.push(h);
+        let r = eval::resolve(&doc).unwrap();
+        let st = r.station("H1").unwrap();
+        let crate::eval::Profile::Head { dish, sf, .. } = st.profile else { panic!("{:?}", st.profile) };
+        assert!(close(dish, fit, 0.5), "{preset:?}: {dish} vs DIN {fit}");
+        assert!(close(dish, exact, 0.01), "{preset:?}: {dish} vs exact {exact}");
+        assert_eq!(sf, 35.0);
+        assert!(close(st.length(), 35.0 + dish, 1e-9));
+    }
+    // The default straight flange: 3.5 s for Klöpper, 3 t otherwise.
+    let mut doc = VesselDoc::cylinder("S1", 1000.0, 10.0, 500.0);
+    doc.elements.push(head("H1", HeadPresetId::KloepperDin28011, None));
+    doc.elements.push(head("H0", HeadPresetId::AsmeFd, None));
+    assert!(eval::resolve(&doc).is_err(), "two heads at the top");
+    doc.elements.pop();
+    doc.elements.insert(0, head("H0", HeadPresetId::AsmeFd, None));
+    let r = eval::resolve(&doc).unwrap();
+    let sf = |id: &str| match r.station(id).map(|s| s.profile) {
+        Some(crate::eval::Profile::Head { sf, .. }) => sf,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!((sf("H0"), sf("H1")), (30.0, 35.0));
+    // ASME F&D's knuckle is at least 3 t: ID 200, t 10 → r = 30, not 12.
+    let (shape, _) = eval::head_dish(HeadPresetId::AsmeFd, 200.0, 10.0, None, None).unwrap();
+    assert_eq!(shape, crate::eval::HeadShape::Torispherical { crown_r: 200.0, knuckle_r: 30.0 });
+}
+
+#[test]
+fn heads_in_the_wrong_place_are_errors() {
+    let mut doc = reference(2);
+    doc.elements.swap(1, 2);
+    assert!(eval::resolve(&doc).is_err(), "a head in the middle");
+    let mut doc = reference(2);
+    if let ElementKind::Head { orientation, .. } = &mut doc.elements[0].kind {
+        *orientation = Some(crate::model::HeadOrientation::Up);
+    }
+    assert!(eval::resolve(&doc).is_err(), "a bottom head pointing up");
+    let mut doc = reference(0);
+    doc.elements.push(doc.elements[0].clone());
+    doc.elements.last_mut().unwrap().id = "E9".into();
+    assert!(eval::resolve(&doc).is_err(), "a second skirt");
+    // Every reference vessel resolves.
+    for (name, text) in REFERENCE {
+        eval::resolve(&VesselDoc::from_json(text).unwrap()).unwrap_or_else(|e| panic!("{name}: {e}"));
+    }
 }
