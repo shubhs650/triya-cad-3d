@@ -99,7 +99,7 @@ fn body_name(st: &Station) -> String {
 }
 
 /// The commands that draw one segment in the active sketch.
-fn draw(seg: &Seg) -> CommandCall {
+pub(crate) fn draw(seg: &Seg) -> CommandCall {
     match *seg {
         Seg::Line(a, b) => CommandCall { id: "sketch.line".into(), params: json!({"points": [a, b]}) },
         Seg::Arc { c, a, b } => {
