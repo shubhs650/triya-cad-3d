@@ -182,6 +182,7 @@
 | example cylinder measured volume (`triya-cli eval`) | 63,448,965.4 mm³ vs 63,460,171.6 analytic (−0.018 %) | 18 Oct | same run; tessellation-based measure |
 | reference vessel A shell regenerate (native, no nozzles) | 18 s | 18 Oct | 4-core container, test profile |
 | reference vessel A with six nozzles (native) | 953 s; N1 fallback alone 464–592 s, N4 247 s, N5 52 s | 18 Oct | failing booleans dominate; wasm target < 10 s not met (Phase 4 must not regenerate on every edit) |
+| Vessel panel Regenerate, vessel A without N1/N4 (desktop app, dev profile, Xvfb) | 311 s off the window thread; the window kept drawing, the progress bar counted 11 stages | 19 Oct | screenshots `screenshots/phase5/` (project files) |
 | T5.5 synthetic 10-nozzle vessel (panel actions) | 46 actions from `vessel.new {}`; at ~15 s per typed field ≈ 12 min to model | 19 Oct | `phase5_exit.rs`; regenerate excluded (runs in the background with progress) |
 
 ## Log (append-only)
