@@ -163,6 +163,27 @@ closed form (0.5 %); a part the kernel cannot build is left out with a warning a
   diameter + 6 mm in a row across, midway between the web and the plate's +axis edge; the wear
   plate (a cylinder sector on the shell, inside radius = shell OD/2, `width_mm` along the axis,
   `angle_deg` about the bottom). Two saddles are two attachments (`axial` from `left_tl`).
+- `leg` (T4.2): vertical vessels; `count` legs evenly from `start_angle_deg` (or `angle_deg` when
+  that is 0). `section.pipe` from B36.10 (a tube, bored); `section.angle` read from its size
+  (`ISA 100x100x10` → 100 × 100 × 10), heel toward the vessel at the shell OD, flanges at ±45°
+  from the radial; `section.channel` is not built in the beta (no open channel table).
+  `attach: shell`: the leg's top at `axial`, a pipe tangent to the shell's outside;
+  `attach: head` (host = a head): the leg's outer face on the head's inside radius, its top square
+  at the head's outside under the leg's inner edge (a head-moulded top builds — the pipe cut by
+  the crown's sphere — but took the kernel ~70 s a leg, so it is drawn on the sheet instead).
+  `length_mm` runs down from the top; `base_plate` is centred under each leg, its edges along the
+  radial and the tangent. Bodies `Vessel <id> leg <n>`, `… leg <n> base plate`.
+- `bracket` (T4.2): vertical vessels; `count` brackets evenly from `angle_deg`, `axial` = the top
+  of the top plate. Top plate `len_mm` out from the shell OD × `wid_mm` across; two gussets under
+  it flush with its sides, `width_mm` out at the top, `height_mm` down, narrowing to the bottom
+  plate's `wid_mm` (a triangle without one); bottom plate `wid_mm` out × `len_mm` across under the
+  gussets; `bolt_holes` in the top plate, outboard of the gussets when the plate overhangs them
+  by a hole + 10 mm, else between them. Bodies `Vessel <id> <n> gusset a|b`, `… top plate`,
+  `… bottom plate`.
+- `anchor_chair` (T4.2): on a skirt with a base ring; `count` chairs evenly from `angle_deg` on
+  the base ring's top: two gussets `gusset_thk_mm` at ±(`width_mm` − gusset)/2 from the skirt OD
+  to the ring OD, a top plate `top_plate_thk_mm` at `height_mm` above the ring with a hole of
+  `bolt_dia_mm` + 6 on the bolt circle midway between the skirt OD and the ring OD.
 
 ### 4.2 Kinds
 | kind | fields |

@@ -597,6 +597,7 @@ fn build_nozzle(
 fn build_support(s: &mut Session, g: &support::SupportGeom, features: &mut Vec<u64>, steps: &mut Vec<Value>) -> Value {
     let mut built: Vec<&support::Part> = Vec::new();
     let mut why: Vec<String> = Vec::new();
+    let mut degraded = false;
     let mut trial = s.scratch();
     let (mut f, mut st) = (Vec::new(), Vec::new());
     let all = g.parts.iter().try_for_each(|p| run_calls(&mut trial, &p.calls, &mut f, &mut st));
@@ -606,17 +607,27 @@ fn build_support(s: &mut Session, g: &support::SupportGeom, features: &mut Vec<u
         steps.extend(st);
         built.extend(g.parts.iter());
     } else {
-        for p in &g.parts {
-            let mut trial = s.scratch();
-            let (mut f, mut st) = (Vec::new(), Vec::new());
-            match run_calls(&mut trial, &p.calls, &mut f, &mut st) {
-                Ok(()) => {
-                    s.accept_computed(trial);
-                    features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
-                    steps.extend(st);
-                    built.push(p);
+        for first in &g.parts {
+            // The part, else its simpler fallbacks in turn.
+            let mut next = Some(first);
+            while let Some(p) = next {
+                let mut trial = s.scratch();
+                let (mut f, mut st) = (Vec::new(), Vec::new());
+                match run_calls(&mut trial, &p.calls, &mut f, &mut st) {
+                    Ok(()) => {
+                        s.accept_computed(trial);
+                        features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
+                        steps.extend(st);
+                        if !std::ptr::eq(p, first) {
+                            degraded = true;
+                            why.push(format!("{} built as {}", p.name, p.what));
+                        }
+                        built.push(p);
+                        break;
+                    }
+                    Err(e) => why.push(format!("{}: {e}", p.name)),
                 }
-                Err(e) => why.push(format!("{}: {e}", p.name)),
+                next = p.fallback.as_deref();
             }
         }
     }
@@ -631,7 +642,7 @@ fn build_support(s: &mut Session, g: &support::SupportGeom, features: &mut Vec<u
         parts.push(json!({"name": p.name, "what": p.what, "expected_mm3": p.volume, "measured_mm3": measured}));
     }
     let state = match built.len() {
-        n if n == g.parts.len() => "built",
+        n if n == g.parts.len() && !degraded => "built",
         0 => "none",
         _ => "partly",
     };

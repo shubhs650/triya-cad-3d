@@ -38,9 +38,9 @@ use std::f64::consts::PI;
 use triya_stdlib::TableSet;
 
 use crate::emit::{CommandCall, Param, REF, Seg, ident, parameter_prefix};
-use crate::eval::{Profile, Resolved, Station};
-use crate::model::{Attachment, AttachmentKind, AxialRef, Orientation, VesselDoc};
-use crate::nozzle::{V3, add, mul};
+use crate::eval::{Detail, Profile, Resolved, Station};
+use crate::model::{Attachment, AttachmentKind, AxialRef, LegAttach, LegSection, Orientation, VesselDoc};
+use crate::nozzle::{V3, add, azimuth, cross, mul, sub, vessel_axis};
 use crate::{Result, VesselError};
 
 /// At most this many bodies per attachment (a hostile document cannot make thousands).
@@ -59,6 +59,8 @@ pub struct Part {
     pub calls: Vec<CommandCall>,
     /// mm³, computed without the kernel.
     pub volume: f64,
+    /// A simpler body to build in its place when the kernel fails on this one.
+    pub fallback: Option<Box<Part>>,
 }
 
 /// A support or detail, resolved.
@@ -168,7 +170,7 @@ pub fn plate(name: &str, what: &str, origin: V3, x: V3, y: V3, segs: &[Seg], thk
             "operation": "new", "name": name, "body_name": name}),
     });
     let (a, _) = area_moment(segs);
-    Part { name: name.into(), what: what.into(), calls, volume: a * thk }
+    Part { name: name.into(), what: what.into(), calls, volume: a * thk, fallback: None }
 }
 
 /// A ring (or a sector of one, `angle_deg` < 360 centred on `radial`): `segs` in (distance from
@@ -187,7 +189,7 @@ pub fn ring(name: &str, what: &str, axis: V3, radial: V3, segs: &[Seg], angle_de
     }
     calls.push(CommandCall { id: "solid.revolve".into(), params: p });
     let (_, m) = area_moment(segs);
-    Part { name: name.into(), what: what.into(), calls, volume: m * angle_deg.to_radians() }
+    Part { name: name.into(), what: what.into(), calls, volume: m * angle_deg.to_radians(), fallback: None }
 }
 
 /// A hole of `dia` through a plate part, along `dir` from `from` over `len` (with 1 mm to spare
@@ -215,7 +217,7 @@ pub fn body_name(id: &str, part: &str) -> String {
 }
 
 /// Attachment `a` (not a nozzle) of `doc`, against the resolved stack.
-pub fn resolve(doc: &VesselDoc, r: &Resolved, a: &Attachment, _tables: &TableSet) -> Result<SupportGeom> {
+pub fn resolve(doc: &VesselDoc, r: &Resolved, a: &Attachment, tables: &TableSet) -> Result<SupportGeom> {
     let host = r.station(&a.host).ok_or_else(|| invalid(a, format!("no element `{}`", a.host)))?;
     let mut g = SupportGeom {
         id: a.id.clone(),
@@ -228,6 +230,9 @@ pub fn resolve(doc: &VesselDoc, r: &Resolved, a: &Attachment, _tables: &TableSet
     };
     match &a.kind {
         AttachmentKind::Saddle { .. } => saddle(doc, r, a, host, &mut g)?,
+        AttachmentKind::Leg { .. } => legs(doc, r, a, host, tables, &mut g)?,
+        AttachmentKind::Bracket { .. } => bracket(doc, r, a, host, &mut g)?,
+        AttachmentKind::AnchorChair { .. } => anchor_chair(doc, a, host, &mut g)?,
         AttachmentKind::Nozzle { .. } => return Err(invalid(a, "nozzles are built by `nozzle`")),
         other => return Err(VesselError::NotSupportedYet(format!("{} `{}`", other.name(), a.id))),
     }
@@ -397,4 +402,429 @@ fn saddle(doc: &VesselDoc, r: &Resolved, a: &Attachment, host: &Station, g: &mut
 /// 1e-4 on these bodies; 0.5 % flags a kernel result that is wrong, not one that is coarse.
 pub fn tolerance(expected: f64) -> f64 {
     0.005 * expected.abs() + 1.0
+}
+
+/// The local frame of an attachment at azimuth `deg`: the vessel axis, the outward radial and
+/// the circumferential tangent (`axis × radial`).
+fn frame_at(doc: &VesselDoc, deg: f64) -> (V3, V3, V3) {
+    let ax = vessel_axis(doc.global.orientation);
+    let u = azimuth(&doc.global, deg);
+    (ax, u, cross(ax, u))
+}
+
+/// `count` azimuths evenly from `start` (degrees).
+fn azimuths(start: f64, count: u32) -> Vec<f64> {
+    (0..count).map(|k| start + 360.0 * f64::from(k) / f64::from(count.max(1))).collect()
+}
+
+/// The host's outside radius at `z` (heads and cones from their surfaces), `None` off the host.
+pub fn outside_radius(st: &Station, z: f64) -> Option<f64> {
+    match (st.kind, st.profile) {
+        ("cylinder" | "skirt" | "body_flange", Profile::Straight) => Some(st.r_from + st.thickness),
+        ("cone", Profile::Conical { .. }) => {
+            let ri = st.radius_at(z)?;
+            let a = st.half_apex_deg.unwrap_or(0.0).to_radians();
+            Some(ri + st.thickness / a.cos().max(0.1))
+        }
+        ("head", Profile::Head { .. }) => {
+            let r_max = st.r_from.max(st.r_to) + st.thickness;
+            let f = |rho: f64| crate::nozzle::surface(st, rho, z, st.thickness);
+            // Outside the surface at r_max; inside at the axis when z is within the dish.
+            if !(f(0.0)? < 0.0) {
+                return None;
+            }
+            let (mut lo, mut hi) = (0.0, r_max + 1.0);
+            for _ in 0..60 {
+                let mid = 0.5 * (lo + hi);
+                if f(mid)? < 0.0 { lo = mid } else { hi = mid }
+            }
+            Some(0.5 * (lo + hi))
+        }
+        _ => None,
+    }
+}
+
+/// The largest outside radius of the host over `z0 … z1` (a plate's inner edge there clears it).
+fn outside_radius_over(st: &Station, z0: f64, z1: f64) -> Option<f64> {
+    let mut best: Option<f64> = None;
+    for i in 0..=32 {
+        let z = z0 + (z1 - z0) * f64::from(i) / 32.0;
+        if let Some(r) = outside_radius(st, z.clamp(st.z_from, st.z_to)) {
+            best = Some(best.map_or(r, |b| b.max(r)));
+        }
+    }
+    best
+}
+
+/// `"ISA 100x100x10"`, `"L75x75x8"`, `"75 x 75 x 8"` → (a, b, t) mm.
+pub fn angle_size(s: &str) -> Option<(f64, f64, f64)> {
+    let nums: Vec<f64> = s
+        .split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .filter(|p| !p.is_empty() && p.chars().any(|c| c.is_ascii_digit()))
+        .filter_map(|p| p.parse().ok())
+        .collect();
+    match nums.as_slice() {
+        [a, b, t] if *a > 0.0 && *b > 0.0 && *t > 0.0 && *t < a.min(*b) && a.max(*b) <= 1000.0 => Some((*a, *b, *t)),
+        _ => None,
+    }
+}
+
+/// A solid rod from `from` along `dir` (unit), `len` long.
+fn rod(name: &str, what: &str, from: V3, dir: V3, radius: f64, len: f64) -> Part {
+    Part {
+        name: name.into(),
+        what: what.into(),
+        calls: vec![CommandCall {
+            id: "solid.cylinder".into(),
+            params: json!({"radius": radius, "height": len, "base": from, "axis": dir, "operation": "new", "name": name, "body_name": name}),
+        }],
+        volume: PI * radius * radius * len,
+        fallback: None,
+    }
+}
+
+fn legs(doc: &VesselDoc, r: &Resolved, a: &Attachment, host: &Station, tables: &TableSet, g: &mut SupportGeom) -> Result<()> {
+    let AttachmentKind::Leg { count, section, length_mm, attach, base_plate, start_angle_deg } = &a.kind else {
+        return Err(invalid(a, "not a leg"));
+    };
+    if r.orientation != Orientation::Vertical {
+        return Err(invalid(a, "legs carry vertical vessels"));
+    }
+    if *count > 64 {
+        return Err(invalid(a, "at most 64 legs"));
+    }
+    let start = if *start_angle_deg != 0.0 { *start_angle_deg } else { a.angle_deg };
+    // The section's footprint about the leg's own axis: a pipe (radius), or an angle's (a, b, t).
+    enum Sec {
+        Pipe { od: f64, wall: f64 },
+        Angle { a: f64, b: f64, t: f64 },
+    }
+    let sec = match section {
+        LegSection::Pipe { nps, schedule } => {
+            let row = tables.pipe(nps, schedule).ok_or_else(|| invalid(a, format!("no pipe NPS {nps} schedule {schedule} in the tables")))?;
+            if !row.verified.is_trusted() {
+                g.unverified_table = true;
+            }
+            Sec::Pipe { od: row.od, wall: row.wall }
+        }
+        LegSection::Angle { size } => {
+            let (aa, bb, t) =
+                angle_size(size).ok_or_else(|| invalid(a, format!("cannot read the angle size `{size}` (write it as `ISA 100x100x10`)")))?;
+            Sec::Angle { a: aa, b: bb, t }
+        }
+        LegSection::Channel { size } => {
+            return Err(VesselError::NotSupportedYet(format!("leg `{}`: channel sections (`{size}`; no open channel table in the beta)", a.id)));
+        }
+    };
+    let ri = host.r_from.max(host.r_to);
+    let ro = ri + host.thickness;
+    for (k, deg) in azimuths(start, *count).into_iter().enumerate() {
+        let (ax, u, t) = frame_at(doc, deg);
+        let n = k + 1;
+        // Where the leg's axis is (distance from the vessel axis) and its top.
+        let (rho, top, what) = match (&sec, attach) {
+            (Sec::Pipe { od, .. }, LegAttach::Shell) => (ro + od / 2.0, axial_z(a, host), format!("leg pipe OD {od}")),
+            (Sec::Angle { a: aa, b: bb, .. }, LegAttach::Shell) => (ro, axial_z(a, host), format!("leg angle {aa}x{bb}")),
+            (s, LegAttach::Head) => {
+                if host.kind != "head" {
+                    return Err(invalid(a, "`attach: head` needs a head as the host"));
+                }
+                let (half_w, centre) = match s {
+                    Sec::Pipe { od, .. } => (od / 2.0, ri - od / 2.0),
+                    Sec::Angle { a: aa, b: bb, .. } => (aa.max(*bb) / std::f64::consts::SQRT_2, ri - aa.max(*bb) / std::f64::consts::SQRT_2),
+                };
+                if !(centre - half_w > 0.0) {
+                    return Err(invalid(a, "the leg is wider than the head"));
+                }
+                // Under the head: the top is square at the lowest point of the head's outside
+                // under the leg's footprint (its inner edge).
+                let top = head_surface_z(host, centre - half_w).ok_or_else(|| invalid(a, "cannot find the head's outside under the leg"))?;
+                let what = match s {
+                    Sec::Pipe { od, .. } => format!("leg pipe OD {od}"),
+                    Sec::Angle { a: aa, b: bb, .. } => format!("leg angle {aa}x{bb}"),
+                };
+                (centre, top, what)
+            }
+        };
+        let bottom = top - length_mm;
+        let name = body_name(&a.id, &format!("leg {n}"));
+        let base_centre = match &sec {
+            Sec::Pipe { od, wall } => {
+                let mut leg = rod(&name, &format!("{what} × {wall}"), add(mul(ax, bottom), mul(u, rho)), ax, od / 2.0, *length_mm);
+                leg.calls.push(CommandCall {
+                    id: "solid.cylinder".into(),
+                    params: json!({"radius": od / 2.0 - wall, "height": length_mm + 2.0, "base": add(mul(ax, bottom - 1.0), mul(u, rho)), "axis": ax,
+                        "operation": "cut", "targets": [name], "name": format!("{name} bore")}),
+                });
+                leg.volume -= PI * (od / 2.0 - wall).powi(2) * length_mm;
+                g.parts.push(leg);
+                mul(u, rho)
+            }
+            Sec::Angle { a: aa, b: bb, t: tt } => {
+                // Heel toward the vessel, flanges at ±45° from the radial, outward.
+                let s2 = std::f64::consts::FRAC_1_SQRT_2;
+                let d1 = mul(add(u, t), s2);
+                let d2 = mul(sub(u, t), s2);
+                let heel = mul(u, rho);
+                let p = |x: f64, y: f64| -> P2 {
+                    let w = add(heel, add(mul(d1, x), mul(d2, y)));
+                    [w[0], w[1]]
+                };
+                let pts = [p(0.0, 0.0), p(*aa, 0.0), p(*aa, *tt), p(*tt, *tt), p(*tt, *bb), p(0.0, *bb)];
+                g.parts.push(plate(
+                    &name,
+                    &format!("{what}x{tt}"),
+                    [0.0, 0.0, bottom],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    &polygon(&pts),
+                    *length_mm,
+                    false,
+                ));
+                add(heel, add(mul(d1, aa / 2.0), mul(d2, bb / 2.0)))
+            }
+        };
+        if let Some(bp) = base_plate {
+            let c = base_centre;
+            let corner = |x: f64, y: f64| -> P2 {
+                let w = add(c, add(mul(u, x), mul(t, y)));
+                [w[0], w[1]]
+            };
+            let (l, w) = (bp.len_mm / 2.0, bp.wid_mm / 2.0);
+            let pts = [corner(-l, -w), corner(l, -w), corner(l, w), corner(-l, w)];
+            g.parts.push(plate(
+                &body_name(&a.id, &format!("leg {n} base plate")),
+                &format!("leg base plate {} thk", bp.thk_mm),
+                [0.0, 0.0, bottom - bp.thk_mm],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                &polygon(&pts),
+                bp.thk_mm,
+                false,
+            ));
+        }
+        if k == 0 {
+            push_params(
+                doc,
+                a,
+                g,
+                &[
+                    ("count", f64::from(*count), "", "leg count"),
+                    ("start_angle", start, "deg", "azimuth of the first leg"),
+                    ("length", *length_mm, "mm", "leg length"),
+                    ("top", top, "mm", "top of the legs from the datum"),
+                    ("radius", rho, "mm", "leg axis from the vessel axis"),
+                ],
+            );
+        }
+    }
+    if *attach == LegAttach::Head {
+        // A top moulded to the head (the pipe cut by the crown's sphere) builds, but takes the
+        // kernel about 70 s a leg (vessel C, 19 Oct): the beta keeps square tops.
+        g.warnings.push(format!("leg `{}`: the tops are square under the head (a head-moulded top is drawn on the sheet)", a.id));
+    }
+    Ok(())
+}
+
+/// The axial position of a head's outside surface at `rho` from the axis.
+fn head_surface_z(st: &Station, rho: f64) -> Option<f64> {
+    let Profile::Head { side, sf, dish, .. } = st.profile else { return None };
+    let (dir, tl) = match side {
+        crate::eval::HeadSide::CrownAtStart => (-1.0, st.z_to - sf),
+        crate::eval::HeadSide::CrownAtEnd => (1.0, st.z_from + sf),
+    };
+    let f = |w: f64| crate::nozzle::surface(st, rho, tl + dir * w, st.thickness);
+    // Inside the surface at w = 0 (the tangent line), outside beyond the crown.
+    let (mut lo, mut hi) = (0.0, dish + st.thickness + 1.0);
+    if !(f(lo)? < 0.0 && f(hi)? >= 0.0) {
+        return None;
+    }
+    for _ in 0..60 {
+        let mid = 0.5 * (lo + hi);
+        if f(mid)? < 0.0 { lo = mid } else { hi = mid }
+    }
+    Some(tl + dir * 0.5 * (lo + hi))
+}
+
+/// A vertical plate in the plane of the vessel axis and the radial `u`, offset `tau` along the
+/// tangent `t`: `pts` in (distance along `u`, axial).
+fn radial_plate(name: &str, what: &str, ax: V3, u: V3, t: V3, tau: f64, pts: &[P2], thk: f64) -> Part {
+    plate(name, what, mul(t, tau), u, ax, &polygon(pts), thk, true)
+}
+
+/// A plate square to the vessel axis at `z` (its underside), `pts` in (along `u`, along `t`).
+fn cross_plate(name: &str, what: &str, ax: V3, u: V3, t: V3, z: f64, pts: &[P2], thk: f64) -> Part {
+    plate(name, what, mul(ax, z), u, t, &polygon(pts), thk, false)
+}
+
+fn bracket(doc: &VesselDoc, r: &Resolved, a: &Attachment, host: &Station, g: &mut SupportGeom) -> Result<()> {
+    let AttachmentKind::Bracket { count, gusset, top_plate, bottom_plate, bolt_holes } = &a.kind else {
+        return Err(invalid(a, "not a bracket"));
+    };
+    if r.orientation != Orientation::Vertical {
+        return Err(invalid(a, "bracket supports carry vertical vessels"));
+    }
+    if *count > 64 {
+        return Err(invalid(a, "at most 64 brackets"));
+    }
+    let z_top = axial_z(a, host);
+    let z_under = z_top - top_plate.thk_mm;
+    let z_toe = z_under - gusset.height_mm;
+    let bw = bottom_plate.map_or(0.0, |b| b.wid_mm);
+    let ro = outside_radius_over(host, z_toe - bottom_plate.map_or(0.0, |b| b.thk_mm), z_top)
+        .ok_or_else(|| invalid(a, format!("not on its host `{}` at {z_top} mm", host.id)))?;
+    if gusset.width_mm > top_plate.len_mm + 1e-9 || bw > gusset.width_mm + 1e-9 {
+        return Err(invalid(a, "the gussets must fit under the top plate, the bottom plate under the gussets"));
+    }
+    if !(top_plate.wid_mm > 2.0 * gusset.thk_mm) {
+        return Err(invalid(a, "the top plate is narrower than its two gussets"));
+    }
+    let tau = top_plate.wid_mm / 2.0 - gusset.thk_mm / 2.0;
+    for (k, deg) in azimuths(a.angle_deg, *count).into_iter().enumerate() {
+        let (ax, u, t) = frame_at(doc, deg);
+        let n = k + 1;
+        let mut gp = vec![[ro, z_under], [ro + gusset.width_mm, z_under], [ro + bw, z_toe], [ro, z_toe]];
+        gp.dedup();
+        for (side, off) in [("a", tau), ("b", -tau)] {
+            g.parts.push(radial_plate(
+                &body_name(&a.id, &format!("{n} gusset {side}")),
+                &format!("bracket gusset {} thk", gusset.thk_mm),
+                ax,
+                u,
+                t,
+                off,
+                &gp,
+                gusset.thk_mm,
+            ));
+        }
+        let (l, w) = (top_plate.len_mm, top_plate.wid_mm / 2.0);
+        let mut top = cross_plate(
+            &body_name(&a.id, &format!("{n} top plate")),
+            &format!("bracket top plate {} thk", top_plate.thk_mm),
+            ax,
+            u,
+            t,
+            z_under,
+            &[[ro, -w], [ro + l, -w], [ro + l, w], [ro, w]],
+            top_plate.thk_mm,
+        );
+        if let Some(h) = bolt_holes {
+            let gap = top_plate.wid_mm - 2.0 * gusset.thk_mm;
+            let outboard = l - gusset.width_mm >= h.dia_mm + 10.0;
+            let rho = if outboard { ro + (gusset.width_mm + l) / 2.0 } else { ro + l / 2.0 };
+            let span = if outboard { top_plate.wid_mm / 2.0 - h.dia_mm } else { gap / 2.0 - h.dia_mm };
+            if h.count > 8 || !(span >= 0.0) || (h.count > 1 && !(2.0 * span / f64::from(h.count - 1) > h.dia_mm)) {
+                return Err(invalid(a, format!("{} bolt holes of {} mm do not fit the top plate", h.count, h.dia_mm)));
+            }
+            for j in 0..h.count {
+                let y = if h.count == 1 { 0.0 } else { -span + f64::from(j) * 2.0 * span / f64::from(h.count - 1) };
+                hole(&mut top, &format!("bolt hole {}", j + 1), add(mul(ax, z_under), add(mul(u, rho), mul(t, y))), ax, top_plate.thk_mm, h.dia_mm);
+            }
+        }
+        g.parts.push(top);
+        if let Some(b) = bottom_plate {
+            let w = b.len_mm / 2.0;
+            g.parts.push(cross_plate(
+                &body_name(&a.id, &format!("{n} bottom plate")),
+                &format!("bracket bottom plate {} thk", b.thk_mm),
+                ax,
+                u,
+                t,
+                z_toe - b.thk_mm,
+                &[[ro, -w], [ro + b.wid_mm, -w], [ro + b.wid_mm, w], [ro, w]],
+                b.thk_mm,
+            ));
+        }
+    }
+    push_params(
+        doc,
+        a,
+        g,
+        &[
+            ("count", f64::from(*count), "", "bracket count"),
+            ("top", z_top, "mm", "top of the top plate from the datum"),
+            ("gusset_height", gusset.height_mm, "mm", "gusset height"),
+            ("gusset_width", gusset.width_mm, "mm", "gusset width"),
+            ("gusset_thk", gusset.thk_mm, "mm", "gusset thickness"),
+            ("top_len", top_plate.len_mm, "mm", "top plate radial length"),
+            ("top_wid", top_plate.wid_mm, "mm", "top plate width"),
+            ("top_thk", top_plate.thk_mm, "mm", "top plate thickness"),
+        ],
+    );
+    Ok(())
+}
+
+fn anchor_chair(doc: &VesselDoc, a: &Attachment, host: &Station, g: &mut SupportGeom) -> Result<()> {
+    let AttachmentKind::AnchorChair { count, height_mm, width_mm, gusset_thk_mm, top_plate_thk_mm, bolt_dia_mm } = &a.kind else {
+        return Err(invalid(a, "not an anchor chair"));
+    };
+    let Detail::BaseRing { od, thickness: ring_t, .. } = host.detail else {
+        return Err(invalid(a, format!("the host `{}` must be a skirt with its base ring", host.id)));
+    };
+    if host.kind != "skirt" {
+        return Err(invalid(a, format!("the host `{}` must be a skirt", host.id)));
+    }
+    if *count > 64 {
+        return Err(invalid(a, "at most 64 chairs"));
+    }
+    let rs = host.r_from + host.thickness;
+    let r_out = od / 2.0;
+    if !(r_out > rs + 1.0) {
+        return Err(invalid(a, "the base ring does not stand out from the skirt"));
+    }
+    let z_ring = host.z_from + ring_t;
+    let z_top = z_ring + height_mm;
+    let z_plate = z_top - top_plate_thk_mm;
+    if !(z_plate > z_ring) {
+        return Err(invalid(a, "the chair is lower than its top plate is thick"));
+    }
+    let hole_d = bolt_dia_mm + BOLT_CLEARANCE_MM;
+    let tau = width_mm / 2.0 - gusset_thk_mm / 2.0;
+    if !(tau - gusset_thk_mm / 2.0 > hole_d / 2.0) || !(r_out - rs > hole_d) {
+        return Err(invalid(a, format!("a {bolt_dia_mm} mm bolt does not fit between the gussets and the skirt")));
+    }
+    let rho_b = (rs + r_out) / 2.0;
+    for (k, deg) in azimuths(a.angle_deg, *count).into_iter().enumerate() {
+        let (ax, u, t) = frame_at(doc, deg);
+        let n = k + 1;
+        let gp = [[rs, z_ring], [r_out, z_ring], [r_out, z_plate], [rs, z_plate]];
+        for (side, off) in [("a", tau), ("b", -tau)] {
+            g.parts.push(radial_plate(
+                &body_name(&a.id, &format!("{n} gusset {side}")),
+                &format!("anchor chair gusset {gusset_thk_mm} thk"),
+                ax,
+                u,
+                t,
+                off,
+                &gp,
+                *gusset_thk_mm,
+            ));
+        }
+        let w = width_mm / 2.0;
+        let mut top = cross_plate(
+            &body_name(&a.id, &format!("{n} top plate")),
+            &format!("anchor chair top plate {top_plate_thk_mm} thk"),
+            ax,
+            u,
+            t,
+            z_plate,
+            &[[rs, -w], [r_out, -w], [r_out, w], [rs, w]],
+            *top_plate_thk_mm,
+        );
+        hole(&mut top, "bolt hole", add(mul(ax, z_plate), mul(u, rho_b)), ax, *top_plate_thk_mm, hole_d);
+        g.parts.push(top);
+    }
+    push_params(
+        doc,
+        a,
+        g,
+        &[
+            ("count", f64::from(*count), "", "chair count"),
+            ("height", *height_mm, "mm", "base ring top to the chair top"),
+            ("width", *width_mm, "mm", "chair width"),
+            ("bolt_circle", 2.0 * rho_b, "mm", "anchor bolt circle diameter"),
+            ("bolt_dia", *bolt_dia_mm, "mm", "anchor bolt diameter"),
+        ],
+    );
+    Ok(())
 }
