@@ -42,6 +42,7 @@ override shipped rows of the same key. Private rows without `verified` count as 
 | `asme-b16.5-{wn,blind}` Cl 400/600/900/1500/2500 | same | two public vendor tables, hand-keyed | two-source |
 | `asme-b16.47a-{wn,blind}`, `asme-b16.47b-{wn,blind}` NPS 26–60 Cl 150–900 | same | two public vendor tables | two-source |
 | `asme-b36.10` schedules | OD, wall per NPS/sch | bd_warehouse / `fluids` (MIT) | two-source |
+| `asme-b36.19` stainless schedules 5S/10S/40S/80S | OD, wall per NPS/sch | wermac.org + Wikipedia NPS tables | two-source |
 | `lwn-generic` | LWN hub lengths by NPS/class | vendor catalogs vary → flagged | single-source |
 | `heads` | presets as formulas (code, not table) | public standard definitions | — |
 | `saddle-preset` | width/height/web/base plate ranges by OD (600–3000) | public handbook proportions; BS 5276-2 size ranges (described, not copied) | derived |
@@ -101,6 +102,8 @@ company standard) reach a design only this way: the repository ships no EIL valu
 | B16.47 Series A, Cl 150–900 WN + blind (T3.2, 168 rows, 144 two-source) | wermac.org `dimensions_welding-neck_blind-flanges_class-*_asme-b16-47-a.html` (mm) | blog.projectmaterials.com `asme-b-16-47-flange-dimensions` (inches × 25.4) | od/bolting/RF/hub from wermac, tf and hub length from the inch table (wermac includes the RF on some pages). Differing rows are `single-source`: Cl 400 NPS 30–46 hole 54.0 vs 66.5, a few bolt circles (NPS 52 Cl 300: 1479.6 vs 1428.8) |
 | B16.47 Series B, Cl 150–900 WN + blind (T3.2, 168 rows, 82 two-source) | as Series A, `…-b16-47-b.html` | as Series A | Cl 300 hub diameters differ by ~40–50 mm throughout (wermac 756 vs 716 at NPS 28), Cl 400 blind thicknesses by the RF, so those rows are `single-source`; the hub difference is a candidate for an owner check against the standard |
 
+| B36.19M stainless, NPS ⅛–30, 5S/10S/40S/80S (T4.5, 93 rows, 93 two-source) | wermac.org `dim_b36.19_pipes.html` (mm) | en.wikipedia.org Nominal Pipe Size wall tables (inches × 25.4) | none beyond 0.05 mm; wermac lists no 5S wall for NPS ⅛–⅜ ("Note 1"), so those rows are left out. Added when reference vessel C (10S and 40S nozzles) was first regenerated whole |
+
 B16.47 is not monotonic in NPS (Series A sizes 26–36 come from MSS SP-44, 38–60 from API 605), so
 the sanity rules check monotonicity on B16.5 only.
 
@@ -116,6 +119,7 @@ say where each value came from.
   metric tables and blog.projectmaterials.com's inch tables (facts of the public standard; rows
   added in T3.2).
 - OET title-block template SVGs — original work, MIT OR Apache-2.0.
+- `triya/crates/triya-stdlib/data/asme-b36.19.json` — wermac.org + Wikipedia, facts of the public standard (T4.5).
 - `triya/crates/triya-stdlib/data/support-presets.json` — Triya's own proportional rules (T4.4).
 - `triya/crates/triya-vessel/tests/fixtures/fictional-private-supports.json` — invented test data (T4.4).
 - Triya icons — drawn in code in `triya-ui::icons`, original; any rasterised icon files, too.

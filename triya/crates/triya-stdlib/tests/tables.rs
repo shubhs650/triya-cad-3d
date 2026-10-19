@@ -65,8 +65,7 @@ fn b36_10_schedules_are_complete() {
     assert_eq!(t.pipe("4", "XS").unwrap().wall, 8.56);
     assert_eq!(t.pipe("24", "STD").unwrap().wall, 9.53);
     assert_eq!(t.pipe("1/2", "160").unwrap().wall, 4.78);
-    let rows: Vec<_> = t.pipe_rows().collect();
-    assert_eq!(rows.len(), 279);
+    assert_eq!(t.pipe_schedules[0].rows.len(), 279);
     for nps in ["1/2", "3/4", "1", "1-1/4", "1-1/2", "2", "3", "4", "6", "8", "10", "12", "16", "24"] {
         for sch in ["STD", "XS", "40", "80"] {
             assert!(t.pipe(nps, sch).is_some(), "NPS {nps} {sch}");

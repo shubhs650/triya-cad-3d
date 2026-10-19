@@ -893,14 +893,19 @@ pub fn plan(gl: &Global, r: &Resolved, host: &Station, g: &mut NozzleGeom) -> Re
 /// face, bored through, with no boolean against the host.
 pub fn plan_separate(g: &NozzleGeom) -> Vec<CommandCall> {
     let body = body_name(&g.id, "neck (separate)");
-    let from = match g.attach {
-        NozzleAttach::SetIn if g.inside_projection > 0.0 => g.s_start,
-        _ => g.frame.s_outer,
-    };
+    let from = separate_from(g);
     vec![
         rod(&body, Some(&body), g, g.neck_od / 2.0, from, g.s_neck_end, "new", &[]),
         rod(&body_name(&g.id, "bore (separate)"), None, g, g.neck_id() / 2.0, from - 1.0, g.s_neck_end + 1.0, "cut", &[body.as_str()]),
     ]
+}
+
+/// Where the separate neck of [`plan_separate`] starts along the axis.
+pub fn separate_from(g: &NozzleGeom) -> f64 {
+    match g.attach {
+        NozzleAttach::SetIn if g.inside_projection > 0.0 => g.s_start,
+        _ => g.frame.s_outer,
+    }
 }
 
 /// The flange's half-section in (radius from the nozzle axis, `s`), closed.

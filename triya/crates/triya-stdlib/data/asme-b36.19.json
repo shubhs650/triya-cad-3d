@@ -1,0 +1,1127 @@
+{
+ "source": "ASME B36.19M stainless-steel pipe walls (facts of the public standard) hand-keyed from wermac.org, cross-checked against Wikipedia's Nominal Pipe Size tables; see docs/standards-library.md",
+ "note": "Lengths in mm. Schedules 5S, 10S, 40S, 80S; OD as B36.19M lists it in mm.",
+ "standard": {
+  "org": "ASME",
+  "number": "B36.19M",
+  "rev": "2018"
+ },
+ "rows": [
+  {
+   "nps": "1/8",
+   "dn": 6,
+   "od": 10.3,
+   "schedule": "10S",
+   "wall": 1.24,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1/8",
+   "dn": 6,
+   "od": 10.3,
+   "schedule": "40S",
+   "wall": 1.73,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1/8",
+   "dn": 6,
+   "od": 10.3,
+   "schedule": "80S",
+   "wall": 2.41,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1/4",
+   "dn": 8,
+   "od": 13.7,
+   "schedule": "10S",
+   "wall": 1.65,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1/4",
+   "dn": 8,
+   "od": 13.7,
+   "schedule": "40S",
+   "wall": 2.24,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1/4",
+   "dn": 8,
+   "od": 13.7,
+   "schedule": "80S",
+   "wall": 3.02,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3/8",
+   "dn": 10,
+   "od": 17.1,
+   "schedule": "10S",
+   "wall": 1.65,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3/8",
+   "dn": 10,
+   "od": 17.1,
+   "schedule": "40S",
+   "wall": 2.31,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3/8",
+   "dn": 10,
+   "od": 17.1,
+   "schedule": "80S",
+   "wall": 3.2,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1/2",
+   "dn": 15,
+   "od": 21.3,
+   "schedule": "5S",
+   "wall": 1.65,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1/2",
+   "dn": 15,
+   "od": 21.3,
+   "schedule": "10S",
+   "wall": 2.11,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1/2",
+   "dn": 15,
+   "od": 21.3,
+   "schedule": "40S",
+   "wall": 2.77,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1/2",
+   "dn": 15,
+   "od": 21.3,
+   "schedule": "80S",
+   "wall": 3.73,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3/4",
+   "dn": 20,
+   "od": 26.7,
+   "schedule": "5S",
+   "wall": 1.65,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3/4",
+   "dn": 20,
+   "od": 26.7,
+   "schedule": "10S",
+   "wall": 2.11,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3/4",
+   "dn": 20,
+   "od": 26.7,
+   "schedule": "40S",
+   "wall": 2.87,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3/4",
+   "dn": 20,
+   "od": 26.7,
+   "schedule": "80S",
+   "wall": 3.91,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1",
+   "dn": 25,
+   "od": 33.4,
+   "schedule": "5S",
+   "wall": 1.65,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1",
+   "dn": 25,
+   "od": 33.4,
+   "schedule": "10S",
+   "wall": 2.77,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1",
+   "dn": 25,
+   "od": 33.4,
+   "schedule": "40S",
+   "wall": 3.38,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1",
+   "dn": 25,
+   "od": 33.4,
+   "schedule": "80S",
+   "wall": 4.55,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1-1/4",
+   "dn": 32,
+   "od": 42.2,
+   "schedule": "5S",
+   "wall": 1.65,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1-1/4",
+   "dn": 32,
+   "od": 42.2,
+   "schedule": "10S",
+   "wall": 2.77,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1-1/4",
+   "dn": 32,
+   "od": 42.2,
+   "schedule": "40S",
+   "wall": 3.56,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1-1/4",
+   "dn": 32,
+   "od": 42.2,
+   "schedule": "80S",
+   "wall": 4.85,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1-1/2",
+   "dn": 40,
+   "od": 48.3,
+   "schedule": "5S",
+   "wall": 1.65,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1-1/2",
+   "dn": 40,
+   "od": 48.3,
+   "schedule": "10S",
+   "wall": 2.77,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1-1/2",
+   "dn": 40,
+   "od": 48.3,
+   "schedule": "40S",
+   "wall": 3.68,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "1-1/2",
+   "dn": 40,
+   "od": 48.3,
+   "schedule": "80S",
+   "wall": 5.08,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "2",
+   "dn": 50,
+   "od": 60.3,
+   "schedule": "5S",
+   "wall": 1.65,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "2",
+   "dn": 50,
+   "od": 60.3,
+   "schedule": "10S",
+   "wall": 2.77,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "2",
+   "dn": 50,
+   "od": 60.3,
+   "schedule": "40S",
+   "wall": 3.91,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "2",
+   "dn": 50,
+   "od": 60.3,
+   "schedule": "80S",
+   "wall": 5.54,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "2-1/2",
+   "dn": 65,
+   "od": 73.0,
+   "schedule": "5S",
+   "wall": 2.11,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "2-1/2",
+   "dn": 65,
+   "od": 73.0,
+   "schedule": "10S",
+   "wall": 3.05,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "2-1/2",
+   "dn": 65,
+   "od": 73.0,
+   "schedule": "40S",
+   "wall": 5.16,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "2-1/2",
+   "dn": 65,
+   "od": 73.0,
+   "schedule": "80S",
+   "wall": 7.01,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3",
+   "dn": 80,
+   "od": 88.9,
+   "schedule": "5S",
+   "wall": 2.11,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3",
+   "dn": 80,
+   "od": 88.9,
+   "schedule": "10S",
+   "wall": 3.05,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3",
+   "dn": 80,
+   "od": 88.9,
+   "schedule": "40S",
+   "wall": 5.49,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3",
+   "dn": 80,
+   "od": 88.9,
+   "schedule": "80S",
+   "wall": 7.62,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3-1/2",
+   "dn": 90,
+   "od": 101.6,
+   "schedule": "5S",
+   "wall": 2.11,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3-1/2",
+   "dn": 90,
+   "od": 101.6,
+   "schedule": "10S",
+   "wall": 3.05,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3-1/2",
+   "dn": 90,
+   "od": 101.6,
+   "schedule": "40S",
+   "wall": 5.74,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "3-1/2",
+   "dn": 90,
+   "od": 101.6,
+   "schedule": "80S",
+   "wall": 8.08,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "4",
+   "dn": 100,
+   "od": 114.3,
+   "schedule": "5S",
+   "wall": 2.11,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "4",
+   "dn": 100,
+   "od": 114.3,
+   "schedule": "10S",
+   "wall": 3.05,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "4",
+   "dn": 100,
+   "od": 114.3,
+   "schedule": "40S",
+   "wall": 6.02,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "4",
+   "dn": 100,
+   "od": 114.3,
+   "schedule": "80S",
+   "wall": 8.56,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "5",
+   "dn": 125,
+   "od": 141.3,
+   "schedule": "5S",
+   "wall": 2.77,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "5",
+   "dn": 125,
+   "od": 141.3,
+   "schedule": "10S",
+   "wall": 3.4,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "5",
+   "dn": 125,
+   "od": 141.3,
+   "schedule": "40S",
+   "wall": 6.55,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "5",
+   "dn": 125,
+   "od": 141.3,
+   "schedule": "80S",
+   "wall": 9.53,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "6",
+   "dn": 150,
+   "od": 168.3,
+   "schedule": "5S",
+   "wall": 2.77,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "6",
+   "dn": 150,
+   "od": 168.3,
+   "schedule": "10S",
+   "wall": 3.4,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "6",
+   "dn": 150,
+   "od": 168.3,
+   "schedule": "40S",
+   "wall": 7.11,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "6",
+   "dn": 150,
+   "od": 168.3,
+   "schedule": "80S",
+   "wall": 10.97,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "8",
+   "dn": 200,
+   "od": 219.1,
+   "schedule": "5S",
+   "wall": 2.77,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "8",
+   "dn": 200,
+   "od": 219.1,
+   "schedule": "10S",
+   "wall": 3.76,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "8",
+   "dn": 200,
+   "od": 219.1,
+   "schedule": "40S",
+   "wall": 8.18,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "8",
+   "dn": 200,
+   "od": 219.1,
+   "schedule": "80S",
+   "wall": 12.7,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "10",
+   "dn": 250,
+   "od": 273.0,
+   "schedule": "5S",
+   "wall": 3.4,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "10",
+   "dn": 250,
+   "od": 273.0,
+   "schedule": "10S",
+   "wall": 4.19,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "10",
+   "dn": 250,
+   "od": 273.0,
+   "schedule": "40S",
+   "wall": 9.27,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "10",
+   "dn": 250,
+   "od": 273.0,
+   "schedule": "80S",
+   "wall": 12.7,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "12",
+   "dn": 300,
+   "od": 323.8,
+   "schedule": "5S",
+   "wall": 3.96,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "12",
+   "dn": 300,
+   "od": 323.8,
+   "schedule": "10S",
+   "wall": 4.57,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "12",
+   "dn": 300,
+   "od": 323.8,
+   "schedule": "40S",
+   "wall": 9.53,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "12",
+   "dn": 300,
+   "od": 323.8,
+   "schedule": "80S",
+   "wall": 12.7,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "14",
+   "dn": 350,
+   "od": 355.6,
+   "schedule": "5S",
+   "wall": 3.96,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "14",
+   "dn": 350,
+   "od": 355.6,
+   "schedule": "10S",
+   "wall": 4.78,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "14",
+   "dn": 350,
+   "od": 355.6,
+   "schedule": "40S",
+   "wall": 9.53,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "14",
+   "dn": 350,
+   "od": 355.6,
+   "schedule": "80S",
+   "wall": 12.7,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "16",
+   "dn": 400,
+   "od": 406.4,
+   "schedule": "5S",
+   "wall": 4.19,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "16",
+   "dn": 400,
+   "od": 406.4,
+   "schedule": "10S",
+   "wall": 4.78,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "16",
+   "dn": 400,
+   "od": 406.4,
+   "schedule": "40S",
+   "wall": 9.53,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "16",
+   "dn": 400,
+   "od": 406.4,
+   "schedule": "80S",
+   "wall": 12.7,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "18",
+   "dn": 450,
+   "od": 457.0,
+   "schedule": "5S",
+   "wall": 4.19,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "18",
+   "dn": 450,
+   "od": 457.0,
+   "schedule": "10S",
+   "wall": 4.78,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "18",
+   "dn": 450,
+   "od": 457.0,
+   "schedule": "40S",
+   "wall": 9.53,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "18",
+   "dn": 450,
+   "od": 457.0,
+   "schedule": "80S",
+   "wall": 12.7,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "20",
+   "dn": 500,
+   "od": 508.0,
+   "schedule": "5S",
+   "wall": 4.78,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "20",
+   "dn": 500,
+   "od": 508.0,
+   "schedule": "10S",
+   "wall": 5.54,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "20",
+   "dn": 500,
+   "od": 508.0,
+   "schedule": "40S",
+   "wall": 9.53,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "20",
+   "dn": 500,
+   "od": 508.0,
+   "schedule": "80S",
+   "wall": 12.7,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "22",
+   "dn": 550,
+   "od": 559.0,
+   "schedule": "5S",
+   "wall": 4.78,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "22",
+   "dn": 550,
+   "od": 559.0,
+   "schedule": "10S",
+   "wall": 5.54,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "24",
+   "dn": 600,
+   "od": 610.0,
+   "schedule": "5S",
+   "wall": 5.54,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "24",
+   "dn": 600,
+   "od": 610.0,
+   "schedule": "10S",
+   "wall": 6.35,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "24",
+   "dn": 600,
+   "od": 610.0,
+   "schedule": "40S",
+   "wall": 9.53,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "24",
+   "dn": 600,
+   "od": 610.0,
+   "schedule": "80S",
+   "wall": 12.7,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "30",
+   "dn": 750,
+   "od": 762.0,
+   "schedule": "5S",
+   "wall": 6.35,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  },
+  {
+   "nps": "30",
+   "dn": 750,
+   "od": 762.0,
+   "schedule": "10S",
+   "wall": 7.92,
+   "source": [
+    "wermac.org/pipes/dim_b36.19_pipes.html (mm), read 2026-10-19",
+    "en.wikipedia.org/wiki/Nominal_Pipe_Size wall tables (inches x 25.4), read 2026-10-19"
+   ],
+   "verified": "two-source"
+  }
+ ]
+}

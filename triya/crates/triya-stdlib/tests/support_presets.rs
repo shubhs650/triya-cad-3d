@@ -44,3 +44,15 @@ fn a_private_table_comes_first_and_bad_rows_are_refused() {
         assert!(TableSet::embedded().unwrap().with_private_supports(bad).is_err(), "{bad}");
     }
 }
+
+#[test]
+fn stainless_pipe_schedules_from_b36_19() {
+    let t = TableSet::embedded().unwrap();
+    let r = t.pipe("3", "10S").unwrap();
+    assert_eq!((r.od, r.wall, r.verified), (88.9, 3.05, Verified::TwoSource));
+    assert_eq!(t.pipe("2", "sch 40s").unwrap().wall, 3.91);
+    assert_eq!(t.pipe("4", "80S").unwrap().wall, 8.56);
+    // Carbon-steel schedules still come from B36.10.
+    assert_eq!(t.pipe("3", "40").unwrap().wall, 5.49);
+    assert!(t.pipe("1/8", "5S").is_none());
+}

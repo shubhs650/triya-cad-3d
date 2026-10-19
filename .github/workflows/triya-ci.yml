@@ -97,6 +97,18 @@ jobs:
       - name: vessel A regenerates with every nozzle built or degraded gracefully
         run: cargo test -p triya-vessel --test phase3_exit -- --ignored --nocapture
 
+  phase4-exit:
+    name: Phase 4 exit (vessels B and C whole, BOM)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: triya }
+      - name: vessels B and C build every attachment and weigh within 2 % of the handbook
+        run: cargo test -p triya-vessel --test phase4_exit -- --ignored --nocapture
+
   web-shell:
     name: Triya web shell (trunk build + offline test)
     runs-on: ubuntu-24.04

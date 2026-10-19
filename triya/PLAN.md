@@ -72,6 +72,8 @@ Exit: six nozzle configurations on the reference vessel; failures degrade gracef
 | T4.4 | `standardRef` + `sizeKey` on every support/attachment; open preset tables (saddle, legs, lugs ranges); **private table import** (`vessel.import_tables` from a user JSON file, OPFS in browser) | test: importing a sample *fictional* private table changes the generated saddle dimensions; repo contains no EIL values | 4 h |
 | T4.5 | BOM and weights: per-element metal weight from `measure` with handbook cross-check column (F&D 0.9286·D² area; Klöpper 0.99·da² + π·h1·da), nozzle/flange weights from tables, totals (empty/operating/test placeholder) | weights within 2 % of handbook for the reference vessels | 4 h |
 
+Exit: reference vessels B and C regenerate whole with every attachment built, vessel A builds its supports, and every vessel's BOM is within 2 % of the handbook (CI jobs "Phase 3 exit" and "Phase 4 exit").
+
 **Day 15 checkpoint (Sat 31 Oct)**: if Phases 2–4 are done, continue. If not, the *reduced beta*
 is Phases 0–5 without Phase 6 (drawing); decide and record in PROGRESS.md.
 

@@ -211,6 +211,12 @@ closed form (0.5 %); a part the kernel cannot build is left out with a warning a
   the sheet the key belongs to. Regenerate and inspect report `presets: [{id, row, private,
   verified, fields}]`.
 
+- BOM (T4.5): `vessel.bom` lists every element, nozzle neck and flange, and support part with
+  its measured weight (`inspect.measure` × density by material: stainless 8000, aluminium 2700,
+  else 7850 kg/m³) beside a handbook value from the dimensions (`triya-vessel/src/bom.rs`), and
+  totals empty, operating (`design_data.operating_weight_kg`, else empty) and test (empty + the
+  vessel full of water), the placeholders named in the reply.
+
 ### 4.2 Kinds
 | kind | fields |
 |---|---|

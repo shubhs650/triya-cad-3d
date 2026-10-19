@@ -11,13 +11,15 @@
 //! leaves the design as it was (`Session::execute` restores it). `Session::execute` itself is
 //! not used for the nested calls: it would record one undo step per step.
 
+use std::f64::consts::PI;
+
 use serde_json::{Value, json};
 use solidcraft_engine::params::{bad, num, str_};
 use solidcraft_engine::{CommandSpec, EngineError, Session};
 
 use crate::emit::{CommandCall, substitute};
 use crate::model::{AttachmentKind, VesselDoc};
-use crate::{VesselError, emit, eval, nozzle, presets, support};
+use crate::{VesselError, bom, emit, eval, nozzle, presets, support};
 
 /// The reverse-DNS metadata key the vessel JSON is kept under.
 pub const METADATA_KEY: &str = "in.openengtools.triya.vessel";
@@ -55,6 +57,12 @@ pub static COMMANDS: &[CommandSpec] = &[
         "tables: {flanges?: <flange table>, supports?: <support-preset table>} (the shipped JSON table format, `docs/standards-library.md`; \
          each replaces the design's private table of that kind) | path: a JSON file of that shape (desktop) | clear: true (drops them). \
          Kept in the design, searched before the shipped tables; rows without `verified` count as unverified. At most 60 KiB → private_tables",
+    ),
+    CommandSpec::new("vessel.bom", "Vessel BOM and Weights", bom_cmd).at(TAB, "INSPECT").icon("measure").noundo().enabled(has_vessel).params(
+        "→ items: [{item, id, body, description, material, qty, basis: measured|measured less nozzles|computed|not built, density_kg_m3, \
+         volume_mm3, weight_kg, handbook_kg, handbook (the rule), delta_pct}] (shell elements, nozzle necks and flanges, every support \
+         part, any other `Vessel …` body), totals: {empty_kg, operating_kg, test_kg, water_m3, placeholders: [what is not modelled]}, \
+         warnings. Weights from the measured bodies (regenerate first) × the material's density; handbook values from the dimensions",
     ),
 ];
 
@@ -271,6 +279,187 @@ fn station_json(st: &eval::Station) -> Value {
         "thickness": st.thickness, "diameter_mm": st.diameter_mm, "envelope": st.envelope, "tl": st.tl,
         "half_apex_deg": st.half_apex_deg, "profile": profile, "detail": detail,
     })
+}
+
+fn bom_cmd(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
+    let (mut doc, _) = load(s)?;
+    let tables = presets::tables(s)?;
+    presets::apply(&mut doc, &tables, presets::private_support_tables(s))?;
+    let r = eval::resolve_with(&doc, &tables)?;
+    let measured_all = sub(s, &CommandCall { id: "inspect.measure".into(), params: json!({}) })?;
+    let mut measured: std::collections::BTreeMap<String, f64> = std::collections::BTreeMap::new();
+    for b in measured_all.get("bodies").and_then(Value::as_array).into_iter().flatten() {
+        if let (Some(n), Some(v)) = (b.get("name").and_then(Value::as_str), b.get("volume_mm3").and_then(Value::as_f64))
+            && n.starts_with("Vessel ")
+        {
+            measured.insert(n.to_string(), v);
+        }
+    }
+    let mut warnings = Vec::new();
+    if measured.is_empty() {
+        warnings.push("nothing is built: regenerate the vessel first (weights are handbook values only)".to_string());
+    }
+    let mut used: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let material_of = |m: &Option<String>| m.clone().unwrap_or_else(|| doc.global.default_material.clone());
+    let mut items: Vec<bom::Item> = Vec::new();
+    // Nozzles first: a joined one's share comes off its host's measured volume.
+    let mut joined_share: std::collections::BTreeMap<String, f64> = std::collections::BTreeMap::new();
+    let mut nozzle_items = Vec::new();
+    for a in doc.attachments.iter().filter(|a| matches!(a.kind, AttachmentKind::Nozzle { .. })) {
+        let material = material_of(&a.material);
+        let density = bom::density(&material);
+        let g = match nozzle::resolve(&doc, &r, a, &tables) {
+            Ok(g) => g,
+            Err(e) => {
+                warnings.push(format!("nozzle `{}`: {e}", a.id));
+                continue;
+            }
+        };
+        let pipe = |from: f64| PI / 4.0 * (g.neck_od.powi(2) - g.neck_id().powi(2)) * (g.s_neck_end - from).max(0.0);
+        let separate = nozzle::body_name(&g.id, "neck (separate)");
+        let host_body = format!("Vessel {}", g.host);
+        let what = format!("nozzle {} neck {} × {}", g.id, g.neck_od, g.neck_wall);
+        // A separate neck is measured and checked against its pipe; a joined one is its computed
+        // share of the host (neck and pad outside the shell, less the bore through the wall).
+        let rule = "pipe table: π/4·(OD²−ID²)·length";
+        let (body, basis, volume, handbook, rule) = if let Some(v) = measured.get(&separate) {
+            used.insert(separate.clone());
+            (Some(separate), "measured", Some(*v), Some(pipe(nozzle::separate_from(&g))), rule)
+        } else if measured.contains_key(&host_body) {
+            let share = r.station(&g.host).and_then(|host| nozzle::expected_change(&doc.global, host, &g, 64));
+            if let Some(v) = share {
+                *joined_share.entry(g.host.clone()).or_insert(0.0) += v;
+            }
+            (Some(host_body), "computed", share, None, "pipe table, joined: neck + pad − bore through the wall")
+        } else {
+            (None, "not built", None, Some(pipe(g.frame.s_outer)), rule)
+        };
+        nozzle_items.push(bom::Item {
+            id: g.id.clone(),
+            body,
+            description: if g.pad.is_some() { format!("{what} with pad") } else { what },
+            material: material.clone(),
+            qty: 1,
+            basis,
+            volume_mm3: volume,
+            handbook_mm3: handbook,
+            handbook_rule: Some(rule.into()),
+            density,
+        });
+        if let Some(f) = &g.flange {
+            let name = nozzle::body_name(&g.id, "flange");
+            let v = measured.get(&name).copied();
+            if v.is_some() {
+                used.insert(name.clone());
+            }
+            nozzle_items.push(bom::Item {
+                id: g.id.clone(),
+                body: v.map(|_| name),
+                description: format!("flange {} OD {}", f.kind.code(), f.od),
+                material: material.clone(),
+                qty: 1,
+                basis: if v.is_some() { "measured" } else { "not built" },
+                volume_mm3: v,
+                handbook_mm3: Some(bom::flange_volume(f, g.neck_id())),
+                handbook_rule: Some("flange table: ring − holes + RF + hub".into()),
+                density,
+            });
+        }
+    }
+    for e in &doc.elements {
+        let Some(st) = r.station(&e.id) else { continue };
+        let material = material_of(&e.material);
+        let density = bom::density(&material);
+        let name = format!("Vessel {}", e.id);
+        let share = joined_share.get(&e.id).copied().unwrap_or(0.0);
+        let v = measured.get(&name).map(|v| v - share);
+        if v.is_some() {
+            used.insert(name.clone());
+        }
+        let hb = bom::handbook_volume(e, st);
+        items.push(bom::Item {
+            id: e.id.clone(),
+            body: v.map(|_| name),
+            description: e.description.clone().unwrap_or_else(|| format!("{} {} thk", e.kind.name(), e.thickness_mm)),
+            material,
+            qty: 1,
+            basis: match v {
+                None => "not built",
+                Some(_) if share > 0.0 => "measured less nozzles",
+                Some(_) => "measured",
+            },
+            volume_mm3: v,
+            handbook_mm3: hb.map(|h| h.0),
+            handbook_rule: hb.map(|h| h.1.to_string()),
+            density,
+        });
+    }
+    items.extend(nozzle_items);
+    for a in doc.attachments.iter().filter(|a| !matches!(a.kind, AttachmentKind::Nozzle { .. })) {
+        let material = material_of(&a.material);
+        let density = bom::density(&material);
+        let g = match support::resolve(&doc, &r, a, &tables) {
+            Ok(g) => g,
+            Err(e) => {
+                warnings.push(format!("attachment `{}`: {e}", a.id));
+                continue;
+            }
+        };
+        for p in &g.parts {
+            let v = measured.get(&p.name).copied();
+            if v.is_some() {
+                used.insert(p.name.clone());
+            }
+            items.push(bom::Item {
+                id: g.id.clone(),
+                body: v.map(|_| p.name.clone()),
+                description: p.what.clone(),
+                material: material.clone(),
+                qty: 1,
+                basis: if v.is_some() { "measured" } else { "not built" },
+                volume_mm3: v,
+                handbook_mm3: Some(p.volume),
+                handbook_rule: Some("closed form".into()),
+                density,
+            });
+        }
+    }
+    // Anything else the vessel built (a fallback body) still weighs.
+    let default_density = bom::density(&doc.global.default_material);
+    for (name, v) in &measured {
+        if !used.contains(name) {
+            if doc.elements.iter().any(|e| format!("Vessel {}", e.id) == *name) {
+                continue;
+            }
+            items.push(bom::Item {
+                id: name.trim_start_matches("Vessel ").split(' ').next().unwrap_or("").to_string(),
+                body: Some(name.clone()),
+                description: name.trim_start_matches("Vessel ").to_string(),
+                material: doc.global.default_material.clone(),
+                qty: 1,
+                basis: "measured",
+                volume_mm3: Some(*v),
+                handbook_mm3: None,
+                handbook_rule: None,
+                density: default_density,
+            });
+        }
+    }
+    // A joined nozzle is weighed as its share of its host, so the totals count every body once.
+    let empty: f64 = items.iter().filter_map(bom::Item::weight_kg).sum();
+    let water_m3 = bom::inside_volume(&r) * 1e-9;
+    let test = empty + water_m3 * 1000.0;
+    let operating = doc.design_data.operating_weight_kg.unwrap_or(empty);
+    let mut placeholders = vec!["test weight: empty + the vessel full of water (1000 kg/m³); hydrotest data not modelled".to_string()];
+    if doc.design_data.operating_weight_kg.is_none() {
+        placeholders.push("operating weight: the vessel document has no contents, so the empty weight".to_string());
+    }
+    Ok(json!({
+        "items": items.iter().enumerate().map(|(i, it)| it.to_json(i + 1)).collect::<Vec<_>>(),
+        "totals": {"empty_kg": bom::round2(empty), "operating_kg": bom::round2(operating), "test_kg": bom::round2(test),
+            "water_m3": (water_m3 * 1e4).round() / 1e4, "placeholders": placeholders},
+        "warnings": warnings,
+    }))
 }
 
 /// Rows and sources of the design's private tables.

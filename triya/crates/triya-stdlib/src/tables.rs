@@ -27,6 +27,7 @@ const B16_5_JSON: &str = include_str!("../data/asme-b16.5.json");
 const B16_47A_JSON: &str = include_str!("../data/asme-b16.47a.json");
 const B16_47B_JSON: &str = include_str!("../data/asme-b16.47b.json");
 const B36_10_JSON: &str = include_str!("../data/asme-b36.10.json");
+const B36_19_JSON: &str = include_str!("../data/asme-b36.19.json");
 const HEAD_PRESETS_JSON: &str = include_str!("../data/head_presets.json");
 const SUPPORT_PRESETS_JSON: &str = include_str!("../data/support-presets.json");
 
@@ -159,11 +160,12 @@ pub fn parse_support_table(text: &str, strict: bool) -> Result<Table<SupportRow>
 }
 
 impl TableSet {
-    /// The tables compiled into the crate (ASME B16.5, B16.47 Series A and B, B36.10M, head presets).
+    /// The tables compiled into the crate (ASME B16.5, B16.47 Series A and B, B36.10M, B36.19M, head
+    /// presets, support presets).
     pub fn embedded() -> Result<TableSet> {
         Ok(TableSet {
             flanges: vec![parse_flange_table(B16_5_JSON, true)?, parse_flange_table(B16_47A_JSON, true)?, parse_flange_table(B16_47B_JSON, true)?],
-            pipe_schedules: vec![parse_pipe_table(B36_10_JSON, true)?],
+            pipe_schedules: vec![parse_pipe_table(B36_10_JSON, true)?, parse_pipe_table(B36_19_JSON, true)?],
             head_presets: parse_table("head_presets", HEAD_PRESETS_JSON)?,
             supports: vec![parse_support_table(SUPPORT_PRESETS_JSON, true)?],
         })
