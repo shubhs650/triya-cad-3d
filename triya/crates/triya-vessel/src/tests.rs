@@ -304,16 +304,16 @@ fn regenerate_refuses_a_misplaced_nozzle_and_warns_about_attachments_it_does_not
     assert!(e.contains("nozzle `N1`") && e.contains("outside the shell"), "{e}");
     assert!(std::sync::Arc::ptr_eq(&before, &s.doc) || *before == *s.doc);
     assert!(s.model.state().bodies.is_empty());
-    // A lifting lug (Phase 4) is reported, not refused.
+    // A support that cannot be built yet (channel legs) is reported, not refused.
     run(&mut s, "vessel.set", json!({"remove": "N1"}));
     run(
         &mut s,
         "vessel.set",
-        json!({"attachment": {"id": "L1", "kind": "lifting_lug", "host": "S1", "axial": {"ref": "host_from", "mm": 1000}, "angle_deg": 90,
-            "style": "longitudinal", "plate": {"len_mm": 300, "height_mm": 200, "thk_mm": 25}, "hole_dia_mm": 60}}),
+        json!({"attachment": {"id": "L1", "kind": "leg", "host": "S1", "axial": {"ref": "host_from", "mm": 200}, "count": 3,
+            "section": {"channel": {"size": "ISMC 150"}}, "length_mm": 1800}}),
     );
     let r = run(&mut s, "vessel.regenerate", json!({}));
-    assert!(r["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap_or("").contains("`L1` (lifting_lug): not built yet")), "{r}");
+    assert!(r["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap_or("").contains("`L1` (leg): not built yet")), "{r}");
     assert_eq!(body_names(&s), vec!["Vessel S1".to_string()]);
 }
 

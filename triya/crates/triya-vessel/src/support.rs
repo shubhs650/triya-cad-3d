@@ -39,7 +39,7 @@ use triya_stdlib::TableSet;
 
 use crate::emit::{CommandCall, Param, REF, Seg, ident, parameter_prefix};
 use crate::eval::{Detail, Profile, Resolved, Station};
-use crate::model::{Attachment, AttachmentKind, AxialRef, LegAttach, LegSection, Orientation, VesselDoc};
+use crate::model::{Attachment, AttachmentKind, AxialRef, ClipPurpose, Hand, LegAttach, LegSection, LugStyle, Orientation, RingSection, VesselDoc};
 use crate::nozzle::{V3, add, azimuth, cross, mul, sub, vessel_axis};
 use crate::{Result, VesselError};
 
@@ -233,8 +233,12 @@ pub fn resolve(doc: &VesselDoc, r: &Resolved, a: &Attachment, tables: &TableSet)
         AttachmentKind::Leg { .. } => legs(doc, r, a, host, tables, &mut g)?,
         AttachmentKind::Bracket { .. } => bracket(doc, r, a, host, &mut g)?,
         AttachmentKind::AnchorChair { .. } => anchor_chair(doc, a, host, &mut g)?,
+        AttachmentKind::StiffeningRing { .. } => stiffening_ring(doc, a, host, &mut g)?,
+        AttachmentKind::InsulationRing { .. } => insulation_ring(doc, a, host, &mut g)?,
+        AttachmentKind::Clip { .. } => clip(doc, a, host, &mut g)?,
+        AttachmentKind::LiftingLug { .. } => lifting_lug(doc, a, host, &mut g)?,
+        AttachmentKind::LimpetCoil { .. } => limpet_coil(doc, a, host, tables, &mut g)?,
         AttachmentKind::Nozzle { .. } => return Err(invalid(a, "nozzles are built by `nozzle`")),
-        other => return Err(VesselError::NotSupportedYet(format!("{} `{}`", other.name(), a.id))),
     }
     if g.parts.len() > MAX_PARTS {
         return Err(invalid(a, format!("{} bodies; at most {MAX_PARTS} per attachment", g.parts.len())));
@@ -824,6 +828,281 @@ fn anchor_chair(doc: &VesselDoc, a: &Attachment, host: &Station, g: &mut Support
             ("width", *width_mm, "mm", "chair width"),
             ("bolt_circle", 2.0 * rho_b, "mm", "anchor bolt circle diameter"),
             ("bolt_dia", *bolt_dia_mm, "mm", "anchor bolt diameter"),
+        ],
+    );
+    Ok(())
+}
+
+fn stiffening_ring(doc: &VesselDoc, a: &Attachment, host: &Station, g: &mut SupportGeom) -> Result<()> {
+    let AttachmentKind::StiffeningRing { section, inside } = &a.kind else { return Err(invalid(a, "not a ring")) };
+    if !(host.kind == "cylinder" && host.profile == Profile::Straight) {
+        return Err(invalid(a, format!("the host `{}` must be a cylinder", host.id)));
+    }
+    let z0 = axial_z(a, host);
+    let (ri, ro) = (host.r_from, host.r_from + host.thickness);
+    // In (outward from the shell surface, axial): `s` = 0 on the surface it sits on.
+    let (pts, what, height, along) = match section {
+        RingSection::Bar { height_mm, thk_mm } => (
+            vec![[0.0, z0 - thk_mm / 2.0], [*height_mm, z0 - thk_mm / 2.0], [*height_mm, z0 + thk_mm / 2.0], [0.0, z0 + thk_mm / 2.0]],
+            format!("stiffening ring bar {height_mm}x{thk_mm}"),
+            *height_mm,
+            *thk_mm,
+        ),
+        RingSection::Angle { size } => {
+            let (aa, bb, t) =
+                angle_size(size).ok_or_else(|| invalid(a, format!("cannot read the angle size `{size}` (write it as `ISA 75x75x8`)")))?;
+            // One flange on the shell (`aa` along the axis), the other standing out (`bb`).
+            let z1 = z0 - aa / 2.0;
+            (
+                vec![[0.0, z1], [bb, z1], [bb, z1 + t], [t, z1 + t], [t, z1 + aa], [0.0, z1 + aa]],
+                format!("stiffening ring angle {aa}x{bb}x{t}"),
+                bb,
+                aa,
+            )
+        }
+    };
+    if !(z0 - along / 2.0 >= host.z_from - 1e-6 && z0 + along / 2.0 <= host.z_to + 1e-6) {
+        return Err(invalid(a, format!("at {z0} mm it is not on its host `{}`", host.id)));
+    }
+    if *inside && !(height < ri) {
+        return Err(invalid(a, "the ring fills the vessel"));
+    }
+    let segs = polygon(&pts.iter().map(|p| if *inside { [ri - p[0], p[1]] } else { [ro + p[0], p[1]] }).collect::<Vec<_>>());
+    let (ax, u, _) = frame_at(doc, 0.0);
+    g.parts.push(ring(&body_name(&a.id, "ring"), &what, ax, u, &segs, 360.0));
+    push_params(doc, a, g, &[("position", z0, "mm", "ring centre from the datum"), ("height", height, "mm", "ring height off the shell")]);
+    Ok(())
+}
+
+fn insulation_ring(doc: &VesselDoc, a: &Attachment, host: &Station, g: &mut SupportGeom) -> Result<()> {
+    let AttachmentKind::InsulationRing { width_mm, thk_mm, segments } = &a.kind else { return Err(invalid(a, "not an insulation ring")) };
+    let z0 = axial_z(a, host);
+    let ro = outside_radius_over(host, z0 - thk_mm / 2.0, z0 + thk_mm / 2.0).ok_or_else(|| invalid(a, format!("not on its host `{}`", host.id)))?;
+    let segs = rect([ro, z0 - thk_mm / 2.0], [ro + width_mm, z0 + thk_mm / 2.0]);
+    let (ax, u, _) = frame_at(doc, 0.0);
+    g.parts.push(ring(
+        &body_name(&a.id, "ring"),
+        &format!("insulation support ring {width_mm}x{thk_mm} in {segments} segments"),
+        ax,
+        u,
+        &segs,
+        360.0,
+    ));
+    push_params(
+        doc,
+        a,
+        g,
+        &[("position", z0, "mm", "ring from the datum"), ("width", *width_mm, "mm", "ring width"), ("thk", *thk_mm, "mm", "ring thickness")],
+    );
+    Ok(())
+}
+
+fn clip(doc: &VesselDoc, a: &Attachment, host: &Station, g: &mut SupportGeom) -> Result<()> {
+    let AttachmentKind::Clip { plate: p, count, purpose } = &a.kind else { return Err(invalid(a, "not a clip")) };
+    if *count > 64 {
+        return Err(invalid(a, "at most 64 clips"));
+    }
+    let z0 = axial_z(a, host);
+    let ro =
+        outside_radius_over(host, z0 - p.len_mm / 2.0, z0 + p.len_mm / 2.0).ok_or_else(|| invalid(a, format!("not on its host `{}`", host.id)))?;
+    for (k, deg) in azimuths(a.angle_deg, *count).into_iter().enumerate() {
+        let (ax, u, t) = frame_at(doc, deg);
+        let pts = [[ro, z0 - p.len_mm / 2.0], [ro + p.wid_mm, z0 - p.len_mm / 2.0], [ro + p.wid_mm, z0 + p.len_mm / 2.0], [ro, z0 + p.len_mm / 2.0]];
+        g.parts.push(radial_plate(
+            &body_name(&a.id, &format!("clip {}", k + 1)),
+            &format!("{} clip {} thk", purpose_name(*purpose), p.thk_mm),
+            ax,
+            u,
+            t,
+            0.0,
+            &pts,
+            p.thk_mm,
+        ));
+    }
+    push_params(doc, a, g, &[("position", z0, "mm", "clip centre from the datum"), ("count", f64::from(*count), "", "clip count")]);
+    Ok(())
+}
+
+fn purpose_name(p: ClipPurpose) -> &'static str {
+    match p {
+        ClipPurpose::Ladder => "ladder",
+        ClipPurpose::Platform => "platform",
+        ClipPurpose::PipeSupport => "pipe support",
+        ClipPurpose::Earthing => "earthing",
+        ClipPurpose::Nameplate => "nameplate",
+    }
+}
+
+fn lifting_lug(doc: &VesselDoc, a: &Attachment, host: &Station, g: &mut SupportGeom) -> Result<()> {
+    let AttachmentKind::LiftingLug { style, plate: lp, hole_dia_mm, pad } = &a.kind else { return Err(invalid(a, "not a lifting lug")) };
+    let z0 = axial_z(a, host);
+    let (ax, u, t) = frame_at(doc, a.angle_deg);
+    let reach = lp.len_mm.max(pad.map_or(0.0, |p| p.width_mm)) / 2.0;
+    let ro = outside_radius_over(host, z0 - reach, z0 + reach).ok_or_else(|| invalid(a, format!("not on its host `{}` at {z0} mm", host.id)))?;
+    let mut base = ro;
+    if let Some(p) = pad {
+        if host.kind != "cylinder" {
+            g.warnings.push(format!("lifting lug `{}`: the pad is not built on a {} (drawn on the sheet)", a.id, host.kind));
+        } else {
+            // A square pad, `width_mm` along the axis and around the shell.
+            let ang = (p.width_mm / ro).to_degrees();
+            if !(ang < 180.0) {
+                return Err(invalid(a, "the pad wraps half the shell"));
+            }
+            let segs = rect([ro, z0 - p.width_mm / 2.0], [ro + p.thickness_mm, z0 + p.width_mm / 2.0]);
+            g.parts.push(ring(&body_name(&a.id, "pad"), &format!("lifting lug pad {} thk", p.thickness_mm), ax, u, &segs, ang));
+            base = ro + p.thickness_mm;
+            if p.width_mm < lp.len_mm.max(lp.thk_mm) {
+                g.warnings.push(format!("lifting lug `{}`: the pad is smaller than the lug", a.id));
+            }
+        }
+    }
+    let name = body_name(&a.id, "lug");
+    let hole_r = hole_dia_mm / 2.0;
+    let hole_at = base + lp.height_mm - hole_dia_mm;
+    if !(hole_at - hole_r > base) && !matches!(style, LugStyle::Trunnion) {
+        return Err(invalid(a, format!("a {hole_dia_mm} mm hole does not fit a lug {} mm high", lp.height_mm)));
+    }
+    match style {
+        LugStyle::Longitudinal | LugStyle::Tailing => {
+            if *style == LugStyle::Tailing {
+                g.warnings.push(format!("lifting lug `{}`: a tailing lug is built as a longitudinal plate in the beta", a.id));
+            }
+            let pts = [
+                [base, z0 - lp.len_mm / 2.0],
+                [base + lp.height_mm, z0 - lp.len_mm / 2.0],
+                [base + lp.height_mm, z0 + lp.len_mm / 2.0],
+                [base, z0 + lp.len_mm / 2.0],
+            ];
+            let mut lug = radial_plate(&name, &format!("lifting lug {} thk", lp.thk_mm), ax, u, t, 0.0, &pts, lp.thk_mm);
+            hole(&mut lug, "hole", add(add(mul(ax, z0), mul(u, hole_at)), mul(t, -lp.thk_mm / 2.0)), t, lp.thk_mm, *hole_dia_mm);
+            g.parts.push(lug);
+        }
+        LugStyle::Circumferential => {
+            let w = lp.len_mm / 2.0;
+            let mut lug = plate(
+                &name,
+                &format!("lifting lug {} thk", lp.thk_mm),
+                mul(ax, z0),
+                u,
+                t,
+                &polygon(&[[base, -w], [base + lp.height_mm, -w], [base + lp.height_mm, w], [base, w]]),
+                lp.thk_mm,
+                true,
+            );
+            hole(&mut lug, "hole", add(mul(ax, z0 - lp.thk_mm / 2.0), mul(u, hole_at)), ax, lp.thk_mm, *hole_dia_mm);
+            g.parts.push(lug);
+        }
+        LugStyle::Trunnion => {
+            // A round stub `len_mm` across, `height_mm` out, with an end plate `thk_mm` thick and
+            // `2 × thk_mm` wider (the sling stop); `hole_dia_mm` is not used.
+            let stub = lp.height_mm - lp.thk_mm;
+            if !(stub > 0.0) {
+                return Err(invalid(a, "the trunnion is shorter than its end plate"));
+            }
+            g.parts.push(rod(&name, &format!("trunnion OD {}", lp.len_mm), add(mul(ax, z0), mul(u, base)), u, lp.len_mm / 2.0, stub));
+            g.parts.push(rod(
+                &body_name(&a.id, "end plate"),
+                &format!("trunnion end plate {} thk", lp.thk_mm),
+                add(mul(ax, z0), mul(u, base + stub)),
+                u,
+                lp.len_mm / 2.0 + lp.thk_mm,
+                lp.thk_mm,
+            ));
+        }
+    }
+    push_params(
+        doc,
+        a,
+        g,
+        &[
+            ("position", z0, "mm", "lug centre from the datum"),
+            ("azimuth", a.angle_deg, "deg", "azimuth"),
+            ("len", lp.len_mm, "mm", "lug length"),
+            ("height", lp.height_mm, "mm", "lug height off the shell"),
+            ("thk", lp.thk_mm, "mm", "lug thickness"),
+            ("hole", *hole_dia_mm, "mm", "hole diameter"),
+        ],
+    );
+    Ok(())
+}
+
+fn limpet_coil(doc: &VesselDoc, a: &Attachment, host: &Station, tables: &TableSet, g: &mut SupportGeom) -> Result<()> {
+    let AttachmentKind::LimpetCoil { pipe_nps, schedule, pitch_mm, turns, end_axial_mm, start_angle_deg, hand, half_pipe } = &a.kind else {
+        return Err(invalid(a, "not a coil"));
+    };
+    if !(host.kind == "cylinder" && host.profile == Profile::Straight) {
+        return Err(invalid(a, format!("the host `{}` must be a cylinder", host.id)));
+    }
+    let row = tables.pipe(pipe_nps, schedule).ok_or_else(|| invalid(a, format!("no pipe NPS {pipe_nps} schedule {schedule} in the tables")))?;
+    if !row.verified.is_trusted() {
+        g.unverified_table = true;
+    }
+    let (od, wall) = (row.od, row.wall);
+    let z0 = axial_z(a, host);
+    let n = match (turns, end_axial_mm) {
+        (Some(n), _) => *n,
+        (None, Some(z1)) => (z1 - z0) / pitch_mm,
+        _ => return Err(invalid(a, "give `turns` or `end_axial_mm`")),
+    };
+    if !(n > 0.0 && n <= 200.0) {
+        return Err(invalid(a, format!("{n:.2} turns (at most 200)")));
+    }
+    if !(*pitch_mm > od) {
+        return Err(invalid(a, format!("the pitch {pitch_mm} mm must exceed the pipe's OD {od}")));
+    }
+    let z1 = z0 + n * pitch_mm;
+    if !(z0 - od / 2.0 >= host.z_from - 1e-6 && z1 + od / 2.0 <= host.z_to + 1e-6) {
+        return Err(invalid(a, format!("the coil ({z0:.0} … {z1:.0}) runs off its host `{}`", host.id)));
+    }
+    let ro = host.r_from + host.thickness;
+    let r_o = od / 2.0;
+    if !(wall > 0.0 && wall < r_o) {
+        return Err(invalid(a, format!("the pipe's wall {wall} mm does not fit its OD {od}")));
+    }
+    // A half pipe sits with its centreline on the shell's outside; a whole pipe touches it.
+    let rc = if *half_pipe { ro } else { ro + r_o };
+    let ax = vessel_axis(doc.global.orientation);
+    let name = body_name(&a.id, "coil");
+    let coil = |label: &str, size: f64, op: &str| {
+        let mut p = json!({"diameter": 2.0 * rc, "revolutions": n, "pitch": pitch_mm, "section": "circular", "section_size": size,
+            "section_position": "center", "base": mul(ax, z0), "axis": ax, "start_angle": format!("{start_angle_deg} deg"),
+            "clockwise": *hand == Hand::Lh, "operation": op, "name": label});
+        if op == "new" {
+            p["body_name"] = json!(name);
+        } else {
+            p["targets"] = json!([name]);
+        }
+        CommandCall { id: "solid.coil".into(), params: p }
+    };
+    let length_at = |r: f64| n * (2.0 * PI * r).hypot(*pitch_mm);
+    // The coil is modelled as the solid pipe swept along its centreline: the kernel's booleans
+    // against a helix (the bore, the half-pipe trim) take tens of minutes, so the bore and the
+    // half-pipe split are left to the drawing and the BOM, which use the pipe's real section.
+    let what = format!("limpet coil NPS {pipe_nps} sch {schedule}{}", if *half_pipe { " half pipe" } else { "" });
+    g.warnings.push(format!(
+        "`{}`: the coil is modelled as a solid {od} mm rod along its centreline (bore{} not cut: the kernel is too slow on helical booleans)",
+        a.id,
+        if *half_pipe { " and half-pipe split" } else { "" }
+    ));
+    let full = Part {
+        name: name.clone(),
+        what: format!("{what} (solid)"),
+        calls: vec![coil(&name, od, "new")],
+        volume: PI * r_o * r_o * length_at(rc),
+        fallback: None,
+    };
+    g.parts.push(full);
+    push_params(
+        doc,
+        a,
+        g,
+        &[
+            ("start", z0, "mm", "coil start from the datum"),
+            ("pitch", *pitch_mm, "mm", "pitch"),
+            ("turns", n, "", "turns"),
+            ("coil_d", 2.0 * rc, "mm", "coil centreline diameter"),
+            ("length", length_at(rc), "mm", "developed length along the centreline"),
         ],
     );
     Ok(())
