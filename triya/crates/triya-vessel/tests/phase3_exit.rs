@@ -3,7 +3,8 @@
 //! Phase 3 exit: reference vessel A's six nozzles (radial with pad, hillside, tangential, tilted
 //! with inside projection, normal to the bottom head, manway parallel to the axis on the top
 //! head), each with its B16.5 flange, build on the regenerated shell; anything the kernel cannot
-//! join degrades to a separate body with its flag, and the regeneration never fails.
+//! join degrades to a separate body with its flag, and the regeneration never fails. Since
+//! Phase 4 it also builds every support and weighs the vessel (`vessel.bom`).
 
 use serde_json::{Value, json};
 use solidcraft_engine::Session;
@@ -43,8 +44,28 @@ fn vessel_a_builds_its_six_nozzles() {
     let flagged: Vec<&str> =
         inspect["flags"].as_array().unwrap().iter().filter(|f| f["boolean_failed"] == true).filter_map(|f| f["id"].as_str()).collect();
     assert_eq!(separate, flagged);
-    // The supports and details (Phase 4) build beside the nozzles.
+    // The supports and details (Phase 4) build beside the nozzles, and the vessel weighs within
+    // 2 % of the handbook, a joined nozzle counted once (its share comes off its shell).
     for sp in r["supports"].as_array().unwrap() {
         assert_eq!(sp["built"], "built", "{sp}");
     }
+    let b = s.execute("vessel.bom", &json!({})).unwrap();
+    let (mut w, mut h) = (0.0, 0.0);
+    for it in b["items"].as_array().unwrap() {
+        eprintln!(
+            "{:>4} {:<36} {:>10} kg  handbook {:>10} ({})",
+            it["id"].as_str().unwrap_or(""),
+            it["description"].as_str().unwrap_or(""),
+            it["weight_kg"],
+            it["handbook_kg"],
+            it["delta_pct"]
+        );
+        if let (Some(x), Some(y)) = (it["weight_kg"].as_f64(), it["handbook_kg"].as_f64()) {
+            w += x;
+            h += y;
+        }
+    }
+    eprintln!("vessel A: {w:.1} kg, handbook {h:.1} kg; totals {}", b["totals"]);
+    assert!((w / h - 1.0).abs() < 0.02, "{w} vs {h}");
+    assert_eq!(b["items"].as_array().unwrap().iter().filter(|i| i["description"].as_str().unwrap_or("").starts_with("flange")).count(), 6);
 }

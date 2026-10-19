@@ -40,7 +40,7 @@
       "projection": { "from": "od", "mm": 250 }, "attach": "set_on", "service": "Drain" },
     { "id": "N4", "kind": "nozzle", "host": "E3", "axial": { "ref": "host_from", "mm": 0 }, "angle_deg": 0,
       "frame": { "type": "head_radial_at_r", "radius_mm": 0 }, "nps": "20", "schedule": "STD",
-      "flange": { "standard": "B16.47A", "class": 150, "type": "blind" },
+      "flange": { "standard": "B16.5", "class": 150, "type": "blind" },
       "projection": { "from": "cl", "mm": 3400 }, "manway": { "davit": false }, "service": "Manway" },
     { "id": "T1", "kind": "lifting_lug", "host": "E2", "axial": { "ref": "datum", "mm": 1500 }, "angle_deg": 90,
       "style": "trunnion", "plate": { "len_mm": 250, "height_mm": 150, "thk_mm": 20 }, "hole_dia_mm": 50 },
