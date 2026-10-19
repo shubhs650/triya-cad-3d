@@ -74,6 +74,10 @@ fn the_attachment_page_follows_the_3d_selection() {
     let text = painted(&mut panel, &mut app);
     assert_eq!(panel.selected_element.as_deref(), Some("E3"));
     assert!(text.contains("Add on E3"), "{text}");
+    // A vertex of N2's flange (a corner pick) selects N2.
+    app.session.selection = vec![Sel::Vertex { body: "Vessel N2 flange".into(), point: solidcraft_engine::geom::Vec3 { x: 0.0, y: 0.0, z: 0.0 } }];
+    painted(&mut panel, &mut app);
+    assert_eq!(panel.selected_attachment.as_deref(), Some("N2"));
     // Following can be switched off.
     panel.no_follow = true;
     app.session.selection = vec![Sel::Body { name: "Vessel E2".into() }];

@@ -30,7 +30,7 @@ fn selected_body(app: &SolveApp) -> Option<String> {
     use solidcraft_engine::Sel;
     app.session.selection.iter().find_map(|s| match s {
         Sel::Body { name } => Some(name.clone()),
-        Sel::Face { body, .. } | Sel::Edge { body, .. } => Some(body.clone()),
+        Sel::Face { body, .. } | Sel::Edge { body, .. } | Sel::Vertex { body, .. } => Some(body.clone()),
         _ => None,
     })
 }
