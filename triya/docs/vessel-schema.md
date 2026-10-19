@@ -184,6 +184,26 @@ closed form (0.5 %); a part the kernel cannot build is left out with a warning a
   the base ring's top: two gussets `gusset_thk_mm` at ±(`width_mm` − gusset)/2 from the skirt OD
   to the ring OD, a top plate `top_plate_thk_mm` at `height_mm` above the ring with a hole of
   `bolt_dia_mm` + 6 on the bolt circle midway between the skirt OD and the ring OD.
+- `stiffening_ring` (T4.3): a full ring on a cylinder at `axial`, outside (default) or `inside:
+  true`; `section.bar {height_mm, thk_mm}` (radial height × axial thickness) or
+  `section.angle {size}` (`ISA 75x75x8`: one leg against the shell, the other radial). Body
+  `Vessel <id> ring`.
+- `insulation_ring` (T4.3): a flat ring `width_mm` × `thk_mm` on the outside; `segments` only
+  goes into the description (the segments are drawn on the sheet). Body `Vessel <id> ring`.
+- `clip` (T4.3): `count` radial plates `len_mm` (axial) × `wid_mm` (radial) × `thk_mm`, evenly
+  from `angle_deg`; `purpose` names them. Bodies `Vessel <id> clip <n>`.
+- `lifting_lug` (T4.3): `longitudinal` (plate in the axial–radial plane), `circumferential`
+  (plate across the axis), `tailing` (built as longitudinal, with a warning), each with its
+  `hole_dia_mm` hole at mid-length, half-height; `trunnion`: a rod Ø `len_mm` × (`height_mm` −
+  `thk_mm`) plus an end disc Ø `len_mm` + 2·`thk_mm` × `thk_mm`. An optional `pad` is a shell
+  sector `width_mm` wide and long, `thickness_mm` thick, under the lug. Bodies `Vessel <id> lug`,
+  `… end plate`, `… pad`.
+- `limpet_coil` (T4.3): `pipe_nps`/`schedule` from the pipe tables, `pitch_mm`, `turns` (or
+  `end_axial_mm`), `hand`, `start_angle_deg`; a half pipe's centreline is on the shell's outside,
+  a whole pipe touches it. **Beta:** modelled as the solid pipe swept along its centreline, with
+  a warning; the bore and the half-pipe split are not cut (the kernel's booleans against a helix
+  take tens of minutes) and appear on the drawing and in the BOM from the real section.
+  Parameter `V<id>_<att>_length` is the developed length n·√((π·D)² + p²). Body `Vessel <id> coil`.
 
 ### 4.2 Kinds
 | kind | fields |
