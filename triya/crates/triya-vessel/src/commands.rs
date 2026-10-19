@@ -17,7 +17,7 @@ use solidcraft_engine::{CommandSpec, EngineError, Session};
 
 use crate::emit::{CommandCall, substitute};
 use crate::model::{AttachmentKind, VesselDoc};
-use crate::{VesselError, emit, eval, nozzle, support};
+use crate::{VesselError, emit, eval, nozzle, presets, support};
 
 /// The reverse-DNS metadata key the vessel JSON is kept under.
 pub const METADATA_KEY: &str = "in.openengtools.triya.vessel";
@@ -50,6 +50,11 @@ pub static COMMANDS: &[CommandSpec] = &[
          extent: {z_min, z_max, tl_bottom, tl_top, tl_to_tl}, warnings (parameter drift included), flags: [{id, boolean_failed, unverified_table}], parameters: \
          [{name, value, unit}], plan: [{command, params}] | plan_error, nozzles: [{id, host, origin, dir, s_inner, s_outer, s_start, s_face, \
          neck_od, neck_wall, pad, error?}], generated: [feature ids], group",
+    ),
+    CommandSpec::new("vessel.import_tables", "Import Standard Tables", import_tables).at(TAB, "UTILITY").icon("import").doc_only().params(
+        "tables: {flanges?: <flange table>, supports?: <support-preset table>} (the shipped JSON table format, `docs/standards-library.md`; \
+         each replaces the design's private table of that kind) | path: a JSON file of that shape (desktop) | clear: true (drops them). \
+         Kept in the design, searched before the shipped tables; rows without `verified` count as unverified. At most 60 KiB → private_tables",
     ),
 ];
 
@@ -268,8 +273,70 @@ fn station_json(st: &eval::Station) -> Value {
     })
 }
 
+/// Rows and sources of the design's private tables.
+fn private_summary(s: &Session) -> Value {
+    let Some(v) = s.doc.metadata.get(presets::TABLES_KEY) else { return Value::Null };
+    let mut out = json!({});
+    for k in ["flanges", "supports"] {
+        if let Some(t) = v.get(k) {
+            out[k] = json!({"source": t.get("source"), "rows": t.get("rows").and_then(Value::as_array).map_or(0, Vec::len)});
+        }
+    }
+    out
+}
+
+fn import_tables(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value> {
+    let cmd = "vessel.import_tables";
+    let clear = p.get("clear").and_then(Value::as_bool) == Some(true);
+    let given = match (p.get("tables"), str_(p, "path")) {
+        (Some(t), None) => Some(t.clone()),
+        (None, Some(path)) => {
+            let meta = std::fs::metadata(path).map_err(|e| bad(cmd, format!("`{path}`: {e}")))?;
+            if meta.len() > presets::MAX_TABLES_BYTES as u64 * 4 {
+                return Err(bad(cmd, format!("`{path}` is {} KiB; at most 240 KiB of JSON", meta.len() / 1024)));
+            }
+            let text = std::fs::read_to_string(path).map_err(|e| bad(cmd, format!("`{path}`: {e}")))?;
+            Some(serde_json::from_str::<Value>(&text).map_err(|e| bad(cmd, format!("`{path}`: {e}")))?)
+        }
+        (Some(_), Some(_)) => return Err(bad(cmd, "give `tables` or `path`, not both")),
+        (None, None) if clear => None,
+        (None, None) => return Err(bad(cmd, "give `tables`, `path` or `clear: true`")),
+    };
+    let mut next = if clear { json!({}) } else { s.doc.metadata.get(presets::TABLES_KEY).cloned().unwrap_or_else(|| json!({})) };
+    if let Some(given) = given {
+        let o = given.as_object().ok_or_else(|| bad(cmd, "`tables` must be {flanges?, supports?}"))?;
+        if o.is_empty() {
+            return Err(bad(cmd, "`tables` names no table"));
+        }
+        for (k, t) in o {
+            if k != "flanges" && k != "supports" {
+                return Err(bad(cmd, format!("`tables` holds `flanges` and `supports`, not `{k}`")));
+            }
+            next[k] = t.clone();
+        }
+    }
+    let text = serde_json::to_string(&next).map_err(|e| EngineError::Other(e.to_string()))?;
+    if text.len() > presets::MAX_TABLES_BYTES {
+        return Err(bad(cmd, format!("the private tables are {} KiB; a design keeps at most 60 KiB", text.len() / 1024)));
+    }
+    // Every row is checked before anything is stored.
+    presets::with_private(triya_stdlib::TableSet::embedded().map_err(VesselError::from)?, &next).map_err(|e| bad(cmd, e.to_string()))?;
+    let mut meta = s.doc.metadata.clone();
+    if next.as_object().is_some_and(serde_json::Map::is_empty) {
+        meta.remove(presets::TABLES_KEY);
+    } else {
+        meta.set(presets::TABLES_KEY, next).map_err(|e| bad(cmd, format!("cannot keep the tables: {e}")))?;
+    }
+    if meta != s.doc.metadata {
+        s.doc_mut().metadata = meta;
+    }
+    Ok(json!({"private_tables": private_summary(s)}))
+}
+
 fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
-    let (doc, generated) = load(s)?;
+    let (mut doc, generated) = load(s)?;
+    let tables = presets::tables(s)?;
+    let (applied, preset_warnings) = presets::apply(&mut doc, &tables, presets::private_support_tables(s))?;
     let flags: Vec<Value> = doc
         .attachments
         .iter()
@@ -280,8 +347,10 @@ fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         "doc": doc.to_value()?, "flags": flags,
         "generated": generated.features, "group": generated.group,
         "stations": [], "plan": null, "plan_error": null, "warnings": [], "parameters": [], "nozzles": [], "supports": [],
+        "presets": applied.iter().map(presets::Applied::to_json).collect::<Vec<_>>(),
+        "private_tables": private_summary(s),
     });
-    match eval::resolve(&doc) {
+    match eval::resolve_with(&doc, &tables) {
         Ok(r) => {
             out["stations"] = r.stations.iter().map(station_json).collect();
             out["extent"] = json!({"z_min": r.z_min, "z_max": r.z_max, "tl_bottom": r.tl_bottom, "tl_top": r.tl_top, "tl_to_tl": r.tl_to_tl()});
@@ -290,6 +359,7 @@ fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
             // regenerate rewrites it (`vessel-schema.md` §6).
             let table = sub(s, &CommandCall { id: "parameters.list".into(), params: json!({"filter": "user"}) }).unwrap_or(Value::Null);
             let mut warnings = r.warnings.clone();
+            warnings.extend(preset_warnings.iter().cloned());
             for row in table.get("parameters").and_then(Value::as_array).into_iter().flatten() {
                 let (Some(name), Some(value)) = (row.get("name").and_then(Value::as_str), row.get("value").and_then(Value::as_f64)) else { continue };
                 if let Some(p) = emitted.iter().find(|p| p.name == name)
@@ -305,7 +375,6 @@ fn inspect(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
                 Ok(p) => out["plan"] = p.into_iter().map(|c| json!({"command": c.id, "params": c.params})).collect(),
                 Err(e) => out["plan_error"] = json!(e.to_string()),
             }
-            let tables = triya_stdlib::TableSet::embedded().map_err(VesselError::from)?;
             out["nozzles"] = doc
                 .attachments
                 .iter()
@@ -356,7 +425,10 @@ pub fn group_name(doc: &VesselDoc) -> String {
 
 fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     let (mut doc, previous) = load(s)?;
-    let tables = triya_stdlib::TableSet::embedded().map_err(VesselError::from)?;
+    let tables = presets::tables(s)?;
+    // Presets first: an attachment with a `size_key` takes its row's fields (private table
+    // first), so importing a table changes what is built.
+    let (applied, preset_warnings) = presets::apply(&mut doc, &tables, presets::private_support_tables(s))?;
     let resolved = eval::resolve_with(&doc, &tables)?;
     // Every nozzle is placed before anything is built: a nozzle that cannot be placed is an
     // error in the document, and the design stays as it was.
@@ -409,6 +481,7 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     // Nozzles, one at a time, each tried on a scratch copy and kept only when the kernel's
     // result measures as expected; otherwise built as separate bodies and flagged.
     let mut warnings: Vec<String> = resolved.warnings.clone();
+    warnings.extend(preset_warnings);
     let mut built_nozzles = Vec::new();
     let mut extra_params = Vec::new();
     for mut g in nozzles {
@@ -434,7 +507,11 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         let report = build_support(s, g, &mut features, &mut steps);
         if let Some(a) = doc.attachments.iter_mut().find(|a| a.id == g.id) {
             a.flags.boolean_failed = report.get("built").and_then(Value::as_str) != Some("built");
-            a.flags.unverified_table = g.unverified_table;
+            let preset = applied.iter().find(|p| p.id == g.id);
+            a.flags.unverified_table = g.unverified_table || preset.is_some_and(|p| !p.verified.is_trusted());
+            if let Some(p) = preset.filter(|p| !p.verified.is_trusted()) {
+                warnings.push(format!("attachment `{}`: preset {} is {:?} in its table", g.id, p.row, p.verified));
+            }
         }
         warnings.extend(g.warnings.iter().cloned());
         if let Some(w) = report.get("warning").and_then(Value::as_str) {
@@ -472,7 +549,7 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     }
     store(s, &doc, &Generated { features: features.clone(), group })?;
     Ok(json!({"steps": steps, "features": features, "group": group, "parameters": parameters, "nozzles": built_nozzles,
-        "supports": built_supports, "warnings": warnings}))
+        "supports": built_supports, "presets": applied.iter().map(presets::Applied::to_json).collect::<Vec<_>>(), "warnings": warnings}))
 }
 
 /// The host body's measured volume.

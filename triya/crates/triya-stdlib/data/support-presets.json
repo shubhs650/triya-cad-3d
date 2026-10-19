@@ -1,0 +1,960 @@
+{
+ "source": "Triya CAD 3D support presets: proportional rules by vessel outside diameter, written for Triya (no standard, catalogue or company sheet copied)",
+ "note": "Lengths in mm. Keys OD<mm>: a vessel OD without a row takes the nearest smaller one. Starting points for modelling, not design: every value must be checked against the project's standard.",
+ "rows": [
+  {
+   "kind": "saddle",
+   "size_key": "OD600",
+   "fields": {
+    "width_mm": 150,
+    "height_mm": 400,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 10,
+    "rib_count": 2,
+    "rib_thk_mm": 10,
+    "base_plate": {
+     "len_mm": 600,
+     "wid_mm": 150,
+     "thk_mm": 12
+    },
+    "wear_plate": {
+     "thk_mm": 8,
+     "width_mm": 250,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 20
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD800",
+   "fields": {
+    "width_mm": 150,
+    "height_mm": 400,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 10,
+    "rib_count": 2,
+    "rib_thk_mm": 10,
+    "base_plate": {
+     "len_mm": 800,
+     "wid_mm": 150,
+     "thk_mm": 12
+    },
+    "wear_plate": {
+     "thk_mm": 8,
+     "width_mm": 250,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 20
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD1000",
+   "fields": {
+    "width_mm": 200,
+    "height_mm": 500,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 10,
+    "rib_count": 4,
+    "rib_thk_mm": 10,
+    "base_plate": {
+     "len_mm": 950,
+     "wid_mm": 200,
+     "thk_mm": 16
+    },
+    "wear_plate": {
+     "thk_mm": 8,
+     "width_mm": 300,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 20
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD1200",
+   "fields": {
+    "width_mm": 200,
+    "height_mm": 600,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 12,
+    "rib_count": 4,
+    "rib_thk_mm": 12,
+    "base_plate": {
+     "len_mm": 1150,
+     "wid_mm": 200,
+     "thk_mm": 16
+    },
+    "wear_plate": {
+     "thk_mm": 10,
+     "width_mm": 300,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 20
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD1400",
+   "fields": {
+    "width_mm": 200,
+    "height_mm": 700,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 12,
+    "rib_count": 4,
+    "rib_thk_mm": 12,
+    "base_plate": {
+     "len_mm": 1350,
+     "wid_mm": 200,
+     "thk_mm": 16
+    },
+    "wear_plate": {
+     "thk_mm": 10,
+     "width_mm": 300,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 20
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD1600",
+   "fields": {
+    "width_mm": 200,
+    "height_mm": 800,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 12,
+    "rib_count": 4,
+    "rib_thk_mm": 12,
+    "base_plate": {
+     "len_mm": 1500,
+     "wid_mm": 200,
+     "thk_mm": 16
+    },
+    "wear_plate": {
+     "thk_mm": 10,
+     "width_mm": 300,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 24
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD1800",
+   "fields": {
+    "width_mm": 200,
+    "height_mm": 900,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 12,
+    "rib_count": 4,
+    "rib_thk_mm": 12,
+    "base_plate": {
+     "len_mm": 1700,
+     "wid_mm": 200,
+     "thk_mm": 16
+    },
+    "wear_plate": {
+     "thk_mm": 10,
+     "width_mm": 300,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 24
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD2000",
+   "fields": {
+    "width_mm": 250,
+    "height_mm": 1000,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 12,
+    "rib_count": 4,
+    "rib_thk_mm": 12,
+    "base_plate": {
+     "len_mm": 1850,
+     "wid_mm": 250,
+     "thk_mm": 20
+    },
+    "wear_plate": {
+     "thk_mm": 10,
+     "width_mm": 350,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 24
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD2200",
+   "fields": {
+    "width_mm": 250,
+    "height_mm": 1100,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 12,
+    "rib_count": 4,
+    "rib_thk_mm": 12,
+    "base_plate": {
+     "len_mm": 2050,
+     "wid_mm": 250,
+     "thk_mm": 20
+    },
+    "wear_plate": {
+     "thk_mm": 10,
+     "width_mm": 350,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 24
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD2400",
+   "fields": {
+    "width_mm": 250,
+    "height_mm": 1200,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 16,
+    "rib_count": 6,
+    "rib_thk_mm": 16,
+    "base_plate": {
+     "len_mm": 2250,
+     "wid_mm": 250,
+     "thk_mm": 20
+    },
+    "wear_plate": {
+     "thk_mm": 12,
+     "width_mm": 350,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 24
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD2600",
+   "fields": {
+    "width_mm": 250,
+    "height_mm": 1300,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 16,
+    "rib_count": 6,
+    "rib_thk_mm": 16,
+    "base_plate": {
+     "len_mm": 2400,
+     "wid_mm": 250,
+     "thk_mm": 20
+    },
+    "wear_plate": {
+     "thk_mm": 12,
+     "width_mm": 350,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 24
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD2800",
+   "fields": {
+    "width_mm": 250,
+    "height_mm": 1400,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 16,
+    "rib_count": 6,
+    "rib_thk_mm": 16,
+    "base_plate": {
+     "len_mm": 2600,
+     "wid_mm": 250,
+     "thk_mm": 20
+    },
+    "wear_plate": {
+     "thk_mm": 12,
+     "width_mm": 350,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 24
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD3000",
+   "fields": {
+    "width_mm": 300,
+    "height_mm": 1500,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 16,
+    "rib_count": 6,
+    "rib_thk_mm": 16,
+    "base_plate": {
+     "len_mm": 2750,
+     "wid_mm": 300,
+     "thk_mm": 25
+    },
+    "wear_plate": {
+     "thk_mm": 12,
+     "width_mm": 400,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 30
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD3200",
+   "fields": {
+    "width_mm": 300,
+    "height_mm": 1600,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 16,
+    "rib_count": 6,
+    "rib_thk_mm": 16,
+    "base_plate": {
+     "len_mm": 2950,
+     "wid_mm": 300,
+     "thk_mm": 25
+    },
+    "wear_plate": {
+     "thk_mm": 12,
+     "width_mm": 400,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 30
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD3400",
+   "fields": {
+    "width_mm": 300,
+    "height_mm": 1700,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 16,
+    "rib_count": 6,
+    "rib_thk_mm": 16,
+    "base_plate": {
+     "len_mm": 3150,
+     "wid_mm": 300,
+     "thk_mm": 25
+    },
+    "wear_plate": {
+     "thk_mm": 12,
+     "width_mm": 400,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 30
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "saddle",
+   "size_key": "OD3600",
+   "fields": {
+    "width_mm": 300,
+    "height_mm": 1800,
+    "contact_angle_deg": 120,
+    "web_thk_mm": 16,
+    "rib_count": 6,
+    "rib_thk_mm": 16,
+    "base_plate": {
+     "len_mm": 3300,
+     "wid_mm": 300,
+     "thk_mm": 25
+    },
+    "wear_plate": {
+     "thk_mm": 12,
+     "width_mm": 400,
+     "angle_deg": 132
+    },
+    "anchor_bolts": {
+     "count": 2,
+     "dia_mm": 30
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "For vessels of this outside diameter up to the next row. Width = rib length; base plate spans the horns of a 120\u00b0 saddle with its wear plate. Check against the project's standard before fabrication."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD300",
+   "fields": {
+    "count": 3,
+    "section": {
+     "pipe": {
+      "nps": "3",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 190,
+     "wid_mm": 190,
+     "thk_mm": 12
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD400",
+   "fields": {
+    "count": 3,
+    "section": {
+     "pipe": {
+      "nps": "3",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 190,
+     "wid_mm": 190,
+     "thk_mm": 12
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD500",
+   "fields": {
+    "count": 3,
+    "section": {
+     "pipe": {
+      "nps": "3",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 190,
+     "wid_mm": 190,
+     "thk_mm": 12
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD600",
+   "fields": {
+    "count": 3,
+    "section": {
+     "pipe": {
+      "nps": "3",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 190,
+     "wid_mm": 190,
+     "thk_mm": 12
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD700",
+   "fields": {
+    "count": 3,
+    "section": {
+     "pipe": {
+      "nps": "4",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 220,
+     "wid_mm": 220,
+     "thk_mm": 12
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD800",
+   "fields": {
+    "count": 4,
+    "section": {
+     "pipe": {
+      "nps": "4",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 220,
+     "wid_mm": 220,
+     "thk_mm": 12
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD900",
+   "fields": {
+    "count": 4,
+    "section": {
+     "pipe": {
+      "nps": "4",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 220,
+     "wid_mm": 220,
+     "thk_mm": 16
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD1000",
+   "fields": {
+    "count": 4,
+    "section": {
+     "pipe": {
+      "nps": "4",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 220,
+     "wid_mm": 220,
+     "thk_mm": 16
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD1100",
+   "fields": {
+    "count": 4,
+    "section": {
+     "pipe": {
+      "nps": "6",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 270,
+     "wid_mm": 270,
+     "thk_mm": 16
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD1200",
+   "fields": {
+    "count": 4,
+    "section": {
+     "pipe": {
+      "nps": "6",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 270,
+     "wid_mm": 270,
+     "thk_mm": 16
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD1300",
+   "fields": {
+    "count": 4,
+    "section": {
+     "pipe": {
+      "nps": "6",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 270,
+     "wid_mm": 270,
+     "thk_mm": 16
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD1400",
+   "fields": {
+    "count": 4,
+    "section": {
+     "pipe": {
+      "nps": "6",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 270,
+     "wid_mm": 270,
+     "thk_mm": 16
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD1500",
+   "fields": {
+    "count": 4,
+    "section": {
+     "pipe": {
+      "nps": "6",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 270,
+     "wid_mm": 270,
+     "thk_mm": 16
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "leg",
+   "size_key": "OD1600",
+   "fields": {
+    "count": 4,
+    "section": {
+     "pipe": {
+      "nps": "6",
+      "schedule": "40"
+     }
+    },
+    "base_plate": {
+     "len_mm": 270,
+     "wid_mm": 270,
+     "thk_mm": 16
+    }
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Pipe legs for vessels of this outside diameter up to the next row; length is the project's."
+  },
+  {
+   "kind": "lifting_lug",
+   "size_key": "OD600",
+   "fields": {
+    "plate": {
+     "len_mm": 300,
+     "height_mm": 150,
+     "thk_mm": 16
+    },
+    "hole_dia_mm": 40
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Plate lugs for vessels of this outside diameter up to the next row; not a rated lifting design \u2014 size lugs for the actual lift."
+  },
+  {
+   "kind": "lifting_lug",
+   "size_key": "OD1000",
+   "fields": {
+    "plate": {
+     "len_mm": 400,
+     "height_mm": 200,
+     "thk_mm": 20
+    },
+    "hole_dia_mm": 50
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Plate lugs for vessels of this outside diameter up to the next row; not a rated lifting design \u2014 size lugs for the actual lift."
+  },
+  {
+   "kind": "lifting_lug",
+   "size_key": "OD1400",
+   "fields": {
+    "plate": {
+     "len_mm": 400,
+     "height_mm": 200,
+     "thk_mm": 20
+    },
+    "hole_dia_mm": 50
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Plate lugs for vessels of this outside diameter up to the next row; not a rated lifting design \u2014 size lugs for the actual lift."
+  },
+  {
+   "kind": "lifting_lug",
+   "size_key": "OD1800",
+   "fields": {
+    "plate": {
+     "len_mm": 500,
+     "height_mm": 250,
+     "thk_mm": 25
+    },
+    "hole_dia_mm": 60
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Plate lugs for vessels of this outside diameter up to the next row; not a rated lifting design \u2014 size lugs for the actual lift."
+  },
+  {
+   "kind": "lifting_lug",
+   "size_key": "OD2200",
+   "fields": {
+    "plate": {
+     "len_mm": 500,
+     "height_mm": 250,
+     "thk_mm": 25
+    },
+    "hole_dia_mm": 60
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Plate lugs for vessels of this outside diameter up to the next row; not a rated lifting design \u2014 size lugs for the actual lift."
+  },
+  {
+   "kind": "lifting_lug",
+   "size_key": "OD2600",
+   "fields": {
+    "plate": {
+     "len_mm": 600,
+     "height_mm": 300,
+     "thk_mm": 32
+    },
+    "hole_dia_mm": 75
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Plate lugs for vessels of this outside diameter up to the next row; not a rated lifting design \u2014 size lugs for the actual lift."
+  },
+  {
+   "kind": "lifting_lug",
+   "size_key": "OD3000",
+   "fields": {
+    "plate": {
+     "len_mm": 600,
+     "height_mm": 300,
+     "thk_mm": 32
+    },
+    "hole_dia_mm": 75
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Plate lugs for vessels of this outside diameter up to the next row; not a rated lifting design \u2014 size lugs for the actual lift."
+  },
+  {
+   "kind": "lifting_lug",
+   "size_key": "OD3400",
+   "fields": {
+    "plate": {
+     "len_mm": 600,
+     "height_mm": 300,
+     "thk_mm": 32
+    },
+    "hole_dia_mm": 75
+   },
+   "source": [
+    "Triya CAD 3D proportional rule written for this table (docs/standards-library.md \u00a72); not taken from any standard, catalogue or company sheet"
+   ],
+   "verified": "derived",
+   "note": "Plate lugs for vessels of this outside diameter up to the next row; not a rated lifting design \u2014 size lugs for the actual lift."
+  }
+ ]
+}

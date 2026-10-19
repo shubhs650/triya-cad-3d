@@ -10,6 +10,7 @@
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+use crate::support::{SupportRow, od_key};
 use crate::{FlangeKind, FlangeRow, HeadPreset, PipeScheduleRow, Result, StandardRef, StdlibError, Verified, canonical_nps};
 
 /// The marker a placeholder table carries in `source`.
@@ -27,6 +28,7 @@ const B16_47A_JSON: &str = include_str!("../data/asme-b16.47a.json");
 const B16_47B_JSON: &str = include_str!("../data/asme-b16.47b.json");
 const B36_10_JSON: &str = include_str!("../data/asme-b36.10.json");
 const HEAD_PRESETS_JSON: &str = include_str!("../data/head_presets.json");
+const SUPPORT_PRESETS_JSON: &str = include_str!("../data/support-presets.json");
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Table<R> {
@@ -92,6 +94,9 @@ pub struct TableSet {
     pub flanges: Vec<Table<FlangeRow>>,
     pub pipe_schedules: Vec<Table<PipeScheduleRow>>,
     pub head_presets: Table<HeadPresetRow>,
+    /// Support and detail presets, private ones first.
+    #[serde(default)]
+    pub supports: Vec<Table<SupportRow>>,
 }
 
 fn parse_table<R: DeserializeOwned>(name: &str, text: &str) -> Result<Table<R>> {
@@ -139,6 +144,20 @@ pub fn parse_pipe_table(text: &str, strict: bool) -> Result<Table<PipeScheduleRo
     Ok(t)
 }
 
+/// A support-preset table, every row validated; `strict` also demands complete provenance.
+pub fn parse_support_table(text: &str, strict: bool) -> Result<Table<SupportRow>> {
+    let t: Table<SupportRow> = parse_table("supports", text)?;
+    let name = table_name(&t, "supports");
+    for (i, r) in t.rows.iter().enumerate() {
+        let at = |msg: String| StdlibError::Table { table: name.clone(), msg: format!("row {i} ({}): {msg}", r.size_key()) };
+        r.validate().map_err(|e| at(e.to_string()))?;
+        if strict {
+            check_provenance(&r.source, r.verified).map_err(at)?;
+        }
+    }
+    Ok(t)
+}
+
 impl TableSet {
     /// The tables compiled into the crate (ASME B16.5, B16.47 Series A and B, B36.10M, head presets).
     pub fn embedded() -> Result<TableSet> {
@@ -146,6 +165,7 @@ impl TableSet {
             flanges: vec![parse_flange_table(B16_5_JSON, true)?, parse_flange_table(B16_47A_JSON, true)?, parse_flange_table(B16_47B_JSON, true)?],
             pipe_schedules: vec![parse_pipe_table(B36_10_JSON, true)?],
             head_presets: parse_table("head_presets", HEAD_PRESETS_JSON)?,
+            supports: vec![parse_support_table(SUPPORT_PRESETS_JSON, true)?],
         })
     }
 
@@ -158,6 +178,7 @@ impl TableSet {
             flanges: flanges.iter().map(|t| parse_flange_table(t, true)).collect::<Result<_>>()?,
             pipe_schedules: pipe_schedules.iter().map(|t| parse_pipe_table(t, true)).collect::<Result<_>>()?,
             head_presets: parse_table("head_presets", head_presets)?,
+            supports: Vec::new(),
         })
     }
 
@@ -171,11 +192,43 @@ impl TableSet {
         Ok(self)
     }
 
+    /// This set with a user's private support-preset table searched before the shipped ones
+    /// (rows that do not say how they were verified count as `unverified`).
+    pub fn with_private_supports(mut self, supports: &str) -> Result<TableSet> {
+        if self.supports.len() >= MAX_TABLES {
+            return Err(StdlibError::Invalid(format!("more than {MAX_TABLES} support tables")));
+        }
+        self.supports.insert(0, parse_support_table(supports, false)?);
+        Ok(self)
+    }
+
+    /// The preset for an attachment of `kind` with `size_key`: an exact key (case ignored) in
+    /// the first table that has one; else, for an `OD<mm>` key, the row of the nearest smaller
+    /// OD of that kind, in the first table that has one.
+    pub fn support(&self, kind: &str, size_key: &str) -> Option<&SupportRow> {
+        let key = size_key.trim();
+        if let Some(r) =
+            self.supports.iter().find_map(|t| t.rows.iter().filter(|r| r.kind == kind).find(|r| r.size_key.trim().eq_ignore_ascii_case(key)))
+        {
+            return Some(r);
+        }
+        let od = od_key(key)?;
+        self.supports.iter().find_map(|t| {
+            t.rows
+                .iter()
+                .filter(|r| r.kind == kind)
+                .filter_map(|r| od_key(&r.size_key).filter(|v| *v <= od + 1e-9).map(|v| (v, r)))
+                .max_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, r)| r)
+        })
+    }
+
     /// Any table holds placeholder values.
     pub fn is_illustrative(&self) -> bool {
         self.flanges.iter().any(Table::is_illustrative)
             || self.pipe_schedules.iter().any(Table::is_illustrative)
             || self.head_presets.is_illustrative()
+            || self.supports.iter().any(Table::is_illustrative)
     }
 
     /// Every flange row, in search order.

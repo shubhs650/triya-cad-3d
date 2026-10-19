@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
 **Phase:** 4 — Supports + attachments · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T4.4 (standard refs, open preset tables, private table import). T4.1 saddles, T4.2 legs/brackets/chairs and T4.3 rings/coil/lugs/clips done. Phases 0–3 are done (#2–#22); the Pages deploy waits on the owner (see Owner decisions).
+**Next task:** T4.5 (BOM and weights). T4.1 saddles, T4.2 legs/brackets/chairs, T4.3 rings/coil/lugs/clips and T4.4 presets/private tables done. Phases 0–3 are done (#2–#22); the Pages deploy waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -36,6 +36,7 @@
 | T4.1 | Saddles: `triya-vessel::support` resolves supports into parts (one body per plate/ring, closed-form volume each); a saddle = web (contact arc between the horns), ribs in halves either side of the web, base plate with anchor bolt holes, wear plate sector on the shell; `vessel.regenerate` builds every support after the nozzles (all parts at once, else part by part) and checks each body's volume; `vessel.inspect` lists the parts | #23 | 18 Oct | AT `tests/saddles.rs`: vessel B on two saddles, web +0.002 %, ribs 0.000 %, base plate +0.0001 %, wear plate −0.005 %; wear plate inner vertices within 0.01 mm of the shell OD; saddles 3000 apart; 3.2 s. Screenshot `screenshots/phase4/vessel-b-saddles.png` (project files) |
 | T4.2 | Legs (pipe from B36.10, bored; angle from its size, heel at the shell), each with its base plate, on the shell (top at `axial`) or under a head (top square at the head's outside); bracket lugs (two gussets, top plate with bolt holes, bottom plate); anchor chairs on the skirt's base ring (two gussets, top plate with the bolt hole on the ring's mid circle); copies instance by instance; channel legs reported "not built yet" | #24 | 19 Oct | AT `tests/legs_brackets_chairs.rs`: vessel C on 4 pipe legs (−0.010 %, tops on the hemispherical head within 0.05 mm) with 2 brackets (gussets 0.000 %, top plate +0.0002 %), 3 angle legs 0.000 %, vessel A's 8 anchor chairs (+0.0006 %); counts equal `count`; 5.8 s. Screenshot `screenshots/phase4/vessel-c-legs-brackets.png` |
 | T4.3 | Stiffening rings (bar, angle; outside or inside), insulation support rings, clips, lifting lugs (longitudinal, circumferential, trunnion; optional pad; tailing as longitudinal with a warning), limpet coil (solid pipe along its centreline, developed-length parameter); vessel A's L1/L2/R1/C1/AC1 all build | #25 | 19 Oct | AT `tests/rings_coils_lugs.rs`: rings +0.0004/+0.0022 %, insulation ring +0.0003 %, lugs +0.0008 %, pad −0.0039 %, trunnion −0.0075 %, clips 0.000 %, coil developed length −0.17 % (1 % allowed); 55 s; vessel A without nozzles builds every support |
+| T4.4 | `standard_ref` + `size_key` presets: support-preset tables in `triya-stdlib` (shipped saddle/leg/lug rules by OD, `derived`), private tables via `vessel.import_tables` kept in the design (≤ 60 KiB, one undo step), applied at regenerate and inspect, unverified rows flagged | #26 | 19 Oct | AT `tests/presets.rs`: importing the fictional ACME table turns vessel B's S1 base plate from 1100×200×16 into 1200×250×20 (within 1e-4); `OD1650` takes the OD1600 row; bad tables refused; `data/` holds no EIL values; stdlib `tests/support_presets.rs` |
 | P2 exit | Vessel A's shell (skirt, 2:1 head, two courses, toriconical cone, F&D head) regenerates from `examples/vessel-a-shell.json` and exports STEP (101 KB, 7 solids, 7 s); Triya CI runs it | #17 | 18 Oct | CI step "Phase 2 exit vessel to STEP" |
 
 ## In progress
@@ -114,6 +115,7 @@
 - 2026-10-19 — Legs under a head get square tops at the head's outside under the leg's inner edge (no overlap; a gap toward the rim). The moulded top (pipe cut by the crown's sphere) built correctly but took ~70 s a leg (vessel C: 285 s for 4), against the < 10 s browser target, so it is drawn on the sheet; revisit with the post-beta kernel (Deferred).
 - 2026-10-19 — Bracket and chair geometry where the schema is silent: gussets flush with the top plate's sides, a bracket's gusset narrows to the bottom plate's width (a triangle without one), chair bolt holes on the base ring's mid circle; angle legs stand heel-in at ±45°. Channel legs need a section table the beta doesn't ship: "not built yet".
 - 2026-10-19 — The limpet coil is modelled as the solid pipe swept along its centreline: the bore cut and the half-pipe trim (booleans against a helix) ran over 20 minutes in this kernel. A half pipe's centreline stays on the shell's outside, so the solid overlaps the shell (separate bodies). The drawing and BOM use the real section; the warning says so (Deferred). The tailing lug is built as a longitudinal lug with a warning until the drawing phase needs its own shape.
+- 2026-10-19 — Presets (T4.4) replace the attachment's own fields (row wins, object fields whole) and the applied values are stored in the vessel, so the sheet and BOM read one document; a `size_key` without a row keeps the typed values and warns only when a `standard_ref` is given. Private tables live in the design's metadata (`in.openengtools.triya.tables`, ≤ 60 KiB: upstream's 64 KiB per value), not in OPFS, so a design carries the standard it was built to; larger company tables wait for a file-backed store (Deferred). Shipped presets are Triya's own proportional rules (`derived`), not handbook values.
 
 ## Owner decisions
 | opened | question | status | answer |
@@ -145,6 +147,7 @@
 | Davit geometry on manways | reference only in beta | P1 |
 | Head-moulded leg tops | sphere-cut tops take ~70 s a leg in this kernel | P5 |
 | Channel-section legs | no open channel section table | P1 |
+| Private tables over 60 KiB (file/OPFS-backed store) | metadata value cap upstream | P1 |
 | Limpet coil bore and half-pipe split in the solid | helical booleans take > 20 min in this kernel | P5 |
 | Heat exchangers | model stability first | P4 |
 | Hex meshing | post-beta by plan | P3/P4 |
@@ -190,3 +193,4 @@
 - 2026-10-18 — Phase 4 started (thread "Phase 4 implementation"). T4.1: saddles with wear plates under vessel B, every part within 0.01 % of its closed form.
 - 2026-10-19 — T4.2: legs (pipe, angle), bracket lugs and anchor chairs build as separate plates; head-moulded leg tops tried and deferred (70 s a leg).
 - 2026-10-19 — T4.3: stiffening and insulation rings, clips, lifting lugs and the limpet coil build; vessel A's supports all build (coil as a solid pipe, recorded).
+- 2026-10-19 — T4.4: presets by `size_key` (private table first, shipped OD rules), `vessel.import_tables`; the fictional private table changes vessel B's saddle.
