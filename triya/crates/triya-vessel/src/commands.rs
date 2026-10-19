@@ -24,22 +24,31 @@ use crate::{VesselError, bom, emit, eval, nozzle, presets, support};
 /// The reverse-DNS metadata key the vessel JSON is kept under.
 pub const METADATA_KEY: &str = "in.openengtools.triya.vessel";
 
-/// Toolbar tab and panel. Upstream's tab names are upper-case (`SOLID`, `SHEET METAL`) and the
-/// UI translates them with `tr_label`; the `VESSEL` tab is added to `toolbar::TABS` by the
-/// overlay's seam, and panels of an unlisted tab are `MAKE`, `ADD-INS`, `UTILITY`, `INSPECT`,
-/// `SELECT` (`toolbar::panels`).
+/// Toolbar tab. Upstream's tab names are upper-case (`SOLID`, `SHEET METAL`) and the UI translates
+/// them with `tr_label`; the `VESSEL` tab is added to `toolbar::TABS` by the overlay's seam, and its
+/// panels ([`PANELS`]) to `toolbar::panels` by another (both one line).
 pub const TAB: &str = "VESSEL";
 
+/// The `VESSEL` tab's panels, in ribbon order (PLAN T5.1): CREATE = new vessel and elements,
+/// INSERT = attachments, supports and tables, MODIFY = regenerate and change, INSPECT = BOM and
+/// inspect. Upstream already translates these headings, so the seam needs no catalog lines.
+pub const PANELS: [&str; 4] = ["CREATE", "INSERT", "MODIFY", "INSPECT"];
+
+/// In ribbon order: each panel lists its commands in this order (the first two get buttons).
 pub static COMMANDS: &[CommandSpec] = &[
-    CommandSpec::new("vessel.new", "New Vessel", new).at(TAB, "MAKE").icon("cylinder").doc_only().params(
+    CommandSpec::new("vessel.new", "New Vessel", new).at(TAB, "CREATE").icon("cylinder").doc_only().params(
         "doc?: a triya.vessel/0.1 document (replaces any vessel in the design); or diameter_mm, thickness_mm, length_mm (a one-cylinder \
          vessel; default 1000 × 10 × 2000), name?; replace?: bool (default false: refused when the design already has a vessel) → doc",
     ),
-    CommandSpec::new("vessel.set", "Change Vessel", set).at(TAB, "MAKE").icon("params").doc_only().params(
-        "doc: a whole triya.vessel/0.1 document; or element: {id, …} (added, or replaced by id), attachment: {id, …} (likewise), \
-         remove: id (an element or attachment), global: {…} (fields to change); the result is validated before it is stored → doc",
+    crate::edit::specs::ELEMENT_ADD,
+    crate::edit::specs::ATTACHMENT_ADD,
+    crate::edit::specs::SUPPORT_ADD,
+    CommandSpec::new("vessel.import_tables", "Import Standard Tables", import_tables).at(TAB, "INSERT").icon("import").doc_only().params(
+        "tables: {flanges?: <flange table>, supports?: <support-preset table>} (the shipped JSON table format, `docs/standards-library.md`; \
+         each replaces the design's private table of that kind) | path: a JSON file of that shape (desktop) | clear: true (drops them). \
+         Kept in the design, searched before the shipped tables; rows without `verified` count as unverified. At most 60 KiB → private_tables",
     ),
-    CommandSpec::new("vessel.regenerate", "Regenerate Vessel", regenerate).at(TAB, "MAKE").icon("compute").enabled(has_vessel).params(
+    CommandSpec::new("vessel.regenerate", "Regenerate Vessel", regenerate).at(TAB, "MODIFY").icon("compute").enabled(has_vessel).params(
         "→ steps: [{command, params, reply}], features: [ids] (what it built, kept in the timeline folder `Vessel <id>` → group; only \
          the features of the previous regeneration are deleted first). One undo step. Also writes every dimension as a user parameter \
          V<vessel>_<element>_<field> (mm) → parameters. Nozzles are cut and joined into their host and kept when the host's measured \
@@ -47,26 +56,29 @@ pub static COMMANDS: &[CommandSpec] = &[
          joined|separate|none, expected_mm3, measured_mm3, warning}]; other attachments are not built yet → warnings. A nozzle that \
          cannot be placed is an error and nothing changes",
     ),
-    CommandSpec::new("vessel.inspect", "Inspect Vessel", inspect).at(TAB, "INSPECT").icon("measure").noundo().doc_only().params(
-        "→ doc, stations: [{id, kind, z_from, z_to, r_from, r_to, thickness, diameter_mm, envelope, tl, half_apex_deg, profile, detail}], \
-         extent: {z_min, z_max, tl_bottom, tl_top, tl_to_tl}, warnings (parameter drift included), flags: [{id, boolean_failed, unverified_table}], parameters: \
-         [{name, value, unit}], plan: [{command, params}] | plan_error, nozzles: [{id, host, origin, dir, s_inner, s_outer, s_start, s_face, \
-         neck_od, neck_wall, pad, error?}], generated: [feature ids], group",
+    crate::edit::specs::DATUM,
+    CommandSpec::new("vessel.set", "Change Vessel", set).at(TAB, "MODIFY").icon("params").doc_only().params(
+        "doc: a whole triya.vessel/0.1 document; or patch: [{op: add|remove|replace|move|copy|test, path: JSON pointer, value?, from?}] \
+         (RFC 6902 on the stored document, e.g. replace /elements/1/length_mm; what the vessel panels send); element: {id, …} (added, or \
+         replaced by id), attachment: {id, …} (likewise), remove: id (an element or attachment), global: {…} (fields to change); the \
+         result is validated before it is stored → doc",
     ),
-    CommandSpec::new("vessel.import_tables", "Import Standard Tables", import_tables).at(TAB, "UTILITY").icon("import").doc_only().params(
-        "tables: {flanges?: <flange table>, supports?: <support-preset table>} (the shipped JSON table format, `docs/standards-library.md`; \
-         each replaces the design's private table of that kind) | path: a JSON file of that shape (desktop) | clear: true (drops them). \
-         Kept in the design, searched before the shipped tables; rows without `verified` count as unverified. At most 60 KiB → private_tables",
-    ),
+    crate::edit::specs::BOM_EXPORT,
     CommandSpec::new("vessel.bom", "Vessel BOM and Weights", bom_cmd).at(TAB, "INSPECT").icon("measure").noundo().enabled(has_vessel).params(
         "→ items: [{item, id, body, description, material, qty, basis: measured|measured less nozzles|computed|not built, density_kg_m3, \
          volume_mm3, weight_kg, handbook_kg, handbook (the rule), delta_pct}] (shell elements, nozzle necks and flanges, every support \
          part, any other `Vessel …` body), totals: {empty_kg, operating_kg, test_kg, water_m3, placeholders: [what is not modelled]}, \
          warnings. Weights from the measured bodies (regenerate first) × the material's density; handbook values from the dimensions",
     ),
+    CommandSpec::new("vessel.inspect", "Inspect Vessel", inspect).at(TAB, "INSPECT").icon("measure").noundo().doc_only().params(
+        "→ doc, stations: [{id, kind, z_from, z_to, r_from, r_to, thickness, diameter_mm, envelope, tl, half_apex_deg, profile, detail}], \
+         extent: {z_min, z_max, tl_bottom, tl_top, tl_to_tl}, warnings (parameter drift included), flags: [{id, boolean_failed, unverified_table}], parameters: \
+         [{name, value, unit}], plan: [{command, params}] | plan_error, nozzles: [{id, host, origin, dir, s_inner, s_outer, s_start, s_face, \
+         neck_od, neck_wall, pad, error?}], generated: [feature ids], group",
+    ),
 ];
 
-fn has_vessel(s: &Session) -> std::result::Result<(), String> {
+pub(crate) fn has_vessel(s: &Session) -> std::result::Result<(), String> {
     if s.doc.metadata.get(METADATA_KEY).is_some() { Ok(()) } else { Err("the design has no vessel (vessel.new first)".into()) }
 }
 
@@ -113,8 +125,13 @@ fn split_escaped(text: &str, limit: usize) -> Vec<String> {
     pieces
 }
 
+/// The design's vessel document (inline or chunked), for panels that read it.
+pub fn stored_doc(s: &Session) -> solidcraft_engine::Result<VesselDoc> {
+    load(s).map(|(d, _)| d)
+}
+
 /// The stored vessel and what its last regeneration made.
-fn load(s: &Session) -> solidcraft_engine::Result<(VesselDoc, Generated)> {
+pub(crate) fn load(s: &Session) -> solidcraft_engine::Result<(VesselDoc, Generated)> {
     let v = s.doc.metadata.get(METADATA_KEY).ok_or_else(|| EngineError::Other("the design has no vessel (vessel.new first)".into()))?;
     let doc = match (v.get("doc"), v.get("chunks").and_then(Value::as_u64)) {
         (Some(doc), _) => VesselDoc::from_value(doc)?,
@@ -141,7 +158,7 @@ fn load(s: &Session) -> solidcraft_engine::Result<(VesselDoc, Generated)> {
 
 /// Store the vessel (validated) and what was generated in the design's metadata: inline when
 /// the document is small, else as up to [`MAX_CHUNKS`] text chunks of its JSON.
-fn store(s: &mut Session, doc: &VesselDoc, generated: &Generated) -> solidcraft_engine::Result<()> {
+pub(crate) fn store(s: &mut Session, doc: &VesselDoc, generated: &Generated) -> solidcraft_engine::Result<()> {
     doc.validate()?;
     let value = doc.to_value()?;
     let text = serde_json::to_string(&value).map_err(|e| EngineError::Other(e.to_string()))?;
@@ -203,6 +220,12 @@ fn set(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value> {
         None => existing.ok_or_else(|| EngineError::Other("the design has no vessel (vessel.new first)".into()))?,
     };
     let mut changed = p.get("doc").is_some();
+    if let Some(patch) = p.get("patch") {
+        // RFC 6902 on the stored document (after `doc`, before the other keys).
+        let patched = crate::patch::apply(&doc.to_value()?, patch).map_err(|e| bad(cmd, e))?;
+        doc = VesselDoc::from_value(&patched)?;
+        changed = true;
+    }
     if let Some(v) = p.get("element") {
         let e: crate::model::Element = serde_json::from_value(v.clone()).map_err(|e| bad(cmd, format!("`element`: {e}")))?;
         match doc.elements.iter_mut().find(|x| x.id == e.id) {
@@ -243,7 +266,7 @@ fn set(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value> {
         changed = true;
     }
     if !changed {
-        return Err(bad(cmd, "give `doc`, `element`, `attachment`, `global` or `remove`"));
+        return Err(bad(cmd, "give `doc`, `patch`, `element`, `attachment`, `global` or `remove`"));
     }
     doc.validate()?;
     store(s, &doc, &generated)?;
@@ -281,7 +304,7 @@ fn station_json(st: &eval::Station) -> Value {
     })
 }
 
-fn bom_cmd(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
+pub(crate) fn bom_cmd(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     let (mut doc, _) = load(s)?;
     let tables = presets::tables(s)?;
     presets::apply(&mut doc, &tables, presets::private_support_tables(s))?;
@@ -612,6 +635,32 @@ pub fn group_name(doc: &VesselDoc) -> String {
     format!("Vessel {}", doc.id)
 }
 
+/// How far the running `vessel.regenerate` has got, for a progress bar: the shell, then each
+/// nozzle and support, then the parameters. One regeneration at a time is what a UI shows; the
+/// counters are process-wide.
+pub mod progress {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static DONE: AtomicUsize = AtomicUsize::new(0);
+    static TOTAL: AtomicUsize = AtomicUsize::new(0);
+    static LABEL: Mutex<String> = Mutex::new(String::new());
+
+    /// `(stages done, stages in all, what is being built)`; `(0, 0, "")` before the first.
+    pub fn get() -> (usize, usize, String) {
+        let label = LABEL.lock().map(|l| l.clone()).unwrap_or_default();
+        (DONE.load(Ordering::Relaxed), TOTAL.load(Ordering::Relaxed), label)
+    }
+
+    pub(crate) fn set(done: usize, total: usize, label: &str) {
+        DONE.store(done, Ordering::Relaxed);
+        TOTAL.store(total, Ordering::Relaxed);
+        if let Ok(mut l) = LABEL.lock() {
+            label.clone_into(&mut l);
+        }
+    }
+}
+
 fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     let (mut doc, previous) = load(s)?;
     let tables = presets::tables(s)?;
@@ -647,6 +696,9 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     if !stale.is_empty() {
         sub(s, &CommandCall { id: "timeline.delete".into(), params: json!({"features": stale}) })?;
     }
+    let stages = nozzles.len() + supports.len() + 2;
+    let mut stage = 0;
+    progress::set(stage, stages, "shell");
     let mut replies: Vec<Value> = Vec::with_capacity(plan.len());
     let mut steps: Vec<Value> = Vec::with_capacity(plan.len());
     let mut features: Vec<u64> = Vec::new();
@@ -674,6 +726,8 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     let mut built_nozzles = Vec::new();
     let mut extra_params = Vec::new();
     for mut g in nozzles {
+        stage += 1;
+        progress::set(stage, stages, &format!("nozzle {}", g.id));
         let Some(host) = resolved.station(&g.host) else { continue };
         let report = build_nozzle(s, &doc, &resolved, host, &mut g, &mut features, &mut steps);
         warnings.extend(g.warnings.iter().cloned());
@@ -693,6 +747,8 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
     // Supports and details: one body per part, placed against the shell, never joined to it.
     let mut built_supports = Vec::new();
     for g in &supports {
+        stage += 1;
+        progress::set(stage, stages, &format!("{} {}", g.kind, g.id));
         let report = build_support(s, g, &mut features, &mut steps);
         if let Some(a) = doc.attachments.iter_mut().find(|a| a.id == g.id) {
             a.flags.boolean_failed = report.get("built").and_then(Value::as_str) != Some("built");
@@ -729,6 +785,7 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         None => new_group(s, &built)?,
     };
     // Every dimension as a user parameter (created or updated; nothing drives from them yet).
+    progress::set(stages - 1, stages, "parameters");
     let mut parameters = Vec::new();
     for p in emit::parameters(&doc.id, &resolved).into_iter().chain(extra_params) {
         let params = json!({"name": p.name, "expression": p.value, "unit": p.unit, "comment": p.comment});
@@ -737,6 +794,7 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         parameters.push(p.name);
     }
     store(s, &doc, &Generated { features: features.clone(), group })?;
+    progress::set(stages, stages, "done");
     Ok(json!({"steps": steps, "features": features, "group": group, "parameters": parameters, "nozzles": built_nozzles,
         "supports": built_supports, "presets": applied.iter().map(presets::Applied::to_json).collect::<Vec<_>>(), "warnings": warnings}))
 }

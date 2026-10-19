@@ -217,6 +217,16 @@ closed form (0.5 %); a part the kernel cannot build is left out with a warning a
   totals empty, operating (`design_data.operating_weight_kg`, else empty) and test (empty + the
   vessel full of water), the placeholders named in the reply.
 
+- Editing (T5.1): `vessel.set {patch}` takes an RFC 6902 JSON Patch on the stored document
+  (`[{op: "replace", path: "/elements/1/length_mm", value: 2600}]`), validated whole; the
+  panels send one per edit. `vessel.element.add` / `vessel.attachment.add` / `vessel.support.add`
+  lay given fields over defaults (the neighbour's thickness and the inherited diameter; a 4 in
+  Sch 40 nozzle with a B16.5 Cl 150 WN RF flange, 200 from the OD; supports from the `OD<mm>`
+  presets of the host, keeping that `size_key`; saddles in pairs at 20 % of the TL–TL from each
+  TL). `vessel.datum` changes the datum and rewrites `axial.mm` of every datum-referenced
+  attachment so it stays put (`keep_positions: false` keeps the numbers instead).
+  `vessel.bom.export {format: csv|json, path?}` writes the BOM.
+
 ### 4.2 Kinds
 | kind | fields |
 |---|---|
