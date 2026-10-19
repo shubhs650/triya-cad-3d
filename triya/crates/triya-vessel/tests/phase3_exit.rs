@@ -43,8 +43,8 @@ fn vessel_a_builds_its_six_nozzles() {
     let flagged: Vec<&str> =
         inspect["flags"].as_array().unwrap().iter().filter(|f| f["boolean_failed"] == true).filter_map(|f| f["id"].as_str()).collect();
     assert_eq!(separate, flagged);
-    // The supports and details of Phase 4 are reported, not built.
-    for id in ["L1", "L2", "R1", "C1", "AC1"] {
+    // The supports and details of Phase 4 not built yet are reported (the anchor chairs build).
+    for id in ["L1", "L2", "R1", "C1"] {
         assert!(r["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap_or("").contains(&format!("`{id}`"))), "{id}");
     }
 }
