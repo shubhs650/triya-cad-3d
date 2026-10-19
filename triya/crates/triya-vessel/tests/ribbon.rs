@@ -58,6 +58,16 @@ fn add_element_goes_before_the_closing_head_and_inherits() {
         (cone["length_mm"].as_f64(), cone["diameter_large_mm"].as_f64(), cone["diameter_small_mm"].as_f64()),
         (Some(300.0), Some(900.0), Some(450.0))
     );
+    // From one cylinder: the first head closes the top, the second the bottom (with the
+    // cylinder's diameter, as nothing is below it to inherit from).
+    let mut c = Session::default();
+    c.execute("vessel.new", &json!({"diameter_mm": 1600})).unwrap();
+    assert_eq!(run(&mut c, "vessel.element.add", json!({"kind": "head"}))["index"], 1);
+    let r = run(&mut c, "vessel.element.add", json!({"kind": "head"}));
+    assert_eq!(r["index"], 0);
+    assert_eq!(find(&r["doc"], "elements", r["id"].as_str().unwrap())["diameter_mm"], 1600.0);
+    let d = triya_vessel::commands::stored_doc(&c).unwrap();
+    assert!(triya_vessel::eval::resolve(&d).is_ok());
     assert!(s.execute("vessel.element.add", &json!({"kind": "body_flange"})).is_err(), "a body flange needs its dimensions");
     assert!(s.execute("vessel.element.add", &json!({"kind": "teapot"})).is_err());
     assert!(s.execute("vessel.element.add", &json!({"index": 99})).is_err());
