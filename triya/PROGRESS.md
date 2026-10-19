@@ -1,7 +1,7 @@
 # Triya CAD 3D — progress
 
 **Phase:** 4 — Supports + attachments · **Day:** 2 of 29 (Sun 18 Oct 2026) · **Beta:** Sun 8 Nov
-**Next task:** T4.2 (legs, bracket lugs, anchor chairs). T4.1 saddles done. Phases 0–3 are done (#2–#22); the Pages deploy waits on the owner (see Owner decisions).
+**Next task:** T4.3 (rings, limpet coil, lifting lugs, insulation rings, clips). T4.1 saddles and T4.2 legs/brackets/chairs done. Phases 0–3 are done (#2–#22); the Pages deploy waits on the owner (see Owner decisions).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6 can't deploy yet
 **Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
 
@@ -34,6 +34,7 @@
 | T3.4 | Nozzle flanges from the tables (`flange {standard, class, type, facing}`): WN, SO (and LJ/SW), blind; LWN with the WN row (warning); RF/FF/RTJ (RTJ as RF); a separate body `Vessel <N> flange` revolved about the nozzle axis, bolt holes through the ring (one cut + `solid.pattern.circular`, straddling the centrelines); the neck shortened to the weld end / inside the slip-on / to the blind's back; a flange back inside the shell is an error; parameters `…_{flange_od, bolt_circle, bolt_count, bolt_hole, flange_thk}`; manways report `manway`/`davit` (no davit geometry) | #21 | 18 Oct | AT `tests/nozzle_flanges.rs`: 4 in WN Cl 150 RF, SO Cl 300 FF, blind Cl 600 RF, LWN: flange volume within 0.1 % of the revolved section less the holes, bolt count from the row; 20 in manway with davit (50 s) |
 | T3.5 | Fallback: each nozzle is joined on a scratch copy and kept only when the host's measured change matches `expected_change`; else a separate neck body "Vessel <N> neck (separate)" with `flags.boolean_failed`; else not built (warning). The flange is built after the neck in its own step: bolt holes patterned, else cut one by one, else the plain ring (warning, flag), so a flange failure never costs the neck. Pad trim tube limited to the pad's extent. Kernel cases captured (3). Phase 3 exit test runs in its own Triya CI job | #22 | 18 Oct | AT `tests/nozzle_fallback.rs` (a pad wider than its 6 in shell engages the fallback; undo removes all); exit `tests/phase3_exit.rs`: vessel A's six nozzles: N2, N3, N5, M1 joined, N1 (pad on the 1600 shell) and N4 (tilted + inside projection) separate and flagged, every flange built (N5's holes cut one by one); 953 s |
 | T4.1 | Saddles: `triya-vessel::support` resolves supports into parts (one body per plate/ring, closed-form volume each); a saddle = web (contact arc between the horns), ribs in halves either side of the web, base plate with anchor bolt holes, wear plate sector on the shell; `vessel.regenerate` builds every support after the nozzles (all parts at once, else part by part) and checks each body's volume; `vessel.inspect` lists the parts | #23 | 18 Oct | AT `tests/saddles.rs`: vessel B on two saddles, web +0.002 %, ribs 0.000 %, base plate +0.0001 %, wear plate −0.005 %; wear plate inner vertices within 0.01 mm of the shell OD; saddles 3000 apart; 3.2 s. Screenshot `screenshots/phase4/vessel-b-saddles.png` (project files) |
+| T4.2 | Legs (pipe from B36.10, bored; angle from its size, heel at the shell), each with its base plate, on the shell (top at `axial`) or under a head (top square at the head's outside); bracket lugs (two gussets, top plate with bolt holes, bottom plate); anchor chairs on the skirt's base ring (two gussets, top plate with the bolt hole on the ring's mid circle); copies instance by instance; channel legs reported "not built yet" | #24 | 19 Oct | AT `tests/legs_brackets_chairs.rs`: vessel C on 4 pipe legs (−0.010 %, tops on the hemispherical head within 0.05 mm) with 2 brackets (gussets 0.000 %, top plate +0.0002 %), 3 angle legs 0.000 %, vessel A's 8 anchor chairs (+0.0006 %); counts equal `count`; 5.8 s. Screenshot `screenshots/phase4/vessel-c-legs-brackets.png` |
 | P2 exit | Vessel A's shell (skirt, 2:1 head, two courses, toriconical cone, F&D head) regenerates from `examples/vessel-a-shell.json` and exports STEP (101 KB, 7 solids, 7 s); Triya CI runs it | #17 | 18 Oct | CI step "Phase 2 exit vessel to STEP" |
 
 ## In progress
@@ -109,6 +110,8 @@
 
 - 2026-10-18 — Supports (T4.1): one body per plate, pipe or ring, placed against the shell and never joined to it (no curved booleans, BOM counts plates, welds on the sheet), instead of PLAN's "component": regenerate's cleanup tracks timeline features, and a component adds nothing the folder and the `Vessel <id> …` names don't. Repeated supports (legs, chairs, clips) are built instance by instance rather than with `solid.pattern.circular`, so each copy has a name the BOM and drawing can count.
 - 2026-10-18 — Saddles stand under the vessel (−Z) whatever `angle_deg` says (vessel B's `angle_zero: plus_y` would put 180° on the side); anchor bolt holes are bolt + 6 mm, in a row across the base plate midway between the web and its +axis edge; ribs run horn to horn and are split at the web.
+- 2026-10-19 — Legs under a head get square tops at the head's outside under the leg's inner edge (no overlap; a gap toward the rim). The moulded top (pipe cut by the crown's sphere) built correctly but took ~70 s a leg (vessel C: 285 s for 4), against the < 10 s browser target, so it is drawn on the sheet; revisit with the post-beta kernel (Deferred).
+- 2026-10-19 — Bracket and chair geometry where the schema is silent: gussets flush with the top plate's sides, a bracket's gusset narrows to the bottom plate's width (a triangle without one), chair bolt holes on the base ring's mid circle; angle legs stand heel-in at ±45°. Channel legs need a section table the beta doesn't ship: "not built yet".
 
 ## Owner decisions
 | opened | question | status | answer |
@@ -138,6 +141,8 @@
 | Generic HLR drafting of arbitrary parts | not needed for vessel GA; 1–2 weeks | P2 |
 | True DXF DIMENSION entities | needs anonymous blocks | P1 |
 | Davit geometry on manways | reference only in beta | P1 |
+| Head-moulded leg tops | sphere-cut tops take ~70 s a leg in this kernel | P5 |
+| Channel-section legs | no open channel section table | P1 |
 | Heat exchangers | model stability first | P4 |
 | Hex meshing | post-beta by plan | P3/P4 |
 
@@ -180,3 +185,4 @@
 - 2026-10-18 — T3.4: nozzle flanges (WN/SO/LWN/blind) from the tables, bolt patterns, manways with a davit reference.
 - 2026-10-18 — T3.5: fallback to separate bodies, flange built after the neck with hole fallbacks; Phase 3 exit met (vessel A: 4 nozzles joined, 2 separate and flagged, 6 flanges).
 - 2026-10-18 — Phase 4 started (thread "Phase 4 implementation"). T4.1: saddles with wear plates under vessel B, every part within 0.01 % of its closed form.
+- 2026-10-19 — T4.2: legs (pipe, angle), bracket lugs and anchor chairs build as separate plates; head-moulded leg tops tried and deferred (70 s a leg).
