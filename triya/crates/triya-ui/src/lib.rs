@@ -146,5 +146,11 @@ mod tests {
         assert!(solidcraft_engine::find_command("vessel.regenerate").is_some());
         assert!(super::about_text().contains("SolidCraft"));
         assert!(solidcraft_ui_egui::toolbar::TABS.contains(&triya_vessel::commands::TAB), "the VESSEL tab seam is in place");
+        assert_eq!(solidcraft_ui_egui::toolbar::panels(triya_vessel::commands::TAB), triya_vessel::commands::PANELS, "the panels seam is in place");
+        // Every vessel command is on one of those panels, so the ribbon shows each of them.
+        let lists = solidcraft_ui_egui::toolbar_custom::panel_lists(triya_vessel::commands::TAB);
+        for spec in triya_vessel::COMMANDS {
+            assert_eq!(lists.iter().filter(|(_, cmds, _)| cmds.iter().any(|c| c.id == spec.id)).count(), 1, "{}", spec.id);
+        }
     }
 }

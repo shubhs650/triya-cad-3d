@@ -23,10 +23,12 @@
 
 pub mod bom;
 pub mod commands;
+pub mod edit;
 pub mod emit;
 pub mod eval;
 pub mod model;
 pub mod nozzle;
+pub mod patch;
 pub mod presets;
 pub mod support;
 

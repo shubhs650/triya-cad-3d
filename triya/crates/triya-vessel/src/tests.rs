@@ -143,6 +143,16 @@ fn vessel_commands_never_panic_on_hostile_params() {
         "generated",
         "features",
         "group",
+        "kind",
+        "index",
+        "before",
+        "after",
+        "pair",
+        "format",
+        "patch",
+        "datum",
+        "plant_elevation_mm",
+        "keep_positions",
     ];
     let hostile = [
         Value::Null,

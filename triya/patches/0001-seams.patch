@@ -165,7 +165,7 @@ index 0000000000000000000000000000000000000000..5adbb55f41773a97d2140a45bbf37d0e
 +    }
 +}
 diff --git a/crates/ui-egui/src/toolbar.rs b/crates/ui-egui/src/toolbar.rs
-index 56cf0166cead00eed35c91abfad914ec30465c01..f4c66ffb5afbefad4ee4d5f19aedb31d43559d40 100644
+index 56cf0166cead00eed35c91abfad914ec30465c01..772a74c4623340775fdf23db0bda3fd5bc412143 100644
 --- a/crates/ui-egui/src/toolbar.rs
 +++ b/crates/ui-egui/src/toolbar.rs
 @@ -8,7 +8,7 @@ use serde_json::json;
@@ -177,6 +177,14 @@ index 56cf0166cead00eed35c91abfad914ec30465c01..f4c66ffb5afbefad4ee4d5f19aedb31d
  
  /// The accent stroke colour for a panel's icons: constraint commands use the same red as the
  /// constraint glyphs they draw in the sketch (`glyph_text`), sketch tools otherwise keep
+@@ -58,6 +58,7 @@ pub fn panels(tab: &str) -> &'static [&'static str] {
+         "SHEET METAL" => &["CREATE", "MODIFY", "ASSEMBLE", "CONSTRUCT", "INSPECT", "INSERT", "SELECT"],
+         "PLASTIC" => &["CREATE", "MODIFY", "ASSEMBLE", "CONSTRUCT", "INSPECT", "INSERT", "SELECT"],
+         "RENDER" => &["SCENE"],
++        "VESSEL" => &["CREATE", "INSERT", "MODIFY", "INSPECT"], // Modified by Triya CAD 3D: the vessel tab's panels (triya-vessel commands::PANELS)
+         _ => &["MAKE", "ADD-INS", "UTILITY", "INSPECT", "SELECT"],
+     }
+ }
 diff --git a/xtask/src/layers.rs b/xtask/src/layers.rs
 index 2118c8e0dd8a5f291adc08a7c61f35e17379a5e7..93ca0aa1b27265532492725004e66d8877ea5731 100644
 --- a/xtask/src/layers.rs
