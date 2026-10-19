@@ -1,0 +1,17 @@
+{
+  "source": "FICTIONAL test table written for Triya CAD 3D's tests: the organisation ACME and every value are invented; no company or national standard was used",
+  "standard": { "org": "ACME", "number": "FICT-001", "rev": "0" },
+  "rows": [
+    {
+      "kind": "saddle",
+      "size_key": "FS-1",
+      "fields": {
+        "width_mm": 250, "height_mm": 900, "web_thk_mm": 14, "rib_count": 4, "rib_thk_mm": 12,
+        "base_plate": { "len_mm": 1200, "wid_mm": 250, "thk_mm": 20 },
+        "wear_plate": { "thk_mm": 12, "width_mm": 350, "angle_deg": 132 },
+        "anchor_bolts": { "count": 2, "dia_mm": 30 }
+      },
+      "source": ["invented for the test"]
+    }
+  ]
+}

@@ -56,6 +56,31 @@ override shipped rows of the same key. Private rows without `verified` count as 
 - Supports/attachments: free `size_key` strings matched against the set's `sizeKey` column
   (e.g. EIL `"7-12-0024/LL-25"`); presets use `"OD1600"` style keys with nearest-lower lookup.
 
+### 3.1 Presets and private tables (T4.4)
+Support-preset tables (`data/support-presets.json`, `triya-stdlib::support`) hold rows
+`{kind, size_key, fields, source, verified, note?}`: `kind` is the attachment kind (`saddle`,
+`leg`, `lifting_lug`, …), `fields` the attachment fields the row sets, in the vessel JSON's own
+names (an object such as `base_plate` replaces the attachment's whole). A row may not set `id`,
+`kind`, `host`, `size_key`, `standard_ref` or `flags`; at most 64 fields.
+
+An attachment with a `size_key` takes its row's fields at every regenerate (and in
+`vessel.inspect`): an exact key in the design's private table first, then the shipped table;
+an `OD<mm>` key with no row takes the nearest smaller OD of that kind. A key no table has keeps
+the attachment's own dimensions, with a warning when the attachment has a `standard_ref`. A row
+that is not `two-source` or `derived` sets `flags.unverified_table` and warns. The applied values
+are stored in the vessel, so dropping the table later keeps the last dimensions.
+
+The shipped presets (saddle OD600–3600, legs OD300–1600, lifting lugs OD600–3600) are Triya's
+own proportional rules (`derived`), starting points to model with, not design values. They
+were written out by a throw-away script (not committed, Rust-only rule); the JSON is the record.
+
+`vessel.import_tables {tables: {flanges?, supports?} | path | clear}` keeps the user's private
+tables in the design's metadata under `in.openengtools.triya.tables` (at most 60 KiB; upstream
+caps one value at 64 KiB), searched before the shipped ones; each kind replaces the previous
+private table of that kind, and the import is one undo step. EIL standard sheets (and any other
+company standard) reach a design only this way: the repository ships no EIL values (a test scans
+`data/`); the import test uses the fictional `triya-vessel/tests/fixtures/fictional-private-supports.json`.
+
 ## 4. Validator (`cargo test -p triya-stdlib`)
 - Every row has `source[]` (≥ 1) and `verified`; `two-source` requires ≥ 2 distinct sources.
 - Monotonic sanity (B16.5 only): OD, BC and bolt count non-decreasing with NPS within a class and
@@ -91,4 +116,6 @@ say where each value came from.
   metric tables and blog.projectmaterials.com's inch tables (facts of the public standard; rows
   added in T3.2).
 - OET title-block template SVGs — original work, MIT OR Apache-2.0.
+- `triya/crates/triya-stdlib/data/support-presets.json` — Triya's own proportional rules (T4.4).
+- `triya/crates/triya-vessel/tests/fixtures/fictional-private-supports.json` — invented test data (T4.4).
 - Triya icons — drawn in code in `triya-ui::icons`, original; any rasterised icon files, too.

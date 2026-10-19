@@ -17,11 +17,13 @@
 pub mod flange;
 pub mod head;
 pub mod pipe;
+pub mod support;
 pub mod tables;
 
 pub use flange::{FlangeKind, FlangeRow};
 pub use head::{HeadPreset, RatioBasis};
 pub use pipe::PipeScheduleRow;
+pub use support::SupportRow;
 pub use tables::{HeadPresetRow, Table, TableSet};
 
 use schemars::JsonSchema;

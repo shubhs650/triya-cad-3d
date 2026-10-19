@@ -26,6 +26,7 @@ pub mod emit;
 pub mod eval;
 pub mod model;
 pub mod nozzle;
+pub mod presets;
 pub mod support;
 
 pub use commands::COMMANDS;

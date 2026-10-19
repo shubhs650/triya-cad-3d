@@ -205,6 +205,12 @@ closed form (0.5 %); a part the kernel cannot build is left out with a warning a
   take tens of minutes) and appear on the drawing and in the BOM from the real section.
   Parameter `V<id>_<att>_length` is the developed length n·√((π·D)² + p²). Body `Vessel <id> coil`.
 
+- Presets (T4.4): a support or detail with a `size_key` takes the fields of the matching
+  preset row at every regenerate, the design's private table (`vessel.import_tables`) first,
+  then the shipped `OD<mm>` presets (`docs/standards-library.md` §3.1); `standard_ref` names
+  the sheet the key belongs to. Regenerate and inspect report `presets: [{id, row, private,
+  verified, fields}]`.
+
 ### 4.2 Kinds
 | kind | fields |
 |---|---|
