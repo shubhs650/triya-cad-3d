@@ -50,10 +50,8 @@ pub fn lines(loops: &[Vec<P2>], angle: f64, spacing: f64) -> Result<Vec<(P2, P2)
             }
         }
         xs.sort_by(f64::total_cmp);
-        for pair in xs.chunks_exact(2) {
-            if let [a, b] = pair
-                && b - a > 1e-9
-            {
+        for [a, b] in xs.as_chunks::<2>().0 {
+            if b - a > 1e-9 {
                 out.push((back(P2::new(*a, y)), back(P2::new(*b, y))));
                 if out.len() > MAX_LINES {
                     return Err(DrawingError::Invalid("hatch region too large for its spacing".into()));
