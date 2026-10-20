@@ -77,31 +77,38 @@ pub fn outside_diameter(st: &Station) -> f64 {
     2.0 * (st.r_from.max(st.r_to) + st.thickness)
 }
 
-/// Where a new element goes when no position is given: before a closing head, else at the end.
-fn default_index(doc: &VesselDoc) -> usize {
+/// Where a new element goes when no position is given: a head or flat cover closes the open end
+/// (the top, else the bottom once the top is closed); anything else goes before a closing head,
+/// else at the end.
+fn default_index(doc: &VesselDoc, kind: &str) -> usize {
     let n = doc.elements.len();
-    match doc.elements.last() {
-        Some(e) if n >= 2 && matches!(e.kind, ElementKind::Head { .. } | ElementKind::FlatCover { .. }) => n - 1,
+    let closes = |e: &Element| matches!(e.kind, ElementKind::Head { .. } | ElementKind::FlatCover { .. });
+    let top_closed = n >= 2 && doc.elements.last().is_some_and(closes);
+    let bottom_closed = doc.elements.first().is_some_and(|e| closes(e) || matches!(e.kind, ElementKind::Skirt { .. }));
+    match kind {
+        "head" | "flat_cover" if top_closed && !bottom_closed => 0,
+        "head" | "flat_cover" => n,
+        _ if top_closed => n - 1,
         _ => n,
     }
 }
 
 /// The insert position from `index`, `before` or `after`.
-fn insert_index(cmd: &str, doc: &VesselDoc, p: &Value) -> solidcraft_engine::Result<usize> {
+fn insert_index(cmd: &str, doc: &VesselDoc, kind: &str, p: &Value) -> solidcraft_engine::Result<usize> {
     let find = |id: &str| doc.elements.iter().position(|e| e.id == id).ok_or_else(|| bad(cmd, format!("no element `{id}`")));
     match (num(p, "index"), str_(p, "before"), str_(p, "after")) {
         (Some(i), None, None) if i.is_finite() && i >= 0.0 && i <= doc.elements.len() as f64 => Ok(i as usize),
         (Some(_), None, None) => Err(bad(cmd, format!("`index` must be 0 … {}", doc.elements.len()))),
         (None, Some(id), None) => find(id),
         (None, None, Some(id)) => Ok(find(id)? + 1),
-        (None, None, None) => Ok(default_index(doc)),
+        (None, None, None) => Ok(default_index(doc, kind)),
         _ => Err(bad(cmd, "give at most one of `index`, `before`, `after`")),
     }
 }
 
 /// Default fields of a new element of `kind` next to station `near` (the previous element, or
 /// the next one when inserting first).
-fn element_defaults(cmd: &str, kind: &str, near: Option<&Station>) -> solidcraft_engine::Result<Map<String, Value>> {
+pub fn element_defaults(cmd: &str, kind: &str, near: Option<&Station>) -> solidcraft_engine::Result<Map<String, Value>> {
     let t = near.map_or(10.0, |s| s.thickness);
     let d = near.map_or(1000.0, |s| s.diameter_mm);
     let od = near.map_or(d + 2.0 * t, outside_diameter);
@@ -130,11 +137,17 @@ fn element_add(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value> {
     let (mut doc, generated) = load(s)?;
     let given = p.get("element");
     let kind = given.and_then(|g| g.get("kind")).and_then(Value::as_str).or_else(|| str_(p, "kind")).unwrap_or("cylinder").to_string();
-    let index = insert_index(cmd, &doc, p)?;
+    let index = insert_index(cmd, &doc, &kind, p)?;
     let r = eval::resolve(&doc).ok();
     let near_id = doc.elements.get(index.wrapping_sub(1)).or_else(|| doc.elements.get(index)).map(|e| e.id.clone());
     let near = r.as_ref().zip(near_id.as_deref()).and_then(|(r, id)| r.station(id));
     let mut fields = element_defaults(cmd, &kind, near)?;
+    // The bottom element has nothing below to inherit its diameter from: it takes its neighbour's.
+    if index == 0
+        && let Some(st) = near
+    {
+        fields.insert("diameter_mm".into(), json!(st.diameter_mm));
+    }
     overlay(cmd, &mut fields, given, "element")?;
     if kind == "body_flange" && !fields.contains_key("flange_ref") && !fields.contains_key("explicit") {
         return Err(bad(cmd, "a body flange needs `element.flange_ref` (a table row) or `element.explicit` dimensions"));

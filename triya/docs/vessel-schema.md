@@ -225,7 +225,11 @@ closed form (0.5 %); a part the kernel cannot build is left out with a warning a
   presets of the host, keeping that `size_key`; saddles in pairs at 20 % of the TL–TL from each
   TL). `vessel.datum` changes the datum and rewrites `axial.mm` of every datum-referenced
   attachment so it stays put (`keep_positions: false` keeps the numbers instead).
-  `vessel.bom.export {format: csv|json, path?}` writes the BOM.
+  `vessel.bom.export {format: csv|json, path?}` writes the BOM. Without `index`/`before`/`after`,
+  `vessel.element.add` puts a head or flat cover at the open end (the top, then the bottom) and
+  anything else before a closing head; an element that becomes the bottom one gets its
+  neighbour's diameter, as nothing below it is left to inherit from (the Vessel panel's move and
+  delete do the same in their patch).
 
 ### 4.2 Kinds
 | kind | fields |
