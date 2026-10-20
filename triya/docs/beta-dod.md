@@ -19,7 +19,7 @@ Tick every box with evidence (PR, screenshot path, measurement) in `PROGRESS.md`
       on bottom head; two longitudinal lifting lugs; one stiffening ring; one limpet coil (12
       turns). Regenerates from JSON in **< 10 s in the browser** (i5-10th gen laptop); STEP AP242
       export opens in another CAD tool with all bodies.
-      *Open: geometry complete (#18–#22, Phase 3 exit job). Chrome: shell 6.3 s, separate nozzles 87 s, joined longer — the < 10 s target is not met for the full vessel (owner decision 2026-10-20). STEP in another CAD tool: owner check.*
+      *Open: geometry complete (#18–#22, Phase 3 exit job). Chrome: shell 6.3 s, separate nozzles 87 s, joined 24 min — the < 10 s target is not met for the full vessel (owner decision 2026-10-20). STEP in another CAD tool: owner check.*
 - [x] **Vessel B (horizontal)**: 1200 ID × 5000 TL–TL, two Klöpper heads, two saddles with wear
       plates, 4 nozzles incl. one on a head, two trunnion lugs.
       *Phase 4 exit job (#23–#27).*

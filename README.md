@@ -74,8 +74,8 @@ docs. Read
 - **Regeneration is slow when nozzles are joined.** The B-rep kernel (truck, frozen upstream)
   needs minutes for some nozzle booleans. Reference vessel A's shell regenerates in about 6 s in
   Chrome (2 s native); with its 6 nozzles and 5 supports built as separate bodies it takes about
-  1.5 min in Chrome (41 s native), and with the nozzles joined about 7 min natively and longer in
-  the browser (`triya/PROGRESS.md`, "Measurements"). The desktop app regenerates in the background
+  1.5 min in Chrome (41 s native), and with the nozzles joined about 7 min natively and 24 min in
+  Chrome (`triya/PROGRESS.md`, "Measurements"). The desktop app regenerates in the background
   with a progress bar; the browser holds the window while it runs, so *Join nozzles* is off there
   by default. When a boolean fails or measures wrong, the nozzle is kept as a separate body and
   flagged.
