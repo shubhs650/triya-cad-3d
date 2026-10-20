@@ -109,6 +109,22 @@ jobs:
       - name: vessels B and C build every attachment and weigh within 2 % of the handbook
         run: cargo test -p triya-vessel --test phase4_exit -- --ignored --nocapture
 
+  upstream-roundtrip:
+    name: Opens in unmodified upstream v0.14.0 (ADR-0006)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch upstream baseline tag
+        run: |
+          git remote add upstream https://github.com/tangency-labs/solidcraft.git || true
+          git fetch upstream --tags --quiet
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: triya }
+      - name: a regenerated vessel saved by Triya opens in upstream's CLI with the same bodies
+        run: bash triya/ci/upstream-roundtrip.sh
+
   web-shell:
     name: Triya web shell (trunk build + offline test)
     runs-on: ubuntu-24.04

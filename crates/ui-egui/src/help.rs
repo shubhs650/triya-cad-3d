@@ -72,7 +72,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context, anchor: egui::Pos2) {
                 crate::context_menu::menu_frame(ui, |ui| {
                     for (id, label) in [
                         ("docs", "Documentation"),
-                        ("about", "About SolidCraft"),
+                        ("about", crate::toolbar::app_name().1), // Modified by Triya CAD 3D: product name from the shell
                         ("shortcuts", "Keyboard Shortcuts"),
                         ("report", "Report an Issue…"),
                         ("crashes", "Crash Reports…"),

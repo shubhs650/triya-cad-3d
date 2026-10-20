@@ -22,6 +22,8 @@ pub struct Regen {
     /// Browser: frames left before the command runs.
     #[cfg(target_arch = "wasm32")]
     countdown: Option<u8>,
+    #[cfg(target_arch = "wasm32")]
+    join: bool,
     started: f64,
 }
 
@@ -39,8 +41,8 @@ impl Regen {
         return self.countdown.is_some();
     }
 
-    /// Start a regeneration (nothing when one is running).
-    pub fn start(&mut self, app: &mut SolveApp) {
+    /// Start a regeneration (nothing when one is running); `join`: `join_nozzles`.
+    pub fn start(&mut self, app: &mut SolveApp, join: bool) {
         if self.busy() {
             return;
         }
@@ -50,20 +52,21 @@ impl Regen {
             let mut scratch = app.session.scratch();
             let (tx, rx) = std::sync::mpsc::channel();
             let spawned = std::thread::Builder::new().name("vessel-regenerate".into()).spawn(move || {
-                let r = scratch.execute("vessel.regenerate", &json!({})).map(|v| (scratch, v)).map_err(|e| e.to_string());
+                let r = scratch.execute("vessel.regenerate", &json!({"join_nozzles": join})).map(|v| (scratch, v)).map_err(|e| e.to_string());
                 let _ = tx.send(r);
             });
             match spawned {
                 Ok(_) => self.job = Some((app.session.revision, rx)),
                 // No thread to be had: run it here.
                 Err(_) => {
-                    let _ = app.run("vessel.regenerate", json!({}));
+                    let _ = app.run("vessel.regenerate", json!({"join_nozzles": join}));
                 }
             }
         }
         #[cfg(target_arch = "wasm32")]
         {
             let _ = app;
+            self.join = join;
             self.countdown = Some(2);
         }
     }
@@ -103,7 +106,7 @@ impl Regen {
             match self.countdown {
                 Some(0) => {
                     self.countdown = None;
-                    Some(match app.run("vessel.regenerate", json!({})) {
+                    Some(match app.run("vessel.regenerate", json!({"join_nozzles": self.join})) {
                         Ok(v) => Finished::Done(v),
                         Err(e) => Finished::Failed(e),
                     })

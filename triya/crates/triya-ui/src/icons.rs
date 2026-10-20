@@ -30,3 +30,20 @@ pub fn window_icon(size: u32) -> Option<egui::IconData> {
     let rgba = triya_brand::mark::rgba(size, Variant::Rounded)?;
     Some(egui::IconData { rgba, width: size, height: size })
 }
+
+/// Paint the mark 20 points high centred on `c` (the app bar's mark, seam `toolbar::BRAND_MARK`).
+/// The texture is made once per context and kept in its memory.
+pub fn paint_app_bar_mark(painter: &egui::Painter, c: egui::Pos2) {
+    let ctx = painter.ctx();
+    let id = egui::Id::new("triya_app_bar_mark");
+    let texture = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)).or_else(|| {
+        let image = mark_image(64)?;
+        let t = ctx.load_texture("triya-app-bar-mark", image, egui::TextureOptions::LINEAR);
+        ctx.data_mut(|d| d.insert_temp(id, t.clone()));
+        Some(t)
+    });
+    if let Some(t) = texture {
+        let rect = egui::Rect::from_center_size(c, egui::vec2(20.0, 20.0));
+        painter.image(t.id(), rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+    }
+}

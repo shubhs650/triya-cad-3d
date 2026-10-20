@@ -70,6 +70,9 @@ pub struct VesselPanel {
     error: Option<String>,
     note: Option<String>,
     regen: regen::Regen,
+    /// Regenerate joins nozzles into their hosts (`join_nozzles`); unset: yes on the desktop, no
+    /// in the browser, where a nozzle boolean holds the window for minutes (T7.2).
+    pub join_nozzles: Option<bool>,
     /// A save dialog in flight: the command to run with its `path`, and its other parameters.
     save_pick: Option<(SavePick, &'static str, Value)>,
     /// The Drawing page.
@@ -297,7 +300,15 @@ impl VesselPanel {
                 .on_hover_text("vessel.regenerate: build the bodies (one undo step), off the window thread")
                 .clicked()
             {
-                self.regen.start(app);
+                self.regen.start(app, self.join_nozzles.unwrap_or(!cfg!(target_arch = "wasm32")));
+            }
+            let mut join = self.join_nozzles.unwrap_or(!cfg!(target_arch = "wasm32"));
+            if ui
+                .add_enabled(has && !busy, egui::Checkbox::new(&mut join, "Join nozzles"))
+                .on_hover_text("Cut and join each nozzle into its shell (minutes a nozzle); off: nozzles are separate bodies, a quick look")
+                .changed()
+            {
+                self.join_nozzles = Some(join);
             }
             if ui.add_enabled(has, egui::Button::new("Export BOM…")).on_hover_text("vessel.bom.export: the BOM as CSV").clicked() {
                 self.export_bom(app);

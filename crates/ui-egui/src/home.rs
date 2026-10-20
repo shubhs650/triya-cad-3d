@@ -356,7 +356,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(36, 24))).show(ui, |ui| {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("SolidCraft").size(26.0).strong().color(t.text));
+                ui.label(RichText::new(crate::toolbar::app_name().0).size(26.0).strong().color(t.text)); // Modified by Triya CAD 3D: product name from the shell
                 ui.add_space(12.0);
                 ui.label(RichText::new(crate::i18n::tr_label("Start")).size(16.0).color(t.text_dim));
             });

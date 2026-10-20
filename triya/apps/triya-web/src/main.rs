@@ -425,6 +425,46 @@ mod web {
         }
     }
 
+    /// The reference vessel `?vessel=` names, opened (and regenerated with `&regenerate`); false
+    /// when the query names none.
+    fn open_reference_vessel(app: &mut SolveApp, q: &str) -> bool {
+        let text = match q.split(['?', '&']).find_map(|kv| kv.strip_prefix("vessel=")) {
+            Some("a") => include_str!("../../../crates/triya-vessel/tests/reference/vessel-a.json"),
+            Some("b") => include_str!("../../../crates/triya-vessel/tests/reference/vessel-b.json"),
+            Some("c") => include_str!("../../../crates/triya-vessel/tests/reference/vessel-c.json"),
+            _ => return false,
+        };
+        let mut doc: serde_json::Value = match serde_json::from_str(text) {
+            Ok(d) => d,
+            Err(e) => {
+                app.set_status(format!("reference vessel: {e}"), true);
+                return false;
+            }
+        };
+        // `&shell`: without its attachments.
+        if q.split(['?', '&']).any(|kv| kv == "shell") {
+            doc["attachments"] = serde_json::json!([]);
+        }
+        if let Err(e) = app.run("vessel.new", serde_json::json!({"doc": doc, "replace": true})) {
+            app.set_status(format!("reference vessel: {e}"), true);
+            return false;
+        }
+        if q.contains("regenerate") {
+            let join = q.split(['?', '&']).any(|kv| kv == "join");
+            let started = solidcraft_ui_egui::now_ms();
+            let r = app.run("vessel.regenerate", serde_json::json!({"join_nozzles": join}));
+            let secs = (solidcraft_ui_egui::now_ms() - started) / 1000.0;
+            let msg = match r {
+                Ok(_) => format!("triya bench: vessel regenerated in {secs:.1} s (join_nozzles: {join})"),
+                Err(e) => format!("triya bench: regenerate failed after {secs:.1} s: {e}"),
+            };
+            log::warn!("{msg}");
+            app.set_status(msg, false);
+        }
+        app.session.mark_saved();
+        true
+    }
+
     fn query() -> String {
         web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default()
     }
@@ -525,7 +565,11 @@ mod web {
                             app.session.doc_mut().name = "Sample Plate".into();
                             app.session.mark_saved();
                         }
-                        if !query().contains("sample") {
+                        // Triya CAD 3D: `?vessel=a|b|c` opens a reference vessel (`&shell`: without attachments); with `&regenerate` it is
+                        // built at once (`&join` joins the nozzles) and the time goes to the console
+                        // and the status bar (PLAN T7.2's browser measurement).
+                        let opened_vessel = open_reference_vessel(&mut app, &query());
+                        if !query().contains("sample") && !opened_vessel {
                             // The empty design takes Units of new designs (#1205). The sample
                             // part is built in millimetres and is left that way.
                             solidcraft_ui_egui::prefs::apply_new_design(&mut app);
