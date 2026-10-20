@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420mm" height="297mm" viewBox="0 0 420 297">
+<rect width="420" height="297" fill="#ffffff"/>
+<g id="OUTLINE" stroke="#000000" fill="#000000" stroke-linecap="round" stroke-linejoin="round">
+<line x1="60.000" y1="177.000" x2="160.000" y2="177.000" stroke-width="0.500" fill="none"/>
+<line x1="160.000" y1="177.000" x2="160.000" y2="127.000" stroke-width="0.500" fill="none"/>
+<line x1="160.000" y1="127.000" x2="60.000" y2="127.000" stroke-width="0.500" fill="none"/>
+<line x1="60.000" y1="127.000" x2="60.000" y2="177.000" stroke-width="0.500" fill="none"/>
+</g>
+<g id="DIM" stroke="#0038a8" fill="#0038a8" stroke-linecap="round" stroke-linejoin="round">
+<line x1="60.000" y1="178.000" x2="60.000" y2="189.000" stroke-width="0.180" fill="none"/>
+<line x1="160.000" y1="178.000" x2="160.000" y2="189.000" stroke-width="0.180" fill="none"/>
+<line x1="60.000" y1="187.000" x2="160.000" y2="187.000" stroke-width="0.180" fill="none"/>
+<polygon points="60.000,187.000 63.000,187.600 63.000,186.400" stroke-width="0.1"/>
+<polygon points="160.000,187.000 157.000,186.400 157.000,187.600" stroke-width="0.1"/>
+<line x1="161.000" y1="177.000" x2="172.000" y2="177.000" stroke-width="0.180" fill="none"/>
+<line x1="161.000" y1="127.000" x2="172.000" y2="127.000" stroke-width="0.180" fill="none"/>
+<line x1="170.000" y1="177.000" x2="170.000" y2="127.000" stroke-width="0.180" fill="none"/>
+<polygon points="170.000,177.000 170.600,174.000 169.400,174.000" stroke-width="0.1"/>
+<polygon points="170.000,127.000 169.400,130.000 170.600,130.000" stroke-width="0.1"/>
+</g>
+<g id="TEXT" stroke="#000000" fill="#000000" stroke-linecap="round" stroke-linejoin="round">
+<text x="110.000" y="186.000" font-size="3.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="middle" transform="rotate(-0.000 110.000 186.000)">1000</text>
+<text x="169.000" y="152.000" font-size="3.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="middle" transform="rotate(-90.000 169.000 152.000)">500</text>
+<text x="115.000" y="196.000" font-size="5.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="middle" transform="rotate(-0.000 115.000 196.000)">FRONT</text>
+<line x1="107.500" y1="197.000" x2="122.500" y2="197.000" stroke-width="0.250" fill="none"/>
+<text x="115.000" y="202.000" font-size="3.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="middle" transform="rotate(-0.000 115.000 202.000)">SCALE 1:10</text>
+<text x="230.000" y="52.000" font-size="3.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 230.000 52.000)">PARTS</text>
+<text x="231.000" y="58.250" font-size="2.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 231.000 58.250)">ITEM</text>
+<text x="243.000" y="58.250" font-size="2.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 243.000 58.250)">DESCRIPTION</text>
+<text x="293.000" y="58.250" font-size="2.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 293.000 58.250)">QTY</text>
+<text x="231.000" y="64.250" font-size="2.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 231.000 64.250)">1</text>
+<text x="243.000" y="64.250" font-size="2.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 243.000 64.250)">PLATE 1000 x 500 x 10</text>
+<text x="293.000" y="64.250" font-size="2.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 293.000 64.250)">1</text>
+<text x="231.000" y="70.250" font-size="2.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 231.000 70.250)">2</text>
+<text x="243.000" y="70.250" font-size="2.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 243.000 70.250)">a description far too long for..</text>
+<text x="293.000" y="70.250" font-size="2.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 293.000 70.250)">2</text>
+</g>
+<g id="TITLE" stroke="#000000" fill="#000000" stroke-linecap="round" stroke-linejoin="round">
+<polygon points="10.000,287.000 410.000,287.000 410.000,10.000 10.000,10.000" stroke-width="0.700" fill="none"/>
+<polygon points="230.000,54.000 304.000,54.000 304.000,72.000 230.000,72.000" stroke-width="0.350" fill="none"/>
+<line x1="230.000" y1="60.000" x2="304.000" y2="60.000" stroke-width="0.180" fill="none"/>
+<line x1="230.000" y1="66.000" x2="304.000" y2="66.000" stroke-width="0.180" fill="none"/>
+<line x1="242.000" y1="54.000" x2="242.000" y2="72.000" stroke-width="0.180" fill="none"/>
+<line x1="292.000" y1="54.000" x2="292.000" y2="72.000" stroke-width="0.180" fill="none"/>
+<polygon points="230.000,231.000 410.000,231.000 410.000,287.000 230.000,287.000" stroke-width="0.500" fill="none"/>
+<line x1="230.000" y1="243.000" x2="410.000" y2="243.000" stroke-width="0.350" fill="none"/>
+<line x1="230.000" y1="259.000" x2="410.000" y2="259.000" stroke-width="0.350" fill="none"/>
+<line x1="230.000" y1="271.000" x2="410.000" y2="271.000" stroke-width="0.350" fill="none"/>
+<line x1="340.000" y1="231.000" x2="340.000" y2="243.000" stroke-width="0.350" fill="none"/>
+<line x1="350.000" y1="259.000" x2="350.000" y2="271.000" stroke-width="0.350" fill="none"/>
+<line x1="375.000" y1="259.000" x2="375.000" y2="271.000" stroke-width="0.350" fill="none"/>
+<line x1="266.000" y1="271.000" x2="266.000" y2="287.000" stroke-width="0.350" fill="none"/>
+<line x1="302.000" y1="271.000" x2="302.000" y2="287.000" stroke-width="0.350" fill="none"/>
+<line x1="338.000" y1="271.000" x2="338.000" y2="287.000" stroke-width="0.350" fill="none"/>
+<line x1="374.000" y1="271.000" x2="374.000" y2="287.000" stroke-width="0.350" fill="none"/>
+<text x="342.000" y="234.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 342.000 234.500)">PROJECT</text>
+<text x="233.000" y="246.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 233.000 246.500)">TITLE</text>
+<text x="233.000" y="255.000" font-size="5.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 233.000 255.000)">RECTANGLE</text>
+<text x="233.000" y="262.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 233.000 262.500)">DRAWING NO.</text>
+<text x="233.000" y="268.500" font-size="3.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 233.000 268.500)">T-001</text>
+<text x="352.000" y="262.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 352.000 262.500)">REV</text>
+<text x="377.000" y="262.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 377.000 262.500)">SIZE</text>
+<text x="377.000" y="268.500" font-size="3.500" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 377.000 268.500)">A3</text>
+<text x="232.000" y="274.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 232.000 274.500)">DRAWN</text>
+<text x="268.000" y="274.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 268.000 274.500)">CHECKED</text>
+<text x="304.000" y="274.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 304.000 274.500)">DATE</text>
+<text x="340.000" y="274.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 340.000 274.500)">SCALE</text>
+<text x="340.000" y="283.000" font-size="3.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 340.000 283.000)">1:10</text>
+<text x="376.000" y="274.500" font-size="2.000" font-family="Helvetica, Arial, sans-serif" stroke="none" text-anchor="start" transform="rotate(-0.000 376.000 274.500)">SHEET</text>
+</g>
+</svg>

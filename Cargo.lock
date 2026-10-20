@@ -4616,6 +4616,7 @@ dependencies = [
  "solidcraft-gpu",
  "solidcraft-mcp",
  "triya-brand",
+ "triya-drawing",
  "triya-vessel",
 ]
 
@@ -4625,7 +4626,12 @@ version = "0.14.0"
 dependencies = [
  "serde",
  "serde_json",
+ "solidcraft-engine",
+ "solidcraft-geom",
+ "solidcraft-io",
  "thiserror 2.0.21",
+ "triya-brand",
+ "triya-stdlib",
  "triya-vessel",
 ]
 
@@ -4649,6 +4655,7 @@ dependencies = [
  "solidcraft-engine",
  "solidcraft-ui-egui",
  "triya-brand",
+ "triya-drawing",
  "triya-vessel",
 ]
 

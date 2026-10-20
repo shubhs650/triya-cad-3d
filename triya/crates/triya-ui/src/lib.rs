@@ -7,8 +7,8 @@
 //! `vessel.*` commands appear on the toolbar as soon as they are registered and `TABS` holds
 //! `VESSEL` (the overlay's one-line seam in `crates/ui-egui/src/toolbar.rs`). What this crate adds:
 //!
-//! - [`register`]: puts `triya_vessel::COMMANDS` into the engine's registry (call it once, before
-//!   the first `Session`).
+//! - [`register`]: puts `triya_vessel::COMMANDS` and `triya_drawing::COMMANDS` into the engine's
+//!   registry (call it once, before the first `Session`).
 //! - [`VesselPanel`]: the side panel shown while the `VESSEL` tab is active ([`vessel`]): the
 //!   stack editor, the vessel JSON, Regenerate off the window thread with a progress bar. It reads
 //!   engine state and acts only through `app.run("vessel.*", params)`, like every upstream panel.
@@ -26,7 +26,8 @@ pub use vessel::VesselPanel;
 
 /// Register the overlay's commands with the engine. Idempotent; `Err` names a clashing id.
 pub fn register() -> Result<(), String> {
-    solidcraft_engine::cmd::triya_extra::register(triya_vessel::COMMANDS)
+    solidcraft_engine::cmd::triya_extra::register(triya_vessel::COMMANDS)?;
+    solidcraft_engine::cmd::triya_extra::register(triya_drawing::COMMANDS)
 }
 
 /// The brand and attribution line (`triya_brand::about_text`).
@@ -41,12 +42,13 @@ mod tests {
         assert!(super::register().is_ok());
         assert!(super::register().is_ok());
         assert!(solidcraft_engine::find_command("vessel.regenerate").is_some());
+        assert!(solidcraft_engine::find_command("drawing.export").is_some());
         assert!(super::about_text().contains("SolidCraft"));
         assert!(solidcraft_ui_egui::toolbar::TABS.contains(&triya_vessel::commands::TAB), "the VESSEL tab seam is in place");
         assert_eq!(solidcraft_ui_egui::toolbar::panels(triya_vessel::commands::TAB), triya_vessel::commands::PANELS, "the panels seam is in place");
         // Every vessel command is on one of those panels, so the ribbon shows each of them.
         let lists = solidcraft_ui_egui::toolbar_custom::panel_lists(triya_vessel::commands::TAB);
-        for spec in triya_vessel::COMMANDS {
+        for spec in triya_vessel::COMMANDS.iter().chain(triya_drawing::COMMANDS) {
             assert_eq!(lists.iter().filter(|(_, cmds, _)| cmds.iter().any(|c| c.id == spec.id)).count(), 1, "{}", spec.id);
         }
     }

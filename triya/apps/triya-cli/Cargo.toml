@@ -26,3 +26,4 @@ solidcraft-mcp = { workspace = true }
 serde_json = { workspace = true }
 triya-brand = { workspace = true }
 triya-vessel = { workspace = true }
+triya-drawing = { workspace = true }

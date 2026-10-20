@@ -100,17 +100,24 @@ trait Plotter { fn begin(&mut self, sheet: &SheetSize); fn set_layer(&mut self, 
   entities it lacks (TEXT/MTEXT, dashed linetypes, ELLIPSE) — decide in T6.6. Layers
   `OUTLINE, HIDDEN (DASHED), CENTER, DIM, TEXT, HATCH, TITLE`; beta dimensions **exploded** into
   lines, arrowheads and TEXT; hatch as LINEs on `HATCH`. Post-beta: DIMENSION entities with `*D` blocks.
-- **PDF** (`printpdf` 0.12.x): one page per sheet; vector lines; embedded sans font. Verify font
-  embedding under wasm32 in T6.6; fallback is `window.print()` of the SVG preview page via
-  `web-sys` (Rust, not JS) with an `@page` size rule.
+- **PDF** (decided in T6.6): Triya's own PDF 1.4 writer (`triya-drawing/src/pdf.rs`), not
+  `printpdf`: one page the size of the sheet, vector lines and Bézier arcs, filled arrowheads,
+  texts in base-14 Helvetica with WinAnsi encoding (nothing embedded, so wasm needs no font
+  files; characters outside WinAnsi print `?`). DXF uses upstream's writer alone (no `dxf`
+  crate): layers, hidden/dashed linetypes, ARC/CIRCLE/ELLIPSE/TEXT are all there.
 
 ## 7. Golden tests
-`tests/golden/<case>.svg|dxf` compared byte-for-byte after normalising ids/timestamps; a
+`tests/golden/<case>.svg|dxf|pdf` compared byte-for-byte after normalising ids/timestamps; a
 `--update-golden` env var regenerates. Cases: `rect_dim_table`, `vessel_a_elevation`,
-`vessel_a_plan`, `vessel_a_section`, `vessel_b_horizontal`, `vessel_c_legs`. Golden `.svg` files
+`vessel_a_plan`, `vessel_a_section`, `vessel_b_horizontal`, `vessel_c_legs`, and the GA
+sheets `vessel_{a,b,c}_ga` (vessel A also as DXF and PDF; `TRIYA_UPDATE_GOLDEN=1` rewrites). Golden `.svg` files
 need ATTRIBUTION rows ("generated test fixture") or `cargo xtask assets` fails.
 
 ## 8. Commands
-`drawing.generate_ga {sheet, views: [...], tables: [...], template}` → stores the Sheet in
-`Document.metadata["in.openengtools.triya.sheet"]` · `drawing.export {format: svg|dxf|pdf, path?}`
-→ download in the browser, file on desktop · `drawing.preview` opens the Drawing panel's preview.
+`drawing.generate_ga {size, views, tables, scale, template, title_block, sheet?}` → stores the
+*options* in `Document.metadata["in.openengtools.triya.sheet"]` (a whole sheet exceeds the 64 KiB
+value cap and would go stale; the sheet is rebuilt from the vessel each time) and returns a
+summary (`sheet: true` adds the sheet) · `drawing.export {format: svg|dxf|pdf|json, path?}` →
+a file on desktop, a download for `/downloads/<name>` in the browser, else the text (base64 for
+PDF, the sheet model for json). There is no `drawing.preview` command (programmatic calls never
+open dialogs): the preview is the Vessel panel's Drawing page.

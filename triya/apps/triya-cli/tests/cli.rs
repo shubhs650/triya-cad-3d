@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Triya CAD 3D contributors
-//! The built `triya-cli` knows the vessel commands and exports the example cylinder as STEP.
+//! The built `triya-cli` knows the vessel and drawing commands and exports the example cylinder as
+//! STEP and its GA drawing as PDF.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -14,11 +15,13 @@ fn example() -> PathBuf {
 }
 
 #[test]
-fn commands_lists_the_vessel_commands_and_upstreams() {
+fn commands_lists_the_vessel_and_drawing_commands_and_upstreams() {
     let out = cli().arg("commands").output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let text = String::from_utf8_lossy(&out.stdout);
-    for id in ["vessel.new", "vessel.set", "vessel.regenerate", "vessel.inspect", "solid.revolve", "sketch.create"] {
+    for id in
+        ["vessel.new", "vessel.set", "vessel.regenerate", "vessel.inspect", "drawing.generate_ga", "drawing.export", "solid.revolve", "sketch.create"]
+    {
         assert!(text.contains(&format!("\"{id}\"")), "{id} missing from `triya-cli commands`");
     }
 }
@@ -32,6 +35,27 @@ fn run_exports_the_example_cylinder_as_step() {
     let _ = std::fs::remove_file(&out_path);
     assert!(step.starts_with("ISO-10303-21;"), "not a STEP file");
     assert!(step.contains("MANIFOLD_SOLID_BREP") || step.contains("BREP_WITH_VOIDS"), "no solid in the STEP file");
+}
+
+#[test]
+fn run_writes_the_ga_drawing_of_a_script_as_pdf() {
+    let dir = std::env::temp_dir();
+    let pdf = dir.join(format!("triya-cli-ga-{}.pdf", std::process::id()));
+    let script = dir.join(format!("triya-cli-ga-{}.json", std::process::id()));
+    let steps = serde_json::json!({"commands": [
+        {"command": "vessel.new", "params": {"diameter_mm": 1000, "thickness_mm": 10, "length_mm": 2000, "name": "Drum"}},
+        {"command": "drawing.generate_ga", "params": {"size": "A3"}},
+        {"command": "drawing.export", "params": {"path": pdf.to_string_lossy()}}
+    ]});
+    std::fs::write(&script, steps.to_string()).unwrap();
+    let out = cli().arg("run").arg(&script).arg("--quiet").output().unwrap();
+    let _ = std::fs::remove_file(&script);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let bytes = std::fs::read(&pdf).unwrap();
+    let _ = std::fs::remove_file(&pdf);
+    assert!(bytes.starts_with(b"%PDF-1.4"), "not a PDF");
+    // One A3 landscape page (420 × 297 mm in points).
+    assert!(String::from_utf8_lossy(&bytes).contains("/MediaBox [0 0 1190.551 841.89]"));
 }
 
 #[test]

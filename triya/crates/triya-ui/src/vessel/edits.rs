@@ -10,7 +10,7 @@ use triya_vessel::eval::Resolved;
 use triya_vessel::model::{AxialRef, ElementKind, VesselDoc};
 use triya_vessel::patch::escape;
 
-/// One command the panel runs through `app.run`. Only `vessel.*` commands are ever made here.
+/// One command the panel runs through `app.run`: `vessel.*` here, `drawing.*` on the Drawing page.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Action {
     pub id: &'static str,
