@@ -153,6 +153,7 @@ fn vessel_commands_never_panic_on_hostile_params() {
         "datum",
         "plant_elevation_mm",
         "keep_positions",
+        "join_nozzles",
     ];
     let hostile = [
         Value::Null,

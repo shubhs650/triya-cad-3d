@@ -49,7 +49,8 @@ pub static COMMANDS: &[CommandSpec] = &[
          Kept in the design, searched before the shipped tables; rows without `verified` count as unverified. At most 60 KiB → private_tables",
     ),
     CommandSpec::new("vessel.regenerate", "Regenerate Vessel", regenerate).at(TAB, "MODIFY").icon("compute").enabled(has_vessel).params(
-        "→ steps: [{command, params, reply}], features: [ids] (what it built, kept in the timeline folder `Vessel <id>` → group; only \
+        "join_nozzles?: bool (default true; false builds every nozzle as its own body without the boolean, a quick look) \
+         → steps: [{command, params, reply}], features: [ids] (what it built, kept in the timeline folder `Vessel <id>` → group; only \
          the features of the previous regeneration are deleted first). One undo step. Also writes every dimension as a user parameter \
          V<vessel>_<element>_<field> (mm) → parameters. Nozzles are cut and joined into their host and kept when the host's measured \
          volume matches the reference; otherwise built as a separate body with flags.boolean_failed → nozzles: [{id, built: \
@@ -661,7 +662,14 @@ pub mod progress {
     }
 }
 
-fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
+fn regenerate(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value> {
+    // `join_nozzles: false` builds every nozzle as its own body without trying the boolean (the
+    // slow part in this kernel: minutes a nozzle), for a quick look (T7.2).
+    let join_nozzles = match p.get("join_nozzles") {
+        None | Some(Value::Null) => true,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(bad("vessel.regenerate", "join_nozzles must be true or false")),
+    };
     let (mut doc, previous) = load(s)?;
     let tables = presets::tables(s)?;
     // Presets first: an attachment with a `size_key` takes its row's fields (private table
@@ -729,11 +737,13 @@ fn regenerate(s: &mut Session, _p: &Value) -> solidcraft_engine::Result<Value> {
         stage += 1;
         progress::set(stage, stages, &format!("nozzle {}", g.id));
         let Some(host) = resolved.station(&g.host) else { continue };
-        let report = build_nozzle(s, &doc, &resolved, host, &mut g, &mut features, &mut steps);
+        let report = build_nozzle(s, &doc, &resolved, host, &mut g, join_nozzles, &mut features, &mut steps);
         warnings.extend(g.warnings.iter().cloned());
         if let Some(a) = doc.attachments.iter_mut().find(|a| a.id == g.id) {
             let flange_ok = report.get("flange").is_none_or(|f| f == "built");
-            a.flags.boolean_failed = report.get("built").and_then(Value::as_str) != Some("joined") || !flange_ok;
+            let built = report.get("built").and_then(Value::as_str);
+            // Not joined on request is not a failure.
+            a.flags.boolean_failed = !(built == Some("joined") || (!join_nozzles && built == Some("separate"))) || !flange_ok;
             a.flags.unverified_table = g.unverified_table;
             extra_params.extend(nozzle::parameters(&doc.id, &doc.global, a, &g));
         }
@@ -830,18 +840,23 @@ fn run_calls(s: &mut Session, calls: &[CommandCall], features: &mut Vec<u64>, st
 /// volume changes by the expected amount), else as a separate body, else not at all: a kernel
 /// failure never fails the regeneration; then its flange (bolt holes patterned, else one by
 /// one, else none; else no flange). → `{id, built: joined|separate|none, expected_mm3, measured_mm3, warning?,
-/// flange?: built|without bolt holes|none, bolt_count?, flange_warning?}`.
+/// flange?: built|without bolt holes|none, bolt_count?, flange_warning?}`. `join: false` skips the boolean.
+#[allow(clippy::too_many_arguments)]
 fn build_nozzle(
     s: &mut Session,
     doc: &VesselDoc,
     r: &eval::Resolved,
     host: &eval::Station,
     g: &mut nozzle::NozzleGeom,
+    join: bool,
     features: &mut Vec<u64>,
     steps: &mut Vec<Value>,
 ) -> Value {
     let host_body = format!("Vessel {}", host.id);
     let joined = (|| -> std::result::Result<(Vec<u64>, Vec<Value>, Session, f64, f64), String> {
+        if !join {
+            return Err(String::new());
+        }
         let calls = nozzle::plan(&doc.global, r, host, g).map_err(|e| e.to_string())?;
         let expected = nozzle::expected_change(&doc.global, host, g, 96).ok_or("no reference volume")?;
         let before = volume(s, &host_body).map_err(|e| e.to_string())?;
@@ -870,11 +885,15 @@ fn build_nozzle(
                     s.accept_computed(trial);
                     features.extend(f.into_iter().filter(|id| !features.contains(id)).collect::<Vec<_>>());
                     steps.extend(st);
-                    json!({"id": g.id, "built": "separate", "manway": g.manway, "davit": g.davit,
-                        "warning": format!("nozzle `{}`: {why}; kept as a separate body (flags.boolean_failed)", g.id)})
+                    let mut out = json!({"id": g.id, "built": "separate", "manway": g.manway, "davit": g.davit});
+                    if join {
+                        out["warning"] = json!(format!("nozzle `{}`: {why}; kept as a separate body (flags.boolean_failed)", g.id));
+                    }
+                    out
                 }
                 Err(e) => {
-                    return json!({"id": g.id, "built": "none", "warning": format!("nozzle `{}`: {why}; the separate body failed too ({e}); not built", g.id)});
+                    let why = if join { format!("{why}; the separate body failed too") } else { "the separate body failed".to_string() };
+                    return json!({"id": g.id, "built": "none", "warning": format!("nozzle `{}`: {why} ({e}); not built", g.id)});
                 }
             }
         }

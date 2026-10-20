@@ -8,6 +8,12 @@ use serde_json::json;
 use crate::theme::Tokens;
 use crate::{SolveApp, icons};
 
+// Modified by Triya CAD 3D: a fork's shell names the product in the app bar, start page and Help menu.
+pub static APP_NAME: std::sync::OnceLock<(&'static str, &'static str)> = std::sync::OnceLock::new();
+pub fn app_name() -> (&'static str, &'static str) {
+    APP_NAME.get().copied().unwrap_or(("SolidCraft", "About SolidCraft"))
+}
+pub static BRAND_MARK: std::sync::OnceLock<fn(&egui::Painter, egui::Pos2)> = std::sync::OnceLock::new(); // Modified by Triya CAD 3D: the shell's own app bar mark
 pub const TABS: &[&str] = &["SOLID", "SURFACE", "MESH", "SHEET METAL", "PLASTIC", "UTILITIES", "VESSEL"]; // Modified by Triya CAD 3D: the pressure-vessel tab (triya-vessel commands)
 
 /// The accent stroke colour for a panel's icons: constraint commands use the same red as the
@@ -242,10 +248,10 @@ pub fn app_bar(app: &mut SolveApp, ui: &mut egui::Ui) {
         // (viewBox 357 x 412). Same 20 px height and centre as the old block.
         {
             let c = pos2(left + 20.0, r.center().y);
-            crate::icons::glyphs::brand_mark(ui.painter(), c);
+            BRAND_MARK.get().map_or_else(|| crate::icons::glyphs::brand_mark(ui.painter(), c), |f| f(ui.painter(), c)); // Modified by Triya CAD 3D: the shell's mark
         }
         if !compact_actions {
-            ui.painter().text(pos2(left + 36.0, r.center().y), Align2::LEFT_CENTER, "SolidCraft", FontId::proportional(14.0), t.app_bar_text);
+            ui.painter().text(pos2(left + 36.0, r.center().y), Align2::LEFT_CENTER, app_name().0, FontId::proportional(14.0), t.app_bar_text); // Modified by Triya CAD 3D: product name from the shell
         }
         let mut x = left + if compact_actions { 60.0 } else { 128.0 };
         // While a file loads the design waits: no menus or commands from the bar.

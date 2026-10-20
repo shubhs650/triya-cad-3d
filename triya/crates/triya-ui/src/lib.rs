@@ -24,8 +24,15 @@ pub mod vessel;
 
 pub use vessel::VesselPanel;
 
-/// Register the overlay's commands with the engine. Idempotent; `Err` names a clashing id.
+/// The Help menu's About item.
+pub const ABOUT_LABEL: &str = "About Triya CAD 3D";
+
+/// Register the overlay's commands with the engine and name the product in upstream's app bar,
+/// start page and Help menu, with Triya's mark in the app bar (seams `toolbar::APP_NAME`, `BRAND_MARK`). Idempotent; `Err` names a clashing id.
 pub fn register() -> Result<(), String> {
+    // Already set (a second call) is fine: the value is the same.
+    let _ = solidcraft_ui_egui::toolbar::APP_NAME.set((triya_brand::APP_NAME, ABOUT_LABEL));
+    let _ = solidcraft_ui_egui::toolbar::BRAND_MARK.set(icons::paint_app_bar_mark);
     solidcraft_engine::cmd::triya_extra::register(triya_vessel::COMMANDS)?;
     solidcraft_engine::cmd::triya_extra::register(triya_drawing::COMMANDS)
 }
@@ -43,6 +50,7 @@ mod tests {
         assert!(super::register().is_ok());
         assert!(solidcraft_engine::find_command("vessel.regenerate").is_some());
         assert!(solidcraft_engine::find_command("drawing.export").is_some());
+        assert_eq!(solidcraft_ui_egui::toolbar::app_name(), (triya_brand::APP_NAME, super::ABOUT_LABEL));
         assert!(super::about_text().contains("SolidCraft"));
         assert!(solidcraft_ui_egui::toolbar::TABS.contains(&triya_vessel::commands::TAB), "the VESSEL tab seam is in place");
         assert_eq!(solidcraft_ui_egui::toolbar::panels(triya_vessel::commands::TAB), triya_vessel::commands::PANELS, "the panels seam is in place");

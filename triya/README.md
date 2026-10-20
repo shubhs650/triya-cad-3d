@@ -14,22 +14,23 @@ command, the UI is thin, `cargo xtask layers` passes, wasm32 builds.
 | crate | layer | what |
 |---|---|---|
 | `crates/triya-brand` | L0 standalone | product name, ids, upstream attribution (`about_text()`) |
-| `crates/triya-stdlib` | L0 | typed flange / pipe-schedule / head-preset rows, `StandardRef`, `TableSet` JSON loader, head depth formulas. `data/*.json` are **illustrative placeholders**, not standard tables |
+| `crates/triya-stdlib` | L0 | typed flange / pipe-schedule / head-preset rows, `StandardRef`, `TableSet` JSON loader, head depth formulas, support presets; `data/*.json` are ASME B16.5/B16.47/B36.10M/B36.19M tables with per-row `source` and `verified` (`docs/standards-library.md`) |
 | `crates/triya-vessel` | L4 (beside engine) | `VesselDoc` model (`triya.vessel/0.1`), `resolve()` → axial stations, `plan()` → engine command calls, the `vessel.*` commands |
-| `crates/triya-drawing` | L4 | 2D sheet model, `Plotter` trait, `SvgPlotter`; vessel views stubbed |
-| `crates/triya-ui` | L5 (beside ui-egui) | `register()` the commands, the `VesselPanel` window, About text |
+| `crates/triya-drawing` | L4 | GA sheet model built from the vessel (views, dimensions, tables, title block), `Plotter` trait with SVG, DXF and PDF writers, the `drawing.*` commands |
+| `crates/triya-ui` | L5 (beside ui-egui) | `register()` the commands and the product name, the Vessel panel (stack, attachments, plan, drawing, JSON), the About window |
 | `apps/triya-cli` | app | upstream's `solidcraft-cli` source compiled with `vessel.*` registered first (`build.rs` rewrites only `main` → `upstream_main` and module paths); `run`, `eval`, `snapshot`, `commands`, `mcp`, … all know the vessel commands |
 | `apps/triya-web` | app | copy of `apps/solidcraft-web` with Triya branding and the overlay wired in |
 
 ## Commands
 
-`vessel.new`, `vessel.set`, `vessel.regenerate`, `vessel.inspect` (tab `VESSEL`, panels
-`MAKE` / `INSPECT`). The vessel JSON is stored in the design's metadata under
-`in.openengtools.triya.vessel`, so it is saved with the `.solidcraft` file and takes part in undo
-without a design-format change. `vessel.regenerate` runs the planned upstream commands
-(`sketch.create` → `sketch.rectangle.two_point` → `sketch.finish` → `solid.revolve`) inside its
-own run, so the whole regeneration is **one undo step**; only cylinders are built so far, every
-other element and all attachments return "not supported yet".
+`vessel.*` (new, set, element/attachment/support add, datum, import_tables, regenerate, bom,
+bom.export, inspect) and `drawing.*` (generate_ga, export) on the `VESSEL` tab (panels CREATE,
+INSERT, MODIFY, INSPECT); `triya-cli commands` lists them with their parameters. The vessel JSON
+(`triya.vessel/0.1`, `docs/vessel-schema.md`) and the sheet options live in the design's metadata
+(`in.openengtools.triya.vessel`, `in.openengtools.triya.sheet`), so they are saved in the
+`.solidcraft` file and take part in undo without a design-format change. `vessel.regenerate`
+plans native commands (sketch → revolve → extrude cut/join → pattern) and runs them as **one undo
+step**; the sheet is drawn from the vessel model, not from the solid (ADR-0004).
 
 ## Build
 
@@ -39,7 +40,8 @@ cargo check -p triya-brand -p triya-stdlib -p triya-drawing -p triya-vessel -p t
 cargo test  -p triya-brand -p triya-stdlib -p triya-drawing -p triya-vessel -p triya-ui --profile ci
 cargo xtask layers
 cargo run -p triya-cli -- run triya/crates/triya-vessel/examples/cylinder.json --out /tmp/cyl.step
-cd triya/apps/triya-web && trunk serve --release        # browser build (wasm32), not run here
+cd triya/apps/triya-web && trunk serve --release        # browser build (wasm32)
+bash triya/ci/upstream-roundtrip.sh                    # a Triya design opens in unmodified v0.14.0
 cargo check -p triya-vessel --target wasm32-unknown-unknown   # the wasm gate for the lower crates
 ```
 

@@ -145,7 +145,7 @@ fn regenerate_runs_off_the_window_thread() {
     let undo = app.session.undo.len();
     let ctx = egui::Context::default();
     let mut regen = triya_ui::vessel::regen::Regen::default();
-    regen.start(&mut app);
+    regen.start(&mut app, true);
     assert!(regen.busy());
     let t0 = std::time::Instant::now();
     let done = loop {
@@ -163,7 +163,7 @@ fn regenerate_runs_off_the_window_thread() {
     assert_eq!(app.session.undo.len(), undo + 1, "one undo step, as from the ribbon");
     assert_eq!(triya_vessel::commands::progress::get().0, triya_vessel::commands::progress::get().1);
     // The design changing meanwhile drops the result.
-    regen.start(&mut app);
+    regen.start(&mut app, true);
     app.run("vessel.set", json!({"global": {"default_material": "SA-240 304"}})).unwrap();
     let done = loop {
         if let Some(d) = regen.poll(&mut app, &ctx) {
