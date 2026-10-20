@@ -17,3 +17,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 # The vessel model only (`triya_vessel::model`, `triya_vessel::eval`): drawing views of a vessel.
 triya-vessel = { workspace = true }
+triya-stdlib = { workspace = true }
+triya-brand = { workspace = true }
+# Commands (`drawing.*`), the DXF writer and its point type.
+solidcraft-engine = { workspace = true }
+solidcraft-io = { workspace = true }
+solidcraft-geom = { workspace = true }

@@ -5,9 +5,11 @@
 //! the design and acts only through `app.run("vessel.*", …)` ([`edits::Action`]); every change to
 //! the document is a `vessel.set {patch}` of JSON pointers, the same JSON a script or MCP client
 //! sends. Pages: Stack (the element editor, T5.2), Attachments (nozzles, supports and details,
-//! T5.3), Plan (the orientation widget, T5.4) and JSON (the whole document).
+//! T5.3), Plan (the orientation widget, T5.4), Drawing (the GA sheet and its export, T6.7, which
+//! runs `drawing.*`) and JSON (the whole document).
 
 mod attach;
+pub mod drawing;
 pub mod edits;
 pub mod plan;
 pub mod regen;
@@ -36,6 +38,7 @@ pub enum Page {
     Stack,
     Attachments,
     Plan,
+    Drawing,
     Json,
 }
 
@@ -67,7 +70,10 @@ pub struct VesselPanel {
     error: Option<String>,
     note: Option<String>,
     regen: regen::Regen,
-    save_pick: Option<SavePick>,
+    /// A save dialog in flight: the command to run with its `path`, and its other parameters.
+    save_pick: Option<(SavePick, &'static str, Value)>,
+    /// The Drawing page.
+    pub drawing: drawing::DrawingPage,
     /// Commands queued by the widgets this frame, run after drawing.
     queued: Vec<Action>,
     show_about: bool,
@@ -198,26 +204,32 @@ impl VesselPanel {
         None
     }
 
-    /// Ask where to save the BOM, then run `vessel.bom.export {path}`.
-    fn export_bom(&mut self, app: &mut SolveApp) {
-        let name = self.doc.as_ref().map_or("vessel".into(), |d| d.id.clone());
+    /// Ask where to save `name`, then run `command {path, ...params}`.
+    fn save_as(&mut self, app: &mut SolveApp, name: &str, ext: &str, command: &'static str, params: Value) {
         match app.services.pick_save.as_ref() {
-            Some(pick) => self.save_pick = Some(pick(&format!("{name}-bom.csv"), &["csv"])),
-            None => self.error = Some("this app has no save dialog: run vessel.bom.export with a path".into()),
+            Some(pick) => self.save_pick = Some((pick(name, &[ext]), command, params)),
+            None => self.error = Some(format!("this app has no save dialog: run {command} with a path")),
         }
     }
 
+    /// Ask where to save the BOM, then run `vessel.bom.export {path}`.
+    fn export_bom(&mut self, app: &mut SolveApp) {
+        let name = self.doc.as_ref().map_or("vessel".into(), |d| d.id.clone());
+        self.save_as(app, &format!("{name}-bom.csv"), "csv", "vessel.bom.export", json!({}));
+    }
+
     fn poll_save(&mut self, app: &mut SolveApp, ctx: &egui::Context) {
-        let Some(f) = self.save_pick.as_mut() else { return };
+        let Some((f, _, _)) = self.save_pick.as_mut() else { return };
         let mut cx = Context::from_waker(Waker::noop());
         match f.as_mut().poll(&mut cx) {
             Poll::Pending => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
             Poll::Ready(path) => {
-                self.save_pick = None;
-                if let Some(path) = path
-                    && self.run(app, Action { id: "vessel.bom.export", params: json!({"path": path}) }).is_some()
-                {
-                    self.note = Some(format!("BOM written to {path}"));
+                let Some((_, id, mut params)) = self.save_pick.take() else { return };
+                if let Some(path) = path {
+                    params["path"] = json!(path);
+                    if self.run(app, Action { id, params }).is_some() {
+                        self.note = Some(format!("Written to {path}"));
+                    }
                 }
             }
         }
@@ -294,6 +306,7 @@ impl VesselPanel {
             ui.selectable_value(&mut self.page, Page::Stack, "Stack");
             ui.selectable_value(&mut self.page, Page::Attachments, "Attachments");
             ui.selectable_value(&mut self.page, Page::Plan, "Plan");
+            ui.selectable_value(&mut self.page, Page::Drawing, "Drawing");
             ui.selectable_value(&mut self.page, Page::Json, "JSON");
         });
         self.regen.show(ui);
@@ -310,6 +323,7 @@ impl VesselPanel {
             Page::Stack => stack::show(self, ui),
             Page::Attachments => attach::show(self, app, ui),
             Page::Plan => plan::show(self, ui),
+            Page::Drawing => drawing::show(self, app, ui),
             Page::Json => self.json_page(ui),
         });
         ui.separator();

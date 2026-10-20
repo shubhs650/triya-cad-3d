@@ -1,8 +1,8 @@
 diff --git a/ATTRIBUTION.md b/ATTRIBUTION.md
-index 97dca7e5d1b46d6d178b3db013e8a75597af335c..77d7e0152d111582b18a3f7207f4fea8c12ad4b3 100644
+index 97dca7e5d1b46d6d178b3db013e8a75597af335c..6f45460bdf808dc66ad0b00b7e10bdbe0741687c 100644
 --- a/ATTRIBUTION.md
 +++ b/ATTRIBUTION.md
-@@ -190,3 +190,21 @@ and shares that effective count with the surface attachments and CAD callbacks.
+@@ -190,3 +190,31 @@ and shares that effective count with the surface attachments and CAD callbacks.
  Vulkan, DirectX 12, Metal and WebGPU retain their requested multisampling.
  A frame whose meshes the GPU refuses to stage (device lost or out of memory) is
  skipped with a warning instead of panicking (#1469).
@@ -24,6 +24,16 @@ index 97dca7e5d1b46d6d178b3db013e8a75597af335c..77d7e0152d111582b18a3f7207f4fea8
 +| triya/crates/triya-stdlib/data/asme-b16.47b.json | Triya CAD 3D contributors | ASME B16.47 Series B Class 150–900 weld-neck and blind flange dimensions, same sources and method as Series A | MIT OR Apache-2.0 |
 +| triya/crates/triya-stdlib/data/support-presets.json | Triya CAD 3D contributors | Saddle, leg and lifting-lug presets by vessel outside diameter: proportional rules written for Triya CAD 3D (no standard, catalogue or company sheet copied), `verified: derived` | MIT OR Apache-2.0 |
 +| triya/crates/triya-vessel/tests/fixtures/fictional-private-supports.json | Triya CAD 3D contributors | Fictional private support table for the import test; organisation and values invented | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/templates/oet-title-block.svg | Triya CAD 3D contributors | Original Open Engineering Tools title block template (lines, boxes and `{{placeholder}}` texts) written for Triya CAD 3D | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/tests/golden/rect_dim_table.svg | Triya CAD 3D contributors | Generated test fixture: the drawing golden file written by `TRIYA_UPDATE_GOLDEN=1 cargo test -p triya-drawing --test golden` | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/tests/golden/vessel_a_elevation.svg | Triya CAD 3D contributors | Generated test fixture: the drawing golden file written by `TRIYA_UPDATE_GOLDEN=1 cargo test -p triya-drawing --test golden` | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/tests/golden/vessel_a_plan.svg | Triya CAD 3D contributors | Generated test fixture: the drawing golden file written by `TRIYA_UPDATE_GOLDEN=1 cargo test -p triya-drawing --test golden` | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/tests/golden/vessel_a_section.svg | Triya CAD 3D contributors | Generated test fixture: the drawing golden file written by `TRIYA_UPDATE_GOLDEN=1 cargo test -p triya-drawing --test golden` | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/tests/golden/vessel_b_horizontal.svg | Triya CAD 3D contributors | Generated test fixture: the drawing golden file written by `TRIYA_UPDATE_GOLDEN=1 cargo test -p triya-drawing --test golden` | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/tests/golden/vessel_c_legs.svg | Triya CAD 3D contributors | Generated test fixture: the drawing golden file written by `TRIYA_UPDATE_GOLDEN=1 cargo test -p triya-drawing --test golden` | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/tests/golden/vessel_a_ga.svg | Triya CAD 3D contributors | Generated test fixture: the drawing golden file written by `TRIYA_UPDATE_GOLDEN=1 cargo test -p triya-drawing --test golden` | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/tests/golden/vessel_b_ga.svg | Triya CAD 3D contributors | Generated test fixture: the drawing golden file written by `TRIYA_UPDATE_GOLDEN=1 cargo test -p triya-drawing --test golden` | MIT OR Apache-2.0 |
++| triya/crates/triya-drawing/tests/golden/vessel_c_ga.svg | Triya CAD 3D contributors | Generated test fixture: the drawing golden file written by `TRIYA_UPDATE_GOLDEN=1 cargo test -p triya-drawing --test golden` | MIT OR Apache-2.0 |
 diff --git a/Cargo.toml b/Cargo.toml
 index d48e8a619e249f85182d0cfca8069b2a37a1fc30..70ddb61c2eb3d6b4bc96d88c8dea47ee7f817577 100644
 --- a/Cargo.toml

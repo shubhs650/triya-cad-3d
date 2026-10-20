@@ -15,6 +15,7 @@ workspace = true
 solidcraft-engine = { workspace = true }
 solidcraft-ui-egui = { workspace = true }
 triya-vessel = { workspace = true }
+triya-drawing = { workspace = true }
 triya-brand = { workspace = true }
 egui = { workspace = true }
 serde_json = { workspace = true }
