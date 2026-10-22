@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Triya CAD 3D on Cloudflare Workers (triya/docs/cloudflare.md). Deployed by .github/workflows/triya-cloudflare.yml.
+name = "triya-cad-3d"
+main = "build/index.js"
+compatibility_date = "2026-10-01"
+
+[build]
+command = "cargo install -q worker-build --version ^0.8.7 && worker-build --release"
+
+# The site the workflow assembles: the landing page at / and the web app at /app/, with each
+# `.wasm` replaced by `.wasm.gz` (the Worker serves it; Cloudflare's per-file limit is 25 MiB).
+[assets]
+directory = "../../site"
+binding = "ASSETS"

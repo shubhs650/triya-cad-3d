@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Triya CAD 3D on Cloudflare Workers: the web app at /app/ and a small landing page at /
+# (triya/docs/cloudflare.md). Needs the repository secrets CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID; without them the workflow builds and tests the site, then skips the deploy.
+name: Triya Cloudflare
+
+on:
+  push:
+    branches: [main]
+    paths: ['triya/**', 'crates/**', 'apps/**', 'Cargo.*', '.github/workflows/triya-cloudflare.yml']
+  # A PR that changes the Worker or this file builds and tests the site; only main deploys.
+  pull_request:
+    paths: ['triya/cloudflare/**', '.github/workflows/triya-cloudflare.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: triya-cloudflare
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  TRUNK_VERSION: v0.21.14
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: triya-web }
+      - name: Install trunk
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build the web app
+        working-directory: triya/apps/triya-web
+        run: trunk build --release
+      - name: Offline/update test
+        env: { TRUNK_SOURCE_DIR: '${{ github.workspace }}/triya/apps/triya-web' }
+        run: cargo xtask web-offline-test --site dist/triya-web
+      - name: Assemble the site
+        # Cloudflare refuses static files over 25 MiB; the app's .wasm is ~41 MiB, ~15 MB gzipped.
+        # The Worker in triya/cloudflare serves <name>.wasm from <name>.wasm.gz.
+        run: |
+          mkdir -p site/app
+          cp -r dist/triya-web/. site/app/
+          cp triya/apps/triya-web/landing/index.html site/index.html 2>/dev/null || \
+            printf '<!doctype html><meta charset="utf-8"><title>Triya CAD 3D</title><p><a href="app/">Open Triya CAD 3D</a></p>' > site/index.html
+          for w in site/app/*.wasm; do gzip -9 -n "$w"; done
+          big="$(find site -type f -size +25M)"
+          if [ -n "$big" ]; then echo "::error::over Cloudflare's 25 MiB file limit: $big"; exit 1; fi
+          ls -l site/app
+      - name: Deploy
+        if: github.event_name != 'pull_request' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: triya/cloudflare
+          wranglerVersion: "4"
+          command: deploy
+      - name: Build the Worker (pull requests)
+        if: github.event_name == 'pull_request'
+        working-directory: triya/cloudflare
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo clippy --release --target wasm32-unknown-unknown -- -D warnings
+          npx -y wrangler@4 deploy --dry-run --outdir "$RUNNER_TEMP/worker"
+      - name: No Cloudflare secrets
+        if: github.event_name != 'pull_request' && (env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '')
+        run: echo "::notice::Built and tested the site; add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to deploy (triya/docs/cloudflare.md)."

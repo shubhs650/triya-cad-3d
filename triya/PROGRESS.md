@@ -145,6 +145,7 @@
 - 2026-10-20 — T7.2 browser number: measured in headless Chromium against a release `trunk build` with a `?vessel=a&regenerate` start option (kept: it is also a demo link), because the CI runner has no browser GPU; WebAssembly-in-V8 runs through Node's WASI agree (2.7× native for the shell). Node's WASI segfaults on vessel A with nozzles (Chrome does not), so Node numbers cover the shell only.
 - 2026-10-20 — `join_nozzles: false` (separate nozzle bodies, no boolean) is a quick-look option, default true for the command and the desktop panel, false in the browser panel (the window would hold for many minutes). Not a fallback flag: `flags.boolean_failed` stays false when the user chose it.
 - 2026-10-20 — The beta tag (T7.5) is not created by the agent: two DoD items are unmet or unverifiable here (full vessel A < 10 s in the browser; Pages/HTTPS PWA), and dropping a DoD item is the owner's call (AGENTS.md §4).
+- 2026-10-22 — Cloudflare hosting (owner's choice on 2026-10-22: Workers + a Rust Worker): `triya-cloudflare.yml` deploys the same build as Pages to Workers static assets; the >25 MiB `.wasm` ships as `.wasm.gz` and `triya/cloudflare` (own Cargo workspace, `worker` crate) serves it with `Content-Encoding: gzip`. Deploy skipped until the secrets exist. `triya/docs/cloudflare.md`.
 
 ## Owner decisions
 | opened | question | status | answer |
@@ -163,6 +164,7 @@
 | 2026-10-20 | Beta scope, T7.2: full reference vessel A cannot regenerate in < 10 s in the browser with this kernel (Chrome: shell 6.3 s; nozzles as separate bodies 87 s; nozzles joined 24 min). Options: (a) accept for the beta with the limitation documented (README) and *Join nozzles* off in the browser; (b) restate the DoD target as "shell < 10 s, full vessel in the background on the desktop"; (c) hold the beta until upstream's new kernel (P5). | default (agent) | (a) recommended; the tag waits for your word |
 | 2026-10-20 | T7.3 owner checks: open a STEP export of vessel A in another CAD tool (all bodies present), and once Pages is live, save a vessel in the installed PWA, reload, and reopen it from the browser's storage (OPFS) with the vessel and sheet intact. | open | |
 | 2026-10-20 | T7.5: create `triya-v0.1.0-beta` (`gh api repos/shubhs650/triya-cad-3d/git/refs -f ref=refs/tags/triya-v0.1.0-beta -f sha=<main sha>`), after Pages is enabled and the items above are answered; then announce internally. | open | |
+| 2026-10-22 | Cloudflare: add repository secrets `CLOUDFLARE_API_TOKEN` ("Edit Cloudflare Workers" token) and `CLOUDFLARE_ACCOUNT_ID`, then run the Triya Cloudflare workflow; optional custom domain (`triya/docs/cloudflare.md`). | open | |
 ## Kernel cases (`triya/crates/triya-vessel/tests/kernel-cases/`)
 | case | symptom | fallback engaged | upstream issue |
 |---|---|---|---|
@@ -192,6 +194,7 @@
 |---|---|---|---|
 | (skeleton adds no third-party crates beyond upstream's set) | | | |
 | `schemars` 1.2 (+ `schemars_derive`, `dyn-clone`, `ref-cast`, `serde_derive_internals`) | MIT; the others MIT OR Apache-2.0 | JSON schema of the vessel document (T2.1), derive on `triya-vessel` model and two `triya-stdlib` types | yes (pure Rust) |
+| `worker` 0.8 (+ `worker-sys`, `worker-macros`; only in `triya/cloudflare`, not the app) | MIT OR Apache-2.0 | the Cloudflare Worker that serves the gzipped `.wasm` | yes (Worker only) |
 
 ## Measurements
 | what | value | date | notes |
@@ -243,3 +246,4 @@
 - 2026-10-19 — T5.1 merged (#28). T5.2–T5.5 + M2 exit in one panel PR (#29).
 - 2026-10-20 — Phase 6 (T6.1–T6.7): drawing model, views, dimensions, tables, SVG/DXF/PDF export, drawing commands and the Drawing page in one PR.
 - 2026-10-20 — Phase 7 started (thread "Phase 7 implementation"). T7.1–T7.4 in one PR: fuzz, product name seam, `join_nozzles`, browser timing, round trips (incl. unmodified upstream), README. T7.5 (tag, Pages) waits on the owner.
+- 2026-10-22 — Cloudflare Workers deploy added (owner asked to ship via Cloudflare); waits on the owner's Cloudflare secrets.
