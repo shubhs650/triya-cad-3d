@@ -15,7 +15,7 @@ cd "$ROOT"
 # Paths the fork owns: never compared against upstream.
 OWNED_EXCLUDES=(
   ':!triya/**' ':!triya/*'
-  ':!.github/workflows/triya-ci.yml' ':!.github/workflows/triya-pages.yml' ':!.github/workflows/upstream-sync.yml'
+  ':!.github/workflows/triya-*.yml' ':!.github/workflows/upstream-sync.yml'
   ':!.gitattributes' ':!NOTICE' ':!README.md' ':!REPO-SETUP.md' ':!CLOUD-SETUP.md'
 )
 
