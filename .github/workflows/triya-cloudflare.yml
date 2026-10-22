@@ -8,6 +8,9 @@ on:
   push:
     branches: [main]
     paths: ['triya/**', 'crates/**', 'apps/**', 'Cargo.*', '.github/workflows/triya-cloudflare.yml']
+  # A PR that changes the Worker or this file builds and tests the site; only main deploys.
+  pull_request:
+    paths: ['triya/cloudflare/**', '.github/workflows/triya-cloudflare.yml']
   workflow_dispatch:
 
 permissions:
@@ -58,7 +61,7 @@ jobs:
           if [ -n "$big" ]; then echo "::error::over Cloudflare's 25 MiB file limit: $big"; exit 1; fi
           ls -l site/app
       - name: Deploy
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        if: github.event_name != 'pull_request' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -66,6 +69,13 @@ jobs:
           workingDirectory: triya/cloudflare
           wranglerVersion: "4"
           command: deploy
+      - name: Build the Worker (pull requests)
+        if: github.event_name == 'pull_request'
+        working-directory: triya/cloudflare
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo clippy --release --target wasm32-unknown-unknown -- -D warnings
+          npx -y wrangler@4 deploy --dry-run --outdir "$RUNNER_TEMP/worker"
       - name: No Cloudflare secrets
-        if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == ''
+        if: github.event_name != 'pull_request' && (env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '')
         run: echo "::notice::Built and tested the site; add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to deploy (triya/docs/cloudflare.md)."
