@@ -302,16 +302,20 @@ pub fn app_bar(app: &mut SolveApp, ui: &mut egui::Ui) {
             let c = pos2(left + 20.0, r.center().y);
             BRAND_MARK.get().map_or_else(|| crate::icons::glyphs::brand_mark(ui.painter(), c), |f| f(ui.painter(), c)); // Modified by Triya CAD 3D: the shell's mark
         }
+        let mut name_end = 0.0_f32; // Modified by Triya CAD 3D: a longer product name pushes the Home button right
         if !compact_actions {
-            ui.painter().text(
-                pos2(left + 36.0, r.center().y),
-                Align2::LEFT_CENTER,
-                app_name().0, // Modified by Triya CAD 3D: product name from the shell
-                crate::fonts::semibold(t.font_heading),
-                t.app_bar_text,
-            );
+            name_end = ui
+                .painter()
+                .text(
+                    pos2(left + 36.0, r.center().y),
+                    Align2::LEFT_CENTER,
+                    app_name().0, // Modified by Triya CAD 3D: product name from the shell
+                    crate::fonts::semibold(t.font_heading),
+                    t.app_bar_text,
+                )
+                .right();
         }
-        let mut x = left + if compact_actions { 56.0 } else { 128.0 };
+        let mut x = if compact_actions { left + 56.0 } else { (left + 128.0).max(name_end + 30.0) }; // Modified by Triya CAD 3D: see name_end
         let home = Rect::from_center_size(pos2(x - 4.0, r.center().y), vec2(32.0, 32.0));
         let idle = !app.file_load.busy();
         let home_response = ui.interact(home, ui.id().with("appbar_home"), if idle { Sense::click() } else { Sense::hover() });

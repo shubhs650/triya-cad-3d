@@ -35,6 +35,13 @@ use edits::Action;
 /// Widest the docked panel grows (upstream's wide docked dialogs used the same limit).
 const PANEL_MAX_W: f32 = 560.0;
 
+/// The ribbon card's height: upstream's `toolbar::ribbon_height` is crate-private, so this mirrors
+/// it from the public constants (the icon-only group is 62 px).
+fn ribbon_height(app: &SolveApp) -> f32 {
+    use solidcraft_ui_egui::toolbar::{RIBBON_HEIGHT, TAB_ROW_HEIGHT};
+    if app.preferences.ribbon_labels { RIBBON_HEIGHT } else { TAB_ROW_HEIGHT + 62.0 + 1.0 }
+}
+
 /// The panel's pages.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Page {
@@ -267,9 +274,11 @@ impl VesselPanel {
         }
         self.sync(app);
         let vp = app.viewport.rect.unwrap_or_else(|| ctx.content_rect());
-        let anchor = egui::pos2(vp.left() + 8.0, vp.top() + 8.0);
-        let max_height = (vp.height() - 16.0).max(120.0);
         let container = Container::new(ctx, Surface::Panel);
+        // In the floating layout the ribbon card lies over the viewport's top; start below it.
+        let top = if container.floating() { vp.top() + 2.0 * container.gap() + ribbon_height(app) } else { vp.top() + 8.0 };
+        let anchor = egui::pos2(vp.left() + 8.0, top);
+        let max_height = (vp.bottom() - top - 8.0).max(120.0);
         let frame = container.frame(ctx, Tokens::get().panel, solidcraft_ui_egui::frame::Side::Left).inner_margin(egui::Margin::same(8));
         container.area(egui::Id::new("triya_vessel_panel")).fixed_pos(anchor).constrain(false).show(ctx, |ui| {
             frame.show(ui, |ui| {

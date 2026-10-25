@@ -49,7 +49,7 @@ jobs:
         env: { TRUNK_SOURCE_DIR: '${{ github.workspace }}/triya/apps/triya-web' }
         run: cargo xtask web-offline-test --site dist/triya-web
       - name: Assemble the site
-        # Cloudflare refuses static files over 25 MiB; the app's .wasm is ~41 MiB, ~15 MB gzipped.
+        # Cloudflare refuses static files over 25 MiB; the app's .wasm is ~79 MiB, 24.8 MiB gzipped at v0.22.0 (tight: brotli would be 15.6 MiB).
         # The Worker in triya/cloudflare serves <name>.wasm from <name>.wasm.gz.
         run: |
           mkdir -p site/app

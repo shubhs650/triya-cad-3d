@@ -210,7 +210,7 @@ index a1c13f434802ba642055164c2f175d690937a299..a0778086aa06178614a99ec9d8cbc754
      for (index, (id, label, key, section, enabled, picked)) in nav.into_iter().enumerate() {
          if index == 4 || index == 8 {
 diff --git a/crates/ui-egui/src/toolbar.rs b/crates/ui-egui/src/toolbar.rs
-index 70b0c5fbaabf27976f65b35b3401656492854c53..1e36a2265b5e03198e5454c887b9106d6099b346 100644
+index 70b0c5fbaabf27976f65b35b3401656492854c53..5ce2283dcb4f3cc5f2a2539bf5cd7127c9660519 100644
 --- a/crates/ui-egui/src/toolbar.rs
 +++ b/crates/ui-egui/src/toolbar.rs
 @@ -10,6 +10,12 @@ use crate::theme::Tokens;
@@ -226,22 +226,38 @@ index 70b0c5fbaabf27976f65b35b3401656492854c53..1e36a2265b5e03198e5454c887b9106d
  
  /// Legacy paint arguments and non-SVG affordances follow the same semantic palette as the icon.
  /// The requested icon id determines its meaning on ribbons, menus and drag previews alike.
-@@ -294,13 +300,13 @@ pub fn app_bar(app: &mut SolveApp, ui: &mut egui::Ui) {
+@@ -294,18 +300,22 @@ pub fn app_bar(app: &mut SolveApp, ui: &mut egui::Ui) {
          // (viewBox 357 x 412). Same 20 px height and centre as the old block.
          {
              let c = pos2(left + 20.0, r.center().y);
 -            crate::icons::glyphs::brand_mark(ui.painter(), c);
 +            BRAND_MARK.get().map_or_else(|| crate::icons::glyphs::brand_mark(ui.painter(), c), |f| f(ui.painter(), c)); // Modified by Triya CAD 3D: the shell's mark
          }
++        let mut name_end = 0.0_f32; // Modified by Triya CAD 3D: a longer product name pushes the Home button right
          if !compact_actions {
-             ui.painter().text(
-                 pos2(left + 36.0, r.center().y),
-                 Align2::LEFT_CENTER,
+-            ui.painter().text(
+-                pos2(left + 36.0, r.center().y),
+-                Align2::LEFT_CENTER,
 -                "SolidCraft",
-+                app_name().0, // Modified by Triya CAD 3D: product name from the shell
-                 crate::fonts::semibold(t.font_heading),
-                 t.app_bar_text,
-             );
+-                crate::fonts::semibold(t.font_heading),
+-                t.app_bar_text,
+-            );
++            name_end = ui
++                .painter()
++                .text(
++                    pos2(left + 36.0, r.center().y),
++                    Align2::LEFT_CENTER,
++                    app_name().0, // Modified by Triya CAD 3D: product name from the shell
++                    crate::fonts::semibold(t.font_heading),
++                    t.app_bar_text,
++                )
++                .right();
+         }
+-        let mut x = left + if compact_actions { 56.0 } else { 128.0 };
++        let mut x = if compact_actions { left + 56.0 } else { (left + 128.0).max(name_end + 30.0) }; // Modified by Triya CAD 3D: see name_end
+         let home = Rect::from_center_size(pos2(x - 4.0, r.center().y), vec2(32.0, 32.0));
+         let idle = !app.file_load.busy();
+         let home_response = ui.interact(home, ui.id().with("appbar_home"), if idle { Sense::click() } else { Sense::hover() });
 diff --git a/crates/ui-egui/src/workspace.rs b/crates/ui-egui/src/workspace.rs
 index 1ffc892f10a4c912f98a34a9f671b35d4b25d77f..293a2134374a974740b16b455c92fc4b16cf5336 100644
 --- a/crates/ui-egui/src/workspace.rs

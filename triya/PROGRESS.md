@@ -3,7 +3,7 @@
 **Phase:** 7 — Beta hardening · **Day:** 4 of 29 (Tue 20 Oct 2026) · **Beta:** Sun 8 Nov
 **Next task:** T7.5 (tag `triya-v0.1.0-beta`, deploy Pages) — waits on the owner: Pages, and the beta-scope call on the browser regenerate target (Owner decisions, 2026-10-20). T7.1–T7.4 are done in one PR; Phases 0–6 are done (#2–#30).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6/T7.5 can't deploy yet
-**Freeze point:** SolidCraft v0.14.0 @ 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae (2026-10-16)
+**Upstream base:** SolidCraft v0.22.0 @ 0537623 (merged 2026-10-25, PR #34; was v0.14.0 @ 2bb9c81)
 
 ## Done
 | id | task | PR | date | notes |
@@ -52,6 +52,7 @@
 | T7.1 | Vessel JSON fuzz (`triya-drawing/tests/fuzz.rs`): 10,000 seeded mutations of the reference vessels (degenerate and plausible numbers, wrong types, removed keys, duplicated/reordered items) through `vessel.new`, `vessel.set` (doc + JSON patch), `inspect`, `bom`, `drawing.generate_ga`, `drawing.export` svg/dxf/pdf and the library path (parse → validate → resolve → plan): **0 panics** (28 % reach the geometry, 21 % are drawn); 5 more seeds × 20,000 locally, 0 panics; caps test (elements, attachments, id length, lengths). App bar, start page, Help menu and app-bar mark say Triya (seams 16–19) | #31 | 20 Oct | `vessel.regenerate` is left out of the fuzz (minutes a vessel); its inputs are the fuzzed plans |
 | T7.2 | Measured in headless Chromium (release web build, SwiftShader GL), natively and as WebAssembly in V8: vessel A shell **6.3 s in Chrome** (target < 10 s met); with nozzles and supports the browser takes 87 s (nozzles as separate bodies) and 24 min joined (Measurements). New `vessel.regenerate {join_nozzles: false}` and a *Join nozzles* checkbox (off in the browser by default); `?vessel=a|b|c[&shell][&regenerate][&join]` in the web app; `regen_bench` example | #31 | 20 Oct | full vessel A < 10 s in the browser is **not met** (kernel booleans): owner decision |
 | T7.3 | `roundtrip.rs`: a regenerated vessel with a GA sheet saves (container and JSON) and opens with the same bodies and volumes, the same vessel JSON and sheet options, and exports the same SVG. `triya/ci/upstream-roundtrip.sh` (new CI job): Triya saves vessel A's shell, **unmodified upstream v0.14.0** `solidcraft-cli eval` rebuilds 7 bodies, volumes equal to 1e-6 | #31 | 20 Oct | browser OPFS and STEP in another CAD tool: owner checks (beta-dod) |
+| UP-0.22 | Merge SolidCraft v0.22.0 (873 upstream commits, format 25 → 35): seams re-placed (VESSEL tab now in `ui-egui/src/workspace.rs` TABS/SECTIONS/PLACEMENTS), triya-ui on `ui_kit` (Container/Window), web shell three-way merged with upstream's v0.14→v0.22 changes (new `disk.rs`/`api.rs` copied), desktop shell on `control_auth::plan` and the new open picker, triya-cli gains `log`; `upstream-gates` job runs upstream's fmt/clippy/xtask gates and the seam-module ui-egui tests | #34 | 25 Oct | designs save as `solidcraft/35`; roundtrip CI now opens them in unmodified upstream v0.22.0 (7 bodies, 852,493,966.67 mm³ both sides); merge with a merge commit, not a squash |
 | T7.4 | README: screenshots (ours, `triya/docs/img/`), quick start, limitations with numbers, FAQ (`.solidcraft`), licence and attribution; `triya/README.md` brought up to date | #31 | 20 Oct | review by the owner |
 
 ## In progress
@@ -146,6 +147,8 @@
 - 2026-10-20 — `join_nozzles: false` (separate nozzle bodies, no boolean) is a quick-look option, default true for the command and the desktop panel, false in the browser panel (the window would hold for many minutes). Not a fallback flag: `flags.boolean_failed` stays false when the user chose it.
 - 2026-10-20 — The beta tag (T7.5) is not created by the agent: two DoD items are unmet or unverifiable here (full vessel A < 10 s in the browser; Pages/HTTPS PWA), and dropping a DoD item is the owner's call (AGENTS.md §4).
 - 2026-10-22 — Cloudflare hosting (owner's choice on 2026-10-22: Workers + a Rust Worker): `triya-cloudflare.yml` deploys the same build as Pages to Workers static assets; the >25 MiB `.wasm` ships as `.wasm.gz` and `triya/cloudflare` (own Cargo workspace, `worker` crate) serves it with `Content-Encoding: gzip`. Deploy skipped until the secrets exist. `triya/docs/cloudflare.md`.
+- 2026-10-25 — Upstream v0.22.0 (owner's choice: merge, not rebase; the tag, not main; keep the VESSEL tab; save format 35; freeze lifted because nothing has shipped — ADR-0002 amendment). One PR, merged with a merge commit so git records upstream as merged. The VESSEL seam moved with the ribbon to `workspace.rs` (TABS + four SECTIONS rows + four PLACEMENTS rows). The desktop shell opens the control channel the way upstream now does (`control_auth::plan`, agent-control preference). Upstream's `CI` workflow runs on Blacksmith runners the fork doesn't have, so Triya CI's `upstream-gates` job runs its fmt, clippy (ci profile), xtask checks and the tests of the crates with seams (ui-egui modules workspace/i18n/home/help/toolbar; upstream's `render_workspace` renderer tests exhaust a standard runner's memory under the software GPU and our seams don't reach them).
+- 2026-10-25 — The torispherical arc kernel case is fixed in v0.22.0 (−0.019 %); the conic workaround stays until a separate task drops it, and the canary test is now a guard (`kernel_case_torispherical_arc_revolve_is_right_since_v0_22`).
 
 ## Owner decisions
 | opened | question | status | answer |
@@ -168,7 +171,7 @@
 ## Kernel cases (`triya/crates/triya-vessel/tests/kernel-cases/`)
 | case | symptom | fallback engaged | upstream issue |
 |---|---|---|---|
-| `torispherical-arc-revolve.json` (T2.3) | revolving a head half-profile drawn with `sketch.arc.center_point` (or `three_point`) arcs ending on the axis: one sector's spherical face covers the wrong part of its sphere; measured volume 14× too large (or negative) depending on the preset | every circular arc is emitted as an exact conic (`sketch.conic`, apex at the tangent intersection, ρ = w/(1+w), w = cos θ/2); test `kernel_case_…_still_wrong_with_plain_arcs` fails once the kernel is fixed | draft later (T1.5 style) |
+| `torispherical-arc-revolve.json` (T2.3) — **fixed in v0.22.0** (12,222,458 vs 12,224,761 mm³, −0.019 %) | revolving a head half-profile drawn with `sketch.arc.center_point` (or `three_point`) arcs ending on the axis: one sector's spherical face covers the wrong part of its sphere; measured volume 14× too large (or negative) depending on the preset | every circular arc is emitted as an exact conic (`sketch.conic`, apex at the tangent intersection, ρ = w/(1+w), w = cos θ/2); test `kernel_case_…_still_wrong_with_plain_arcs` fails once the kernel is fixed | draft later (T1.5 style) |
 | `nozzle-hole-then-equal-neck-join.json` (T3.3) | an opening cut at the neck OD, then a neck of the same OD joined: the join fails after 207 s ("Union: no result"); the opening alone measures −11 % | the neck is joined as a solid rod and the bore cut afterwards (no opening first); a failure sends the nozzle to a separate body with `flags.boolean_failed` | draft later |
 | `pad-rod-cylinder-trim.json` (T3.3) | a wide pad rod (r 134 on R 812) cut by the shell's outside cylinder: refused after 164 s ("implausible result volume"); the matching intersect refused after 137 s | pad rods start on a plane inside the wall when one fits, else are trimmed at mid-wall; the outside is cut by a coaxial tube; failure → separate body | draft later |
 | `rod-cut-by-revolved-dish.json` (T3.3) | a 2 in rod cut by a revolved 2:1 dish interior: not finished after 10 min | no revolved-cavity trims: square neck on a plane in the wall, else from the deepest inside point (inside projection, warning); crowns trimmed by a sphere | draft later |
@@ -217,7 +220,9 @@
 | Vessel A regenerate, native release (`regen_bench`) | shell 2.2 s; separate nozzles 41.1 s; joined 438.8 s (N1, N4 fall back to separate bodies) | 20 Oct | same container |
 | Vessel A regenerate, WebAssembly in V8 (Node 22 WASI, release) | shell 5.9–6.1 s (2.7× native) | 20 Oct | with nozzles Node's WASI segfaults (Chrome does not; see Decisions) |
 | Vessel A regenerate in the desktop panel (dev profile, Xvfb, *Join nozzles* off) | 94 s, window responsive, progress bar | 20 Oct | screenshots/phase7 |
-| `drawing.generate_ga` on a regenerated vessel A (desktop, dev profile) | 25 s (the BOM measures every body) | 20 Oct | before a regenerate it is milliseconds |
+| `drawing.generate_ga` on a regenerated vessel A (desktop, dev profile) | 25 s (the BOM measures every body) | 20 Oct | before a regenerate it is milliseconds || Triya web wasm (release, `wasm-opt`) on v0.22.0 | 82,409,231 B (78.6 MiB) raw; gzip -9 26,033,883 B (24.8 MiB, 180 KB under Cloudflare's 25 MiB per-file limit); brotli -q 11 16,347,483 B | 25 Oct | upstream grew it 2×; the web-shell job prints both and warns when gzip passes the limit; Brotli in the Worker is the next step if it grows |
+| CI jobs on v0.22.0 | Phase 3 exit ≈ 10 min, Phase 4 exit ≈ 13.5 min | 25 Oct | PR #34 |
+
 ## Log (append-only)
 - 2026-10-17 — Deep research completed; decision taken.
 - 2026-10-18 — Kickoff kit written; upstream cloned at v0.14.0; skeleton built and tested natively (see SKELETON-REPORT.md).
@@ -247,3 +252,4 @@
 - 2026-10-20 — Phase 6 (T6.1–T6.7): drawing model, views, dimensions, tables, SVG/DXF/PDF export, drawing commands and the Drawing page in one PR.
 - 2026-10-20 — Phase 7 started (thread "Phase 7 implementation"). T7.1–T7.4 in one PR: fuzz, product name seam, `join_nozzles`, browser timing, round trips (incl. unmodified upstream), README. T7.5 (tag, Pages) waits on the owner.
 - 2026-10-22 — Cloudflare Workers deploy added (owner asked to ship via Cloudflare); waits on the owner's Cloudflare secrets.
+- 2026-10-25 — Moved onto SolidCraft v0.22.0 (thread "Rebase Triya onto SolidCraft 0.22", PR #34): merge, seams re-placed, overlay fitted, all Triya CI green incl. roundtrip in unmodified v0.22.0.
