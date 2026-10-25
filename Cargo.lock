@@ -4772,6 +4772,7 @@ version = "0.22.0"
 name = "triya-cli"
 version = "0.22.0"
 dependencies = [
+ "log",
  "serde_json",
  "solidcraft-engine",
  "solidcraft-gpu",

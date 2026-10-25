@@ -23,6 +23,7 @@ test = false
 solidcraft-engine = { workspace = true }
 solidcraft-gpu = { workspace = true }
 solidcraft-mcp = { workspace = true }
+log = { workspace = true }
 serde_json = { workspace = true }
 triya-brand = { workspace = true }
 triya-vessel = { workspace = true }
