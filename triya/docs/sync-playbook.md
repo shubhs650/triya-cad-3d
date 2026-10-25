@@ -1,6 +1,7 @@
 # Upstream sync playbook
 
-Policy: ADR-0002. Frozen on v0.14.0 until `triya-v0.1.0-beta`. Then daily.
+Policy: ADR-0002. Base: v0.22.0 since 2026-10-25 (the owner lifted the freeze early to move off
+v0.14.0; see §3). Releases are merged by tag on request until `triya-v0.1.0-beta`; then daily.
 
 ## 1. Manual merge (what the bot does, by hand)
 ```bash
@@ -18,7 +19,7 @@ Record in `PROGRESS.md` Log: upstream range merged, seams re-placed, anything th
 
 ## 2. Resolving conflicts (agent recipe)
 Conflicts can only occur in: (a) seam files (`Cargo.toml`, `engine/cmd/mod.rs`,
-`ui-egui/toolbar.rs`, the three locale JSONs, `xtask/layers.rs`, `xtask/web_offline.rs`),
+`ui-egui/toolbar.rs`, `ui-egui/workspace.rs`, `home.rs`, `help.rs`, the three locale JSONs, `xtask/layers.rs`, `xtask/web_offline.rs`),
 (b) `Cargo.lock`, (c) root files with `merge=ours` (should not conflict), (d) a Triya crate that
 depends on an upstream API that changed (compile error, not a git conflict).
 
@@ -37,7 +38,12 @@ depends on an upstream API that changed (compile error, not a git conflict).
   metadata round-trip test and open a pre-merge design to confirm the vessel JSON survived.
 - Finish: `git commit` (rerere records the resolution; the bot commits `triya/rr-cache`).
 
-## 3. The first post-beta merge (dedicated task, PLAN P1.1)
+## 3. The first upstream merge (done 2026-10-25: v0.14.0 → v0.22.0, one merge)
+Done in one merge of the `v0.22.0` tag (9 text conflicts, all expected). What moved: seams 6/15
+to `ui-egui/src/workspace.rs` (ribbon redesign), seams 16-19 to new lines, `triya-ui` onto
+`ui_kit`, the web shell three-way merged (base = upstream v0.14 web shell). The recipe below is
+kept for the next large jump.
+
 Expect several hundred upstream commits (format 25 → N, ribbon redesign, kernel FFI work).
 1. Read upstream `CHANGELOG`/release notes for v0.15–v0.x: list renamed commands, moved files,
    changed `CommandSpec` fields.
@@ -52,3 +58,10 @@ Expect several hundred upstream commits (format 25 → N, ribbon redesign, kerne
 2. Open an upstream issue (owner posts) describing the hook; if welcomed, open a PR to upstream
    from a branch cut from `upstream/main` (not from our `main`), following upstream's claim rules.
 3. When merged upstream and pulled in, delete the seam row and the marker.
+
+## 5. Copied upstream files (re-merge on every sync)
+`triya/apps/triya-web/{index.html, sw.js, Cargo.toml, Trunk.toml, src/*.rs}` are copies of
+`apps/solidcraft-web`. Three-way merge them with the previous upstream copy as base:
+`git show <old>:apps/solidcraft-web/<f> > base; git show <new>:apps/solidcraft-web/<f> > theirs;
+git merge-file triya/apps/triya-web/<f> base theirs`, then fix brand strings and bump the
+"Copied from SolidCraft vX" headers.

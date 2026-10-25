@@ -1,6 +1,6 @@
 # Triya CAD 3D — architecture
 
-Triya = SolidCraft v0.14.0 (unchanged, frozen for the beta) + an **overlay** of Triya crates that
+Triya = SolidCraft v0.22.0 (unchanged apart from the seams; base since 2026-10-25) + an **overlay** of Triya crates that
 reach the CAD only through its command layer. Exact upstream types, ids and anchors are in
 `docs/upstream-map.md`; what the kickoff skeleton already implements is in `SKELETON-REPORT.md`;
 this file explains the shape and the rules.
@@ -40,7 +40,7 @@ syntax allows, enforced by `ci/check-patch-whitelist.sh`:
    refused). A static `triya_vessel::COMMANDS` reference is impossible (Cargo cycle: `triya-vessel`
    needs `engine::Session`), so the **Triya app shells** (`triya/apps/triya`, `triya-web`,
    `triya-cli`) call `register` at startup before the first `Session`.
-3. `crates/ui-egui/src/toolbar.rs` — `TABS += "VESSEL"`, plus `ui.heading_vessel` in
+3. `crates/ui-egui/src/workspace.rs` — `TABS += "VESSEL"` and its `SECTIONS`/`PLACEMENTS` rows, plus `ui.heading_vessel` in
    `assets/locales/{en,ja,zh}.json` (upstream's i18n tests require every tab in every complete
    catalog). *Avoidable*: place the commands in an existing tab via `CommandSpec.at(tab, panel)`
    — panel contents are registry-driven. Owner decision at T5.1.
@@ -52,7 +52,7 @@ syntax allows, enforced by `ci/check-patch-whitelist.sh`:
 
 **Not seams** (handled in the overlay): brand strings — upstream's desktop app is a wrapper
 around `SolveApp`, so `triya/apps/triya` sets the window title, draws About and the Vessel/Drawing
-panels **around** `SolveApp::ui` with the pub API (`frame::window`, `theme::Tokens`,
+panels **around** `SolveApp::ui` with the pub API (`ui_kit::{Container, Window}`, `theme::Tokens`,
 `app.run/start/set_status/session`); the web shell is a copy (`index.html`, manifest, `sw.js`,
 icons, `Trunk.toml`); MCP `serverInfo.name` (`crates/mcp/src/server.rs:145`) is set by the
 `triya-cli` wrapper: the constructor has no name parameter, so `build.rs` hands `Server::serve` a
@@ -119,7 +119,7 @@ the DXF `Plotter` targets it first and adds the `dxf` crate only for missing ent
 (TEXT/MTEXT, dashed linetypes, ELLIPSE) — decide in T6.6.
 
 ## 5. UI (thin, hosted by the app shells)
-`SolveApp` exposes `ui`, `run`, `start`, `set_status`, `session`, `frame::window`,
+`SolveApp` exposes `ui`, `run`, `start`, `set_status`, `session`, `ui_kit`,
 `theme::Tokens` as pub API. The Triya shells call `SolveApp::ui` and draw the Vessel/Drawing side
 panels and the About dialog *around* it; the code lives in `triya-ui` (`VesselPanel::show(app, ctx)`
 in the skeleton). Panels read engine state, build a `vessel.set` patch, and call

@@ -36,3 +36,12 @@ upstream fixes and the eventual kernel swap.
 - Identifiers stay upstream's (ADR-0006) so merges never collide on format or command ids.
 - The first post-beta merge (~hundreds of upstream commits) is a dedicated two-day task
   (`prompts/08-first-upstream-merge.md`); expect the toolbar and layers seams to move.
+
+## Amendment 2026-10-25 — freeze lifted early
+The owner (Shubham, 2026-10-25) asked to move the fork onto upstream v0.22.0 before the beta:
+nothing had shipped, and v0.22 brings stability and performance work the beta should have. The
+v0.22.0 tag was merged as one merge commit (rule 2 unchanged: merge, never rebase `main`). Rule 3
+now reads: upstream releases are merged by tag on the owner's request until `triya-v0.1.0-beta`;
+the daily cron stays off until then. The base for the seam whitelist, the patches and the
+roundtrip job is v0.22.0. Designs saved from now on are `solidcraft/35` and do not open in
+SolidCraft releases older than v0.22.0 (ADR-0006's target is the current base).

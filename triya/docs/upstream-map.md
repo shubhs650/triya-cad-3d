@@ -1,4 +1,28 @@
-# Upstream map: SolidCraft v0.14.0 for the Triya CAD 3D fork
+# Upstream map: SolidCraft for the Triya CAD 3D fork
+
+## v0.22.0 delta (base since 2026-10-25)
+
+The fork merged upstream `v0.22.0` (commit `0537623`, 873 commits after v0.14.0). The v0.14.0
+map below is still the reference for everything not listed here; where they disagree, this
+section wins.
+
+| Area | v0.14.0 (below) | v0.22.0 |
+|---|---|---|
+| Format | `solidcraft/25` | `solidcraft/35` (`crates/doc/src/format/v35/`); `Document.metadata` unchanged, so the vessel JSON (ADR-0005) is untouched. Upstream migrates older files on open |
+| Toolbar tabs | `toolbar.rs` `TABS` = SOLID, SURFACE, MESH, SHEET METAL, PLASTIC, UTILITIES; `panels()` match | Ribbon in `ui-egui/src/workspace.rs`: `TABS` = MODEL, SURFACE, ASSEMBLE, INSERT, INSPECT, MANAGE, VIEW (+ SKETCH, SHEET METAL contextual). A tab's panels are the `SECTIONS` rows naming it; a command reaches a section by id (`SECTIONS.ids`) or by its `.at(tab, panel)` mapped through `PLACEMENTS`. `toolbar::TABS` is a re-export. Seams 6/15 live in `workspace.rs` |
+| Panels and windows | `frame::window`, `frame::docked_on`, `frame::dock_frame`, `frame::Width` | Gone. Every outer container goes through `ui_kit` (`Container::new(ctx, Surface::…)`, `ui_kit::Window`, `Panel`, `Confirm`, `Menu`); `cargo xtask ui-containers` enforces it in `crates/` and `apps/` (not `triya/`, but Triya follows it). The Vessel panel is a `Surface::Panel` area; the Triya About window is a `ui_kit::Window` |
+| Camera input | — | Every canvas with a camera calls `navigation::handle` (upstream rule) |
+| Icons | Code-drawn `icons.rs` | SVG masters in `assets/icons/ui/design/svg/{model,small,flat}/`, compiled by `icon_svg.rs`; every icon name the vessel commands use still resolves |
+| Help | `help::FONTS` | Fonts text is the catalog message `help.font_details` |
+| Start page | heading painted the product name | `FileView` page; the product name appears only in the `home:about` row (seam 18) |
+| Web shell | — | `apps/solidcraft-web` gained `disk.rs` (File System Access API: Save/Open real files in Chrome/Edge), `api.rs` (promise API over the control channel), `SolveApp::with_control`, loading fade |
+| New crates | — | `crates/threedx-client` (`solidcraft-3dx-client`, standalone; 3Dconnexion driver client) |
+| CI | full suite on every PR | heavy jobs need the `approved-for-ci` label on the PR; merge-queue aware. New bot workflows (`triage`, `claim`, `kernel-paused`, `docker`, `generated`) are disabled in the fork |
+| Kernel | truck | still truck (~115 fixes: booleans, revolve to the axis along a curve, hollow tools); upstream is evaluating a new kernel and has paused kernel work |
+| Command ids | — | all 20 ids the vessel plan emits exist unchanged |
+
+
+## v0.14.0 map (original)
 
 Source read: `/home/claude/upstream/solidcraft`, tag `v0.14.0`, commit `2bb9c81` ("Release 0.14.0").
 Workspace: `Cargo.toml:3` `members = ["crates/*", "apps/*", "xtask"]`, `exclude = ["vendor"]`,
