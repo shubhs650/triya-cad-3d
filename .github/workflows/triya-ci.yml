@@ -125,6 +125,46 @@ jobs:
       - name: a regenerated vessel saved by Triya opens in upstream's CLI with the same bodies
         run: bash triya/ci/upstream-roundtrip.sh
 
+  upstream-gates:
+    # Since v0.22 upstream's own CI runs on Blacksmith runners, which this fork does not have, so
+    # its jobs sit queued here. This job runs the upstream gates our seams can break on GitHub's
+    # standard runners: the repository checks, workspace clippy, and the tests of the crates the
+    # seams touch (ribbon, product name, command registry, layers, web offline template).
+    name: Upstream gates (repository checks, clippy, seam crates' tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      SOLIDCRAFT_GPU: software
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: 'clippy, rustfmt' }
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: triya-upstream-gates }
+      - name: Install a software Vulkan driver (lavapipe)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+      - name: Repository checks (format, assets, layers, lists, UI containers, licences)
+        run: |
+          cargo fmt --all -- --check
+          cargo xtask assets
+          cargo xtask layers
+          cargo xtask lists
+          cargo xtask ui-containers
+          cargo xtask licences --check
+      - name: Clippy (workspace)
+        run: cargo clippy --workspace --all-targets --profile ci --locked -- -D warnings
+      - name: Tests of the crates with seams
+        run: |
+          # The ci profile, as upstream: egui's debug assertions trip in headless UI tests otherwise.
+          # Scoped to the modules our seams touch (ribbon, catalogs, Home, Help, app bar). The
+          # render_workspace tests are upstream renderer tests our seams don't reach, and one of them
+          # exhausts a standard runner's memory under the software GPU.
+          cargo test --locked --profile ci -p solidcraft-ui-egui --lib -- --test-threads=2 \
+            workspace:: i18n:: home:: help:: toolbar:: --skip render_workspace::
+          cargo test --locked -p xtask
+
   web-shell:
     name: Triya web shell (trunk build + offline test)
     runs-on: ubuntu-24.04
@@ -149,9 +189,15 @@ jobs:
         # be told which template the build used (xtask/src/web_offline.rs seam, PATCHES.md row 12).
         env: { TRUNK_SOURCE_DIR: '${{ github.workspace }}/triya/apps/triya-web' }
         run: cargo xtask web-offline-test --site dist/triya-web
-      - name: Record wasm size
+      - name: Record wasm size (raw, gzip -9, brotli -q 11; Cloudflare's per-file limit is 25 MiB)
         run: |
           ls -la dist/triya-web/*.wasm
           du -sh dist/triya-web
+          sudo apt-get install -y --no-install-recommends brotli >/dev/null
+          for w in dist/triya-web/*.wasm; do
+            gz=$(gzip -9 -n -c "$w" | wc -c); br=$(brotli -q 11 -c "$w" | wc -c)
+            echo "$w: gzip $gz B, brotli $br B"
+            if [ "$gz" -gt 26214400 ]; then echo "::warning::gzipped wasm is over Cloudflare's 25 MiB file limit ($gz B; brotli $br B)"; fi
+          done
       - uses: actions/upload-artifact@v4
         with: { name: triya-web-dist, path: dist/triya-web, retention-days: 7 }
