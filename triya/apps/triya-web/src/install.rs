@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Triya CAD 3D contributors
-// Copied from SolidCraft v0.14.0 apps/solidcraft-web (MIT OR Apache-2.0, © SolidCraft contributors).
+// Copied from SolidCraft v0.22.0 apps/solidcraft-web (MIT OR Apache-2.0, © SolidCraft contributors).
 //! Install as an app (`solidcraft_ui_egui::install`). The browser offers it with a
 //! `beforeinstallprompt` event, which can come before this code runs: index.html keeps the event
 //! as `window.solidcraftInstall` (and drops it once the app is installed). The offer is good for

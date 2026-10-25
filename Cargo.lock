@@ -4750,7 +4750,7 @@ dependencies = [
 
 [[package]]
 name = "triya"
-version = "0.14.0"
+version = "0.22.0"
 dependencies = [
  "eframe",
  "egui",
@@ -4766,11 +4766,11 @@ dependencies = [
 
 [[package]]
 name = "triya-brand"
-version = "0.14.0"
+version = "0.22.0"
 
 [[package]]
 name = "triya-cli"
-version = "0.14.0"
+version = "0.22.0"
 dependencies = [
  "serde_json",
  "solidcraft-engine",
@@ -4783,7 +4783,7 @@ dependencies = [
 
 [[package]]
 name = "triya-drawing"
-version = "0.14.0"
+version = "0.22.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4798,7 +4798,7 @@ dependencies = [
 
 [[package]]
 name = "triya-stdlib"
-version = "0.14.0"
+version = "0.22.0"
 dependencies = [
  "schemars",
  "serde",
@@ -4808,7 +4808,7 @@ dependencies = [
 
 [[package]]
 name = "triya-ui"
-version = "0.14.0"
+version = "0.22.0"
 dependencies = [
  "egui",
  "png",
@@ -4822,7 +4822,7 @@ dependencies = [
 
 [[package]]
 name = "triya-vessel"
-version = "0.14.0"
+version = "0.22.0"
 dependencies = [
  "schemars",
  "serde",
@@ -4835,7 +4835,7 @@ dependencies = [
 
 [[package]]
 name = "triya-web"
-version = "0.14.0"
+version = "0.22.0"
 dependencies = [
  "eframe",
  "egui",

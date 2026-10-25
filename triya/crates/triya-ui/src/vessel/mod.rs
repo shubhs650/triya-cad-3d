@@ -26,10 +26,14 @@ use egui::RichText;
 use serde_json::{Value, json};
 use solidcraft_ui_egui::SolveApp;
 use solidcraft_ui_egui::theme::Tokens;
+use solidcraft_ui_egui::ui_kit::{Container, Surface};
 use triya_vessel::eval::Resolved;
 use triya_vessel::model::VesselDoc;
 
 use edits::Action;
+
+/// Widest the docked panel grows (upstream's wide docked dialogs used the same limit).
+const PANEL_MAX_W: f32 = 560.0;
 
 /// The panel's pages.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -263,18 +267,17 @@ impl VesselPanel {
         }
         self.sync(app);
         let vp = app.viewport.rect.unwrap_or_else(|| ctx.content_rect());
-        let side = solidcraft_ui_egui::frame::Side::Left;
         let anchor = egui::pos2(vp.left() + 8.0, vp.top() + 8.0);
-        solidcraft_ui_egui::frame::docked_on(
-            RichText::new("Vessel").strong().size(13.0),
-            egui::Id::new("triya_vessel_panel"),
-            anchor,
-            vp.height() - 16.0,
-            solidcraft_ui_egui::frame::Width::Wide,
-            side,
-        )
-        .frame(solidcraft_ui_egui::frame::dock_frame(ctx, side))
-        .show(ctx, |ui| self.contents(app, ui));
+        let max_height = (vp.height() - 16.0).max(120.0);
+        let container = Container::new(ctx, Surface::Panel);
+        let frame = container.frame(ctx, Tokens::get().panel, solidcraft_ui_egui::frame::Side::Left).inner_margin(egui::Margin::same(8));
+        container.area(egui::Id::new("triya_vessel_panel")).fixed_pos(anchor).constrain(false).show(ctx, |ui| {
+            frame.show(ui, |ui| {
+                ui.set_max_width(PANEL_MAX_W);
+                ui.set_max_height(max_height);
+                self.contents(app, ui);
+            });
+        });
         self.flush(app);
     }
 
