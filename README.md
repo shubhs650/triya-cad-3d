@@ -6,7 +6,7 @@ flanges, saddles, legs, brackets, rings, limpet coils, lugs) and automatic fabri
 drawings. Part of [Open Engineering Tools](https://openengtools.com). Installable PWA, works
 offline, no login, no cookies.
 
-> **Based on [SolidCraft](https://github.com/tangency-labs/solidcraft) v0.14.0**, © SolidCraft
+> **Based on [SolidCraft](https://github.com/tangency-labs/solidcraft) v0.22.0**, © SolidCraft
 > contributors, MIT OR Apache-2.0. Triya CAD 3D is an independent project and is not affiliated
 > with or endorsed by the SolidCraft project. See [NOTICE](NOTICE).
 
@@ -18,7 +18,7 @@ is in [`triya/PROGRESS.md`](triya/PROGRESS.md) and the checklist [`triya/docs/be
 ![The generated GA sheet of reference vessel A (A1)](triya/docs/img/vessel-a-ga.png)
 
 ## What you get
-- Everything SolidCraft 0.14 does: sketcher with constraints, parametric timeline, extrude /
+- Everything SolidCraft 0.22 does: sketcher with constraints, parametric timeline, extrude /
   revolve / sweep / loft / shell / fillet / patterns / assemblies, STEP AP242 & IGES I/O, MCP
   server for AI agents, desktop and web.
 - **VESSEL tab and Vessel panel**: a vessel is an ordered element stack (skirts, heads of every
@@ -107,7 +107,7 @@ used for Triya's branding. The screenshots in `triya/docs/img/` are of Triya its
 
 ## Licence and attribution
 MIT OR Apache-2.0, at your option — both for the upstream code and for Triya's additions.
-Triya CAD 3D is based on SolidCraft v0.14.0 (© SolidCraft contributors, MIT OR Apache-2.0); see
+Triya CAD 3D is based on SolidCraft v0.22.0 (© SolidCraft contributors, MIT OR Apache-2.0); see
 [NOTICE](NOTICE). Every asset and data table has a row in [`ATTRIBUTION.md`](ATTRIBUTION.md)
 (source, licence, what was derived); third-party crate licences are in `THIRD-PARTY-LICENSES.txt`.
 No GPL/LGPL/AGPL code is used, and nothing comes from commercial CAD products. Data

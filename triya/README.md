@@ -1,7 +1,7 @@
 # Triya CAD 3D overlay
 
-Triya CAD 3D is a downstream fork of [SolidCraft](https://github.com/bherbruck/solidcraft)
-(v0.14.0, commit `2bb9c81`, MIT OR Apache-2.0, © SolidCraft contributors; not affiliated with the
+Triya CAD 3D is a downstream fork of [SolidCraft](https://github.com/tangency-labs/solidcraft)
+(v0.22.0, commit `0537623`, MIT OR Apache-2.0, © SolidCraft contributors; not affiliated with the
 SolidCraft project), published by Open Engineering Tools (https://openengtools.com).
 
 Everything of Triya's lives under `triya/`; upstream is touched only at the seams listed in
@@ -41,7 +41,7 @@ cargo test  -p triya-brand -p triya-stdlib -p triya-drawing -p triya-vessel -p t
 cargo xtask layers
 cargo run -p triya-cli -- run triya/crates/triya-vessel/examples/cylinder.json --out /tmp/cyl.step
 cd triya/apps/triya-web && trunk serve --release        # browser build (wasm32)
-bash triya/ci/upstream-roundtrip.sh                    # a Triya design opens in unmodified v0.14.0
+bash triya/ci/upstream-roundtrip.sh                    # a Triya design opens in unmodified v0.22.0
 cargo check -p triya-vessel --target wasm32-unknown-unknown   # the wasm gate for the lower crates
 ```
 
