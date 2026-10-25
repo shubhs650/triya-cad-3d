@@ -25,23 +25,23 @@ pub static COMMANDS: &[CommandSpec] = &[
     CommandSpec::new("solid.rib", "Rib", rib)
         .at("SOLID", "CREATE")
         .icon("rib")
-        .params("sketch, curves: [open curve ids, in order]; thickness (across the sketch plane); depth? (default: to the next face); flip?: bool (fill to the other side)"),
+        .params("sketch, curves: [open curve ids, in order]; thickness (across the sketch plane, or across the curves when normal); depth? (default: to the next face); flip?: bool (fill to the other side); direction?: in_plane|normal (grow across the sketch plane, the default, or along its normal)"),
     CommandSpec::new("solid.web", "Web", web)
         .at("SOLID", "CREATE")
-        .icon("rib")
-        .params("sketch, curves: [open curve ids] (one wall each); thickness; depth? (default: to the next face); flip?: bool"),
+        .icon("web")
+        .params("sketch, curves: [open curve ids] (one wall each); thickness; depth? (default: to the next face); flip?: bool; direction?: in_plane|normal"),
     CommandSpec::new("solid.emboss", "Emboss", emboss)
         .at("SOLID", "CREATE")
         .icon("emboss")
         .params("sketch, profiles?; depth; mode?: emboss|deboss; targets?; face?: world point [x,y,z] selecting a planar or complete exterior cylindrical wall (inferred when exactly one supported tangent cylinder matches the selected profiles)"),
     CommandSpec::new("solid.replace_face", "Replace Face", replace_face)
         .at("SOLID", "MODIFY")
-        .icon("offset_face")
+        .icon("replace_face")
         .params("faces: [[x,y,z] points on planar faces, or face names from model.faces]; target: plane (XY|XZ|YZ|construction plane|{origin, normal}) | target_face: [x,y,z] on a parallel planar face; body?"),
     CommandSpec::new("solid.align", "Align", align)
         .at("SOLID", "MODIFY")
-        .icon("move")
-        .params("bodies: [names]; from: [x,y,z] | {snap: vertex|edge_mid|face_center|circle_center, at: [x,y,z]} | from_face: [x,y,z]; to: (the same) | to_face: [x,y,z] (faces also turn to meet); flip?: bool"),
+        .icon("align")
+        .params("bodies: [names]; from: [x,y,z] | \"origin\" | {snap: vertex|edge_mid|face_center|circle_center, at: [x,y,z]} | from_face: [x,y,z] | from_plane: XY|XZ|YZ|construction or offset plane name or id|{origin, normal}; to: (the same) | to_face: [x,y,z] | to_plane: (a plane as from_plane; the point or face goes onto it along its normal, and the plane may move later: the bodies follow); faces and planes also turn to meet; flip?: bool"),
     CommandSpec::new("solid.remove", "Remove", remove).at("SOLID", "MODIFY").icon("delete").params("bodies: [names] (removed from here on in the timeline)"),
 ];
 
@@ -133,7 +133,12 @@ fn rib_like(s: &mut Session, p: &Value, cmd: &str, web: bool) -> Result<Value> {
         check_expr(s, d, Kind::Length, cmd, "depth")?;
     }
     let flip = bool_(p, "flip").unwrap_or(false);
-    add_feature(s, p, FeatureKind::Rib { sketch: SketchId(sketch), curves, thickness, depth, flip, web })
+    let normal = match str_(p, "direction").map(str::to_ascii_lowercase).as_deref() {
+        None | Some("in_plane" | "plane") => false,
+        Some("normal") => true,
+        Some(o) => return Err(bad(cmd, format!("unknown direction `{o}` (in_plane or normal)"))),
+    };
+    add_feature(s, p, FeatureKind::Rib { sketch: SketchId(sketch), curves, thickness, depth, flip, web, normal })
 }
 
 fn rib(s: &mut Session, p: &Value) -> Result<Value> {
@@ -161,6 +166,8 @@ fn emboss(s: &mut Session, p: &Value) -> Result<Value> {
         let at = solidcraft_doc::apply_point(&s.active_component_frame(), local);
         let state = s.world_state();
         let mut candidates = Vec::new();
+        // The nearest face off the point: (distance, body), for the error when none holds it.
+        let mut nearest: Option<(f64, &str)> = None;
         for body in &state.bodies {
             let definition = body.definition_name();
             if !targets.is_empty() && !targets.iter().any(|n| n == definition || n == &body.name) {
@@ -179,14 +186,30 @@ fn emboss(s: &mut Session, p: &Value) -> Result<Value> {
                     inside.then_some(((at - a).dot(n).abs(), *face as usize))
                 })
                 .min_by(|a, b| a.0.total_cmp(&b.0));
-            if let Some((distance, index)) = closest
-                && distance < (body.body.size() * 1e-3).max(1e-3)
-            {
-                candidates.push((body, index));
+            match closest {
+                Some((distance, index)) if distance < (body.body.size() * 1e-3).max(1e-3) => candidates.push((body, index)),
+                Some((distance, _)) if nearest.is_none_or(|(d, _)| distance < d) => nearest = Some((distance, body.name.as_str())),
+                _ => {}
             }
         }
-        if candidates.len() != 1 {
-            return Err(bad(cmd, "`face` must identify exactly one target body surface"));
+        // #392: say what is wrong with the point, not only that it picks no single face.
+        let point = format!("[{}, {}, {}]", local.x, local.y, local.z);
+        match (candidates.as_slice(), nearest) {
+            ([], Some((d, body))) => {
+                return Err(bad(
+                    cmd,
+                    format!("`face` {point} lies on no face: the nearest, on `{body}`, is {d:.3} mm away; give a point on the face"),
+                ));
+            }
+            ([], None) => return Err(bad(cmd, format!("`face` {point} lies on no face of the target bodies"))),
+            ([_], _) => {}
+            (more, _) => {
+                let names: Vec<&str> = more.iter().map(|(b, _)| b.name.as_str()).collect();
+                return Err(bad(
+                    cmd,
+                    format!("`face` {point} lies on faces of {} bodies ({}): name one in `targets`", names.len(), names.join(", ")),
+                ));
+            }
         }
         let (selected, index) = candidates.first().copied().ok_or_else(|| bad(cmd, "no target face"))?;
         let name = selected.definition_name();
@@ -362,10 +385,28 @@ fn align(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(bad(cmd, format!("no body `{b}`")));
         }
     }
-    let pick = |s: &Session, pk: &str, fk: &str| -> Result<(Vec3, Option<Vec3>)> {
+    // A side is a plane (`from_plane`/`to_plane`: XY|XZ|YZ, a construction or offset plane, or
+    // {origin, normal}), kept as a plane so the bodies follow it when it moves; or a point and, for
+    // a face, its normal.
+    let plane = |s: &Session, key: &str| -> Result<Option<solidcraft_doc::PlaneRef>> {
+        p.get(key).map(|_| super::features::plane_param(s, p.get(key), cmd)).transpose()
+    };
+    let (from_plane, to_plane) = (plane(s, "from_plane")?, plane(s, "to_plane")?);
+    let pick = |s: &Session, pk: &str, fk: &str, plane: &Option<solidcraft_doc::PlaneRef>| -> Result<(Vec3, Option<Vec3>)> {
+        if plane.is_some() {
+            if p.get(pk).is_some() || p.get(fk).is_some() {
+                return Err(bad(cmd, format!("give `{pk}_plane` or `{pk}`/`{fk}`, not both")));
+            }
+            // Worked out from the plane when the feature is evaluated.
+            return Ok((Vec3::ZERO, None));
+        }
         if let Some(fp) = p.get(fk).and_then(vec3) {
             let n = super::face::face_normal(s, fp).ok_or_else(|| bad(cmd, format!("`{fk}` must be on a planar face")))?;
             return Ok((fp, Some(n)));
+        }
+        // The origin point.
+        if p.get(pk).and_then(Value::as_str).is_some_and(|o| o.eq_ignore_ascii_case("origin")) {
+            return Ok((Vec3::ZERO, None));
         }
         // A snap point: {snap: vertex|edge_mid|face_center|circle_center, at: [x,y,z]}.
         if let Some(o) = p.get(pk).filter(|v| v.is_object()) {
@@ -373,12 +414,17 @@ fn align(s: &mut Session, p: &Value) -> Result<Value> {
             let kind = o.get("snap").and_then(Value::as_str).unwrap_or("vertex");
             return snap_point(s, kind, at).map(|q| (q, None)).ok_or_else(|| bad(cmd, format!("no {kind} to snap to near `{pk}`")));
         }
-        p.get(pk).and_then(vec3).map(|v| (v, None)).ok_or_else(|| bad(cmd, format!("give `{pk}` or `{fk}` as [x, y, z]")))
+        p.get(pk)
+            .and_then(vec3)
+            .map(|v| (v, None))
+            .ok_or_else(|| bad(cmd, format!("give `{pk}`, `{fk}` or `{pk}_plane` ([x, y, z], \"origin\", or a plane)")))
     };
-    let (from, from_normal) = pick(s, "from", "from_face")?;
-    let (to, to_normal) = pick(s, "to", "to_face")?;
+    let (from, from_normal) = pick(s, "from", "from_face", &from_plane)?;
+    let (to, to_normal) = pick(s, "to", "to_face", &to_plane)?;
+    // Faces turn only to meet another face or a plane; a plane's normal is read when evaluated.
     let (from_normal, to_normal) = match (from_normal, to_normal) {
         (Some(a), Some(b)) => (Some(a), Some(b)),
+        (a, b) if from_plane.is_some() || to_plane.is_some() => (a, b),
         _ => (None, None),
     };
     let flip = bool_(p, "flip").unwrap_or(false);
@@ -392,6 +438,8 @@ fn align(s: &mut Session, p: &Value) -> Result<Value> {
             from_normal: from_normal.map(Dir),
             to_normal: to_normal.map(Dir),
             flip,
+            from_plane,
+            to_plane,
         },
     )
 }

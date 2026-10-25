@@ -21,6 +21,25 @@ pub const RENDERER_ENV: &str = "SOLIDCRAFT_RENDERER";
 pub const FAILED_STARTS_FOR_SAFE_MODE: u32 = 2;
 const MARKER: &str = "starting";
 
+/// Explicit application-settings isolation for side-by-side builds and native UI
+/// acceptance. A supplied invalid path refuses startup rather than falling back
+/// to the user's ordinary settings. No directory is read or created here.
+pub fn settings_directory(override_path: Option<&std::ffi::OsStr>, default: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
+    match override_path {
+        None => Ok(default),
+        Some(raw) => {
+            let path = PathBuf::from(raw);
+            if raw.is_empty() || !path.is_absolute() {
+                return Err("SOLIDCRAFT_SETTINGS_DIR must be a nonempty absolute directory path".into());
+            }
+            if path.exists() && !path.is_dir() {
+                return Err("SOLIDCRAFT_SETTINGS_DIR names a file, not a directory".into());
+            }
+            Ok(Some(path))
+        }
+    }
+}
+
 /// Whether an environment value switches something on.
 pub fn env_on(v: Option<&str>) -> bool {
     v.map(str::trim).is_some_and(|v| !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false"))
@@ -157,6 +176,23 @@ pub fn choose_backends(
     Some(WINDOWS_ORDER.into_iter().find(|b| has_hardware(*b)).unwrap_or(Backends::DX12))
 }
 
+/// The device feature for a 32-bit float depth buffer with a stencil (reversed depth, #1434).
+pub const FLOAT_DEPTH_STENCIL: eframe::wgpu::Features = eframe::wgpu::Features::DEPTH32FLOAT_STENCIL8;
+
+/// Whether every adapter `options` could start offers a float depth buffer with a stencil. eframe
+/// makes the window's depth buffer from the depth bits before it picks the adapter, so the window
+/// asks for a float one only when whichever it picks has it.
+pub fn float_depth_everywhere(options: &eframe::egui_wgpu::WgpuConfiguration) -> bool {
+    let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &options.wgpu_setup else { return false };
+    let mut desc = eframe::wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+    desc.backends = setup.instance_descriptor.backends;
+    let instance = eframe::wgpu::Instance::new(desc);
+    let adapters = pollster::block_on(instance.enumerate_adapters(setup.instance_descriptor.backends));
+    let all = !adapters.is_empty() && adapters.iter().all(|a| a.features().contains(FLOAT_DEPTH_STENCIL));
+    log::info!("graphics: float depth with stencil on every adapter: {all}");
+    all
+}
+
 /// The order backends are tried in on Windows.
 pub const WINDOWS_ORDER: [eframe::wgpu::Backends; 3] = [eframe::wgpu::Backends::DX12, eframe::wgpu::Backends::VULKAN, eframe::wgpu::Backends::GL];
 
@@ -182,7 +218,7 @@ pub fn no_window_message(error: &str, settings: Option<&Path>) -> String {
          - Over Remote Desktop or in a virtual machine, enable 3D acceleration or run it on the machine itself.\n\
          - Start it once with `solidcraft --safe-mode`.\n\
          - Rename the settings folder: {folder}\n\n\
-         More: https://bherbruck.github.io/solidcraft/guide/troubleshooting.html"
+         More: https://docs.solidcraft.io/guide/troubleshooting.html"
     )
 }
 
@@ -195,6 +231,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn isolated_settings_are_explicit_absolute_and_never_fall_back() {
+        let default = std::env::temp_dir().join("ordinary-settings");
+        assert_eq!(settings_directory(None, Some(default.clone())).unwrap(), Some(default.clone()));
+        let selected = std::env::temp_dir().join("solidcraft-isolated-settings-fixture");
+        assert_eq!(settings_directory(Some(selected.as_os_str()), Some(default.clone())).unwrap(), Some(selected));
+        for raw in ["", "relative/settings", "../ordinary"] {
+            assert!(settings_directory(Some(std::ffi::OsStr::new(raw)), Some(default.clone())).is_err());
+        }
+        let file = std::env::current_exe().unwrap();
+        assert!(settings_directory(Some(file.as_os_str()), Some(default)).is_err());
     }
 
     #[test]

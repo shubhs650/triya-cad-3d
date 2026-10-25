@@ -5,6 +5,7 @@
 //! This reads every menu the app can open and fails on the ones it cannot
 //! translate.
 
+use crate::test_support::sample_app;
 use std::collections::BTreeSet;
 
 use crate::browser;
@@ -12,12 +13,6 @@ use crate::context_menu::{self, Item, Target};
 use crate::{Services, SolveApp};
 use serde_json::json;
 use solidcraft_engine::Session;
-
-fn sample_app() -> SolveApp {
-    let mut s = Session::default();
-    s.run_script(&solidcraft_engine::sample::script()).expect("sample script");
-    SolveApp::new(s, Services::default())
-}
 
 /// Every English text `label()` can be asked to translate.
 fn english_texts() -> BTreeSet<String> {
@@ -54,13 +49,13 @@ fn take(app: &SolveApp, out: &mut BTreeSet<String>) {
     for id in &components {
         take_items(out, &context_menu::items(app, &Target::Component { id: *id }));
         for folder in ["bodies", "sketches", "construction"] {
-            take_items(out, &context_menu::items(app, &Target::Folder { component: *id, folder: folder.to_string() }));
-            take_items(out, &browser::folder_items(app, *id, folder));
+            take_items(out, &context_menu::items(app, &Target::Folder { component: *id, folder: folder.to_string(), scope: "c0".into() }));
+            take_items(out, &browser::folder_items(app, *id, folder, "c0"));
         }
     }
     for id in &groups {
-        take_items(out, &context_menu::items(app, &Target::Group { id: *id }));
-        take_items(out, &browser::group_items(app, *id));
+        take_items(out, &context_menu::items(app, &Target::Group { id: *id, scope: "c0".into() }));
+        take_items(out, &browser::group_items(app, *id, "c0"));
     }
     for spec in solidcraft_engine::command_specs().iter() {
         let target = Target::ToolbarCommand { id: spec.id.to_string() };
@@ -86,14 +81,14 @@ fn every_menu_label_is_in_the_english_catalog() {
 
     // The labels that depend on state, so their other branch is seen too.
     let names: Vec<String> = app.session.model.state().bodies.iter().map(|b| b.name.clone()).collect();
-    app.ui.show_origin = false;
+    app.set_origin_shown(false);
     take(&app, &mut seen);
     for name in &names {
-        app.ui.locked_bodies.push(name.clone());
+        app.session.visibility.locked_bodies.push(name.clone());
         app.session.visibility.hidden_bodies.push(name.clone());
     }
     take(&app, &mut seen);
-    app.ui.locked_bodies.clear();
+    app.session.visibility.locked_bodies.clear();
     app.session.visibility.hidden_bodies.clear();
     take(&app, &mut seen);
 

@@ -1,5 +1,5 @@
 //! Agent chat: a side panel that talks to a coding agent the user already has (Claude Code,
-//! Codex, Gemini CLI, OpenCode, …) over the Agent Client Protocol, and gives that agent
+//! Codex, Antigravity, OpenCode, …) over the Agent Client Protocol, and gives that agent
 //! SolidCraft's MCP server, bridged to this window, as its way to read and change the open design
 //! (docs/agent-chat.md, docs/design/in-app-agent-chat.md).
 //!
@@ -22,11 +22,17 @@ mod acp_client;
 pub mod agents;
 #[cfg(not(target_arch = "wasm32"))]
 mod api_client;
+pub mod attach;
 pub mod backend;
+pub mod context;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod discover;
 pub mod gate;
+mod markdown;
+mod markdown_view;
 mod panel;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod paste;
 #[cfg(not(target_arch = "wasm32"))]
 mod process;
 pub mod settings;
@@ -36,21 +42,28 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Value, json};
 
+use context::Context;
+
 use crate::i18n::{format as trf, tr};
 use crate::{ControlRequest, SolveApp};
 use backend::{ChatBackend, Event, PermissionOption, PromptPart, ToolStatus};
 
+pub(crate) use panel::{left_inset, tool_space};
 pub use panel::{show, tip as panel_tip, toggle};
 
 /// Most entries kept in the conversation; older ones are dropped.
 const MAX_ITEMS: usize = 2000;
 /// Longest message sent.
 const MAX_PROMPT: usize = 100_000;
+/// Room kept in a message for the files' names and the words around their text.
+const FILE_NAMES_ROOM: usize = 2_000;
 /// How long a request waits for Allow or Deny before it is declined (the agent's MCP server gives
 /// up on a request after five minutes).
 const APPROVAL_TIMEOUT_MS: f64 = 240_000.0;
 /// Size of the picture of the view sent with a message.
 const VIEW_IMAGE: (u32, u32) = (960, 600);
+/// A picture kept for the user to open later, at most this big.
+const MAX_PICTURE_BYTES: usize = 4 << 20;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
@@ -88,11 +101,107 @@ impl State {
     }
 }
 
+/// A picture shown with a message: what the agent got (a picture of the view, or a file the user
+/// attached) as the encoded bytes it was sent in (PNG, JPEG, GIF, WebP…), and a note shown with it
+/// (the file's name). The thumbnail and the viewer share one texture, decoded off the window
+/// thread the first time the picture is drawn.
+#[derive(Clone)]
+pub struct Picture {
+    bytes: Arc<Vec<u8>>,
+    note: String,
+    /// The picture of the view that Attach view sends, not a file.
+    view: bool,
+    decode: Arc<Decode>,
+}
+
+/// A picture's decoding: started once, and the texture (`None`: not a picture) once it is in.
+#[derive(Default)]
+struct Decode {
+    started: std::sync::atomic::AtomicBool,
+    texture: std::sync::OnceLock<Option<egui::TextureHandle>>,
+}
+
+/// How a picture can be drawn now.
+#[cfg(not(target_arch = "wasm32"))]
+pub enum Shown {
+    /// Still being decoded: a repaint comes when it is in.
+    Loading,
+    Ready(egui::TextureHandle),
+    /// The bytes are not a picture the app can read.
+    Failed,
+}
+
+impl Picture {
+    pub fn new(bytes: Vec<u8>, note: impl Into<String>) -> Self {
+        Self::shared(Arc::new(bytes), note, false)
+    }
+
+    fn shared(bytes: Arc<Vec<u8>>, note: impl Into<String>, view: bool) -> Self {
+        Self { bytes, note: note.into(), view, decode: Arc::default() }
+    }
+
+    /// The picture as a texture, decoded in the background on first use.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn texture(&self, ctx: &egui::Context) -> Shown {
+        use std::sync::atomic::Ordering;
+        if let Some(done) = self.decode.texture.get() {
+            return done.clone().map_or(Shown::Failed, Shown::Ready);
+        }
+        if !self.decode.started.swap(true, Ordering::AcqRel) {
+            let (bytes, decode, ctx) = (Arc::clone(&self.bytes), Arc::clone(&self.decode), ctx.clone());
+            let spawned = std::thread::Builder::new().name("agent-chat-picture".into()).spawn(move || {
+                let texture = decode_picture(&bytes).map(|image| ctx.load_texture("sc_agent_chat_picture", image, egui::TextureOptions::LINEAR));
+                let _ = decode.texture.set(texture);
+                ctx.request_repaint();
+            });
+            if spawned.is_err() {
+                let _ = self.decode.texture.set(None);
+                return Shown::Failed;
+            }
+        }
+        Shown::Loading
+    }
+}
+
+/// Decode a picture in any format the app reads, within limits (it came through the attachment
+/// checks already; a hostile header still can't ask for gigabytes here).
+#[cfg(not(target_arch = "wasm32"))]
+fn decode_picture(bytes: &[u8]) -> Option<egui::ColorImage> {
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(20_000);
+    limits.max_image_height = Some(20_000);
+    limits.max_alloc = Some(1 << 30);
+    reader.limits(limits);
+    let rgba = reader.decode().ok()?.to_rgba8();
+    let size = [usize::try_from(rgba.width()).ok()?, usize::try_from(rgba.height()).ok()?];
+    Some(egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw()))
+}
+
+impl std::fmt::Debug for Picture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Picture({} bytes, {:?})", self.bytes.len(), self.note)
+    }
+}
+
+/// The viewer: the pictures of one message, and the one shown.
+#[derive(Clone, Debug)]
+pub struct Gallery {
+    pictures: Vec<Picture>,
+    at: usize,
+}
+
 #[derive(Clone, Debug)]
 pub enum Item {
     User {
         text: String,
         image: bool,
+        /// The view's picture, kept once it is taken (when the agent starts on the message).
+        pictures: Vec<Picture>,
+        /// What was selected or picked in the model when it was sent ("Attach selection", Pick context).
+        context: Context,
+        /// The names of the files that went with it.
+        files: Vec<String>,
     },
     Agent {
         thought: bool,
@@ -150,6 +259,9 @@ struct Turn {
 pub struct Pending {
     pub text: String,
     pub image: bool,
+    pub context: Context,
+    /// The files attached to it (they go with it).
+    pub files: Vec<attach::Attachment>,
 }
 
 /// A request held for Allow or Deny.
@@ -163,21 +275,58 @@ struct Held {
 /// it): requests arriving there go to the sender; the port it listens on.
 pub type ControlStarter = Box<dyn FnMut(Sender<ControlRequest>) -> Option<u16>>;
 
+/// A file not yet on the next message: a picture being read off the window thread (so a large one
+/// doesn't stop the window), or a CAD file being imported into the design. Its chip shows
+/// meanwhile; it keeps the id it was given when attached, so the files stay in the order they
+/// were attached in.
+pub(crate) struct Loading {
+    pub id: u64,
+    pub name: String,
+    what: Reading,
+}
+
+enum Reading {
+    /// A picture decoding, or a pasted one encoding: the file, or why not.
+    File(Receiver<std::result::Result<attach::Attachment, String>>),
+    /// A CAD file's import into the design: its answer, as a control reply.
+    Import(Receiver<crate::control::ControlResponse>),
+}
+
+impl Loading {
+    /// A CAD file being imported (its part lands in the design whatever the message does).
+    pub fn importing(&self) -> bool {
+        matches!(self.what, Reading::Import(_))
+    }
+}
+
 #[derive(Default)]
 pub struct AgentChat {
     /// The panel is shown (View menu, the application bar's chat button, Ctrl+Shift+A).
     pub open: bool,
     pub items: Vec<Item>,
     pub input: String,
+    /// The viewer, open on one message's pictures.
+    gallery: Option<Gallery>,
     state: Option<State>,
     agent: String,
     images: bool,
+    /// The agent takes documents (PDFs) in a message.
+    documents: bool,
     /// Send a picture of the view with the next message.
     pub attach_view: bool,
+    /// Send what is selected in the model with the next message.
+    pub attach_selection: bool,
+    /// How many things the current selection is by clicks, kept while the selection and the design
+    /// stay as they are: (the selection, the design's address, the count).
+    selected_count: Option<(Vec<solidcraft_engine::Sel>, usize, usize)>,
+    /// What the user picked with Pick context for the next message, and how it reads.
+    pub picked: Vec<solidcraft_engine::Sel>,
+    pub picked_context: Context,
     auth: Vec<acp::AuthMethod>,
     auth_status: Option<String>,
-    /// A message typed before the agent was ready.
-    queued: Option<(String, bool)>,
+    /// A message typed before the agent was ready: its text, whether the view goes with it, its
+    /// place in the conversation, and its files.
+    queued: Option<(String, bool, Option<usize>, Vec<attach::Attachment>)>,
     /// Messages typed while the agent works, in order. They go as one prompt when the turn ends
     /// (or at once with Send now); after Stop they wait for Send.
     pub pending: Vec<Pending>,
@@ -197,14 +346,33 @@ pub struct AgentChat {
     pub confirm_new: bool,
     /// Where the panel was drawn last (for its shortcuts).
     pub panel_rect: Option<egui::Rect>,
-    /// The last message sent, kept to send again after a sign-in.
-    last: Option<(String, bool)>,
+    /// Unreserved sheet space, shared by the actual dock and its drag preview.
+    pub(crate) dock_space: Option<egui::Rect>,
+    /// The last message sent, kept to send again after a sign-in (its files too).
+    last: Option<(String, bool, Option<usize>, Vec<attach::Attachment>)>,
+    /// Files for the next message (pictures, text files, imported parts), shown as chips.
+    pub(crate) attachments: Vec<attach::Attachment>,
+    /// Pictures pasted so far, to name the next one.
+    pasted: usize,
+    /// When the last text paste arrived (input time), so the V key coming up after it isn't a second paste.
+    pub(crate) text_pasted_at: Option<f64>,
+    /// The chips' thumbnails, by the picture they show.
+    thumbs: std::collections::HashMap<u64, egui::TextureHandle>,
+    /// The last id given to a file added to a message.
+    last_file_id: u64,
+    /// Files still being read for the next message.
+    pub(crate) loading: Vec<Loading>,
+    /// Where the chat was drawn last frame (the panel, or its folded strip), for drops; `None`
+    /// when it isn't drawn.
+    pub(crate) drop_rect: Option<egui::Rect>,
     /// The command the running agent was started with.
     argv: Vec<String>,
     /// The agent picked for this conversation (the header's switcher); `None`: the default.
     pub agent_id: Option<String>,
     /// The agent the running backend is (for permissions and "always allow").
     running_id: String,
+    /// The popped-out chat window was given its saved place (it is open); see `panel::window_builder`.
+    pub(crate) window_placed: bool,
     /// The agent's own modes, and the current one.
     modes: Vec<(String, String)>,
     mode: String,
@@ -242,6 +410,54 @@ impl Drop for AgentChat {
 }
 
 impl AgentChat {
+    /// Put a file on the next message with an id of its own; its name back.
+    fn add_file(&mut self, file: attach::Attachment) -> String {
+        let id = self.next_file_id();
+        self.place(id, file)
+    }
+    fn next_file_id(&mut self) -> u64 {
+        self.last_file_id += 1;
+        self.last_file_id
+    }
+    /// A file goes where its id says: the order the files were attached in.
+    fn place(&mut self, id: u64, mut file: attach::Attachment) -> String {
+        file.id = id;
+        let name = file.name.clone();
+        let at = self.attachments.partition_point(|f| f.id < id);
+        self.attachments.insert(at, file);
+        name
+    }
+    /// Files on the next message, read or still being read.
+    fn files(&self) -> usize {
+        self.attachments.len() + self.loading.len()
+    }
+    /// Read a file for the next message on a worker thread, in the window's language.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn load(
+        &mut self,
+        name: String,
+        job: impl FnOnce() -> std::result::Result<attach::Attachment, String> + Send + 'static,
+    ) -> std::result::Result<String, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let language = crate::i18n::language();
+        std::thread::Builder::new()
+            .name("chat-file".into())
+            .spawn(move || {
+                let _language = crate::i18n::scope(language);
+                let _ = tx.send(job());
+            })
+            .map_err(|e| trf("ui.agent_chat_file_error", &[("name", &name), ("error", &e.to_string())]))?;
+        let id = self.next_file_id();
+        self.loading.push(Loading { id, name: name.clone(), what: Reading::File(rx) });
+        Ok(name)
+    }
+    /// A CAD file whose import was asked for: it joins the message once the import is in.
+    fn importing(&mut self, name: String, rx: Receiver<crate::control::ControlResponse>) -> String {
+        let id = self.next_file_id();
+        self.loading.push(Loading { id, name: name.clone(), what: Reading::Import(rx) });
+        name
+    }
+
     pub fn state(&self) -> State {
         self.state.unwrap_or(State::Off)
     }
@@ -250,6 +466,17 @@ impl AgentChat {
             self.items.drain(..MAX_ITEMS / 10);
         }
         self.items.push(item);
+    }
+    /// Keep the picture just sent with the message at `at` in the conversation (the user can open
+    /// it). A message sent again (after a sign-in) has its picture already: nothing is added, and
+    /// never to another message.
+    fn keep_picture(&mut self, at: Option<usize>, png: Vec<u8>) {
+        if let Some(Item::User { image: true, pictures, .. }) = at.and_then(|i| self.items.get_mut(i))
+            && !pictures.iter().any(|p| p.view)
+            && png.len() <= MAX_PICTURE_BYTES
+        {
+            pictures.push(Picture::shared(Arc::new(png), "", true));
+        }
     }
     fn notice(&mut self, text: impl Into<String>, error: bool) {
         self.push(Item::Notice { text: text.into(), error });
@@ -304,6 +531,7 @@ impl AgentChat {
     /// Take in what the backend reported.
     fn on_event(&mut self, e: Event) -> Option<Outcome> {
         match e {
+            Event::Documents(documents) => self.documents = documents,
             Event::Ready { agent, images } => {
                 self.agent = agent;
                 self.images = images;
@@ -427,9 +655,65 @@ pub fn shown(app: &SolveApp) -> bool {
     app.preferences.ai_features && cfg!(not(target_arch = "wasm32"))
 }
 
-/// The AI button at the toolbar row's right end is shown.
-pub fn toolbar_button_shown(app: &SolveApp) -> bool {
+/// The Assistant button in the application bar is shown (honours the existing preference).
+pub fn app_bar_button_shown(app: &SolveApp) -> bool {
     shown(app) && app.preferences.ai_toolbar_button
+}
+
+/// The application bar's status mark, independent of panel layout and painting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AssistantMark {
+    Quiet,
+    Ready,
+    Busy,
+    NeedsAuth,
+    Stopped,
+    Waiting(usize),
+}
+
+fn assistant_mark_for(state: State, login: &str, configured: bool, waiting: usize, stopped: bool, failed: bool) -> AssistantMark {
+    if waiting > 0 {
+        return AssistantMark::Waiting(waiting);
+    }
+    if state == State::NeedsAuth {
+        return AssistantMark::NeedsAuth;
+    }
+    if state == State::Exited || stopped || failed {
+        return AssistantMark::Stopped;
+    }
+    match state {
+        State::Busy | State::Starting => AssistantMark::Busy,
+        // A live session is stronger evidence than an older discovery login probe.
+        State::Ready => AssistantMark::Ready,
+        State::Off if configured && matches!(login, "signed_in" | "key") => AssistantMark::Ready,
+        State::Off if configured && login == "signed_out" => AssistantMark::NeedsAuth,
+        _ => AssistantMark::Quiet,
+    }
+}
+
+pub(crate) fn assistant_mark(app: &SolveApp) -> AssistantMark {
+    let chat = &app.agent_chat;
+    let current = agents::current(app);
+    assistant_mark_for(
+        chat.state(),
+        current.as_ref().map_or("", |e| e.login),
+        current.is_some(),
+        chat.waiting(),
+        chat.stopped,
+        chat.ended.as_deref() == Some("error"),
+    )
+}
+
+pub(crate) fn assistant_tip(mark: AssistantMark) -> String {
+    let state = match mark {
+        AssistantMark::Quiet => tr("ui.agent_chat_state_off").to_string(),
+        AssistantMark::Ready => tr("ui.agent_chat_state_ready").to_string(),
+        AssistantMark::Busy => tr("ui.agent_chat_state_busy").to_string(),
+        AssistantMark::NeedsAuth => tr("ui.agent_chat_state_auth").to_string(),
+        AssistantMark::Stopped => tr("ui.agent_chat_state_exited").to_string(),
+        AssistantMark::Waiting(count) => trf("ui.assistant_waiting", &[("count", &count.to_string())]),
+    };
+    format!("{} (Ctrl+Shift+A) — {state}", tr("ui.assistant"))
 }
 
 /// Whether a permission question is about one of SolidCraft's own tools (which SolidCraft's own
@@ -472,7 +756,7 @@ pub fn connect(app: &mut SolveApp, ctx: &egui::Context) {
         return;
     };
     // An API agent's key comes from the keychain for this connection only.
-    let key = if entry.kind == agents::Kind::Api && entry.key {
+    let key = if entry.kind.is_api() && entry.key {
         match app.services.secrets.as_ref().map(|s| s.get(&entry.id)) {
             Some(Ok(k)) => k,
             Some(Err(e)) => {
@@ -508,12 +792,22 @@ pub fn connect(app: &mut SolveApp, ctx: &egui::Context) {
     let started: Result<Box<dyn ChatBackend>, String> = match entry.kind {
         agents::Kind::Acp if entry.argv.is_empty() => Err(tr("ui.agent_chat_none_found").to_string()),
         agents::Kind::Acp => acp_client::AcpBackend::start(&entry.argv, start).map(|b| Box::new(b) as Box<dyn ChatBackend>),
-        agents::Kind::Api => match http {
-            Some(http) => api_client::ApiBackend::start(
-                api_client::ApiConfig { name: entry.name.clone(), base_url: entry.base_url.clone(), model: entry.model.clone(), key, http },
-                start,
-            )
-            .map(|b| Box::new(b) as Box<dyn ChatBackend>),
+        kind @ (agents::Kind::Api | agents::Kind::Anthropic) => match http {
+            Some(http) => {
+                let protocol = if kind == agents::Kind::Anthropic { agents::Protocol::Anthropic } else { agents::Protocol::OpenAi };
+                api_client::ApiBackend::start(
+                    api_client::ApiConfig {
+                        name: entry.name.clone(),
+                        protocol,
+                        base_url: entry.base_url.clone(),
+                        model: entry.model.clone(),
+                        key,
+                        http,
+                    },
+                    start,
+                )
+                .map(|b| Box::new(b) as Box<dyn ChatBackend>)
+            }
             None => Err(tr("ui.ai_no_http").to_string()),
         },
     };
@@ -526,7 +820,7 @@ pub fn connect(app: &mut SolveApp, ctx: &egui::Context) {
             chat.mode.clear();
             chat.models.clear();
             chat.model.clear();
-            chat.running_endpoint = if entry.kind == agents::Kind::Api { entry.base_url.clone() } else { String::new() };
+            chat.running_endpoint = if entry.kind.is_api() { entry.base_url.clone() } else { String::new() };
             // An endpoint's models from the last time, until the new list arrives.
             if let Some(list) = chat.models_cache.get(&chat.running_endpoint) {
                 chat.models = list.clone();
@@ -566,40 +860,129 @@ const MAX_PENDING: usize = 20;
 /// incomplete.
 const INTERRUPT_NOTE: &str = "[The user interrupted your previous step.]";
 
+/// How many things the selection is, counting what was clicked (the two halves of a rim are one).
+pub fn selected_count(app: &mut SolveApp) -> usize {
+    let doc = Arc::as_ptr(&app.session.doc) as usize;
+    if let Some((selection, at, count)) = &app.agent_chat.selected_count
+        && *at == doc
+        && *selection == app.session.selection
+    {
+        return *count;
+    }
+    let count = context::selection_count(&app.session, &app.session.selection);
+    app.agent_chat.selected_count = Some((app.session.selection.clone(), doc, count));
+    count
+}
+
+/// Open the picker for the next message's context (what is already picked stays in it). Nothing
+/// happens while another tool or dialog is open.
+pub fn start_pick(app: &mut SolveApp) {
+    if app.dialog.is_none() {
+        app.dialog = Some(crate::dialogs::Dialog::chat_context(&app.agent_chat.picked));
+    }
+}
+
+/// The picker's OK: what its inputs hold is the next message's context.
+pub(crate) fn pick_done(app: &mut SolveApp, d: &crate::dialogs::Dialog) -> Result<(), String> {
+    let mut picked: Vec<solidcraft_engine::Sel> = Vec::new();
+    for sel in d.inputs.iter().flat_map(|i| i.items.iter()) {
+        if !picked.contains(sel) {
+            picked.push(sel.clone());
+        }
+    }
+    app.agent_chat.picked_context = context::describe(&mut app.session, &picked);
+    // The tray lists what was described; more than the limit is only counted.
+    picked.truncate(context::MAX_ITEMS);
+    app.agent_chat.picked = picked;
+    Ok(())
+}
+
+/// Take one picked item (by its place in the tray) out of what the next message carries.
+pub fn remove_picked(app: &mut SolveApp, at: usize) {
+    let chat = &mut app.agent_chat;
+    if at < chat.picked_context.items.len() {
+        chat.picked_context.items.remove(at);
+        if at < chat.picked.len() {
+            chat.picked.remove(at);
+        }
+    }
+}
+
 /// Send what the user typed: now if the agent is ready, queued behind the running message if it
 /// is working, else once it is ready (starting it if needed).
 pub fn send(app: &mut SolveApp, ctx: &egui::Context, text: String) {
-    let text: String = text.chars().take(MAX_PROMPT).collect();
-    if text.trim().is_empty() {
+    // A message waits for its files: the words go back in the box until they are read.
+    if !app.agent_chat.loading.is_empty() {
+        if app.agent_chat.input.trim().is_empty() {
+            app.agent_chat.input = text;
+        }
+        app.agent_chat.notice(tr("ui.agent_chat_files_loading"), false);
         return;
     }
+    let text: String = text.chars().take(MAX_PROMPT).collect();
+    // Files alone make a message.
+    if text.trim().is_empty() && app.agent_chat.attachments.is_empty() {
+        return;
+    }
+    let text = if text.trim().is_empty() { String::new() } else { text };
     let image = app.agent_chat.attach_view && app.agent_chat.images;
+    // The selection is read now, when the user sends, not when a queued message finally goes.
+    // What was picked goes first, then what is selected (without what was picked twice).
+    let mut context = std::mem::take(&mut app.agent_chat.picked_context);
+    app.agent_chat.picked.clear();
+    if app.agent_chat.attach_selection {
+        let mut selected = context::describe_selection(&mut app.session);
+        selected.items.retain(|i| !context.items.contains(i));
+        context.merge(selected);
+    }
     if app.agent_chat.state() == State::Busy {
         let chat = &mut app.agent_chat;
         if chat.pending.len() >= MAX_PENDING {
+            // The files stay on the chips for when there is room.
             chat.notice(tr("ui.agent_chat_queue_full"), false);
         } else {
-            chat.pending.push(Pending { text, image });
+            let files = std::mem::take(&mut chat.attachments);
+            chat.pending.push(Pending { text, image, context, files });
         }
         return;
     }
+    let files = std::mem::take(&mut app.agent_chat.attachments);
     // Messages left waiting by Stop go first, in one prompt with this one.
     if !app.agent_chat.pending.is_empty() {
-        app.agent_chat.pending.push(Pending { text, image });
+        app.agent_chat.pending.push(Pending { text, image, context, files });
         send_queue(app, ctx, false);
         return;
     }
-    submit(app, ctx, text, image, false);
+    submit(app, ctx, text, image, context, files, false);
 }
 
-/// Put `text` in the conversation and send it (`interrupted`: the agent is told it cut in on its
-/// previous step).
-fn submit(app: &mut SolveApp, ctx: &egui::Context, text: String, image: bool, interrupted: bool) {
-    app.agent_chat.push(Item::User { text: text.clone(), image });
+/// Put `text` in the conversation and send it with its files (`interrupted`: the agent is told it
+/// cut in on its previous step).
+fn submit(app: &mut SolveApp, ctx: &egui::Context, text: String, image: bool, context: Context, files: Vec<attach::Attachment>, interrupted: bool) {
+    // Attached pictures show as thumbnails with the viewer, as the view's picture does; the other
+    // files are listed by name.
+    let pictures = files
+        .iter()
+        .filter_map(|f| match &f.content {
+            attach::Content::Picture { bytes, .. } => Some(Picture::shared(Arc::clone(bytes), f.name.clone(), false)),
+            _ => None,
+        })
+        .collect();
+    app.agent_chat.push(Item::User {
+        text: text.clone(),
+        image,
+        pictures,
+        context: context.clone(),
+        files: files.iter().filter(|f| !f.is_picture()).map(|f| f.name.clone()).collect(),
+    });
+    // The message's place in the conversation: its picture is kept there when it is taken.
+    let at = app.agent_chat.items.len().checked_sub(1);
+    // The agent gets the selection as text after the message; the conversation shows chips.
+    let text = context::with_context(&text, &context);
     match app.agent_chat.state() {
-        State::Ready => start_turn_with(app, text, image, interrupted.then_some(INTERRUPT_NOTE)),
+        State::Ready => start_turn_with(app, text, image, at, files, interrupted.then_some(INTERRUPT_NOTE)),
         s => {
-            app.agent_chat.queued = Some((text, image));
+            app.agent_chat.queued = Some((text, image, at, files));
             #[cfg(not(target_arch = "wasm32"))]
             if !s.running() {
                 connect(app, ctx);
@@ -619,9 +1002,25 @@ fn send_queue(app: &mut SolveApp, ctx: &egui::Context, interrupted: bool) {
     }
     let all = std::mem::take(&mut chat.pending);
     let image = all.iter().any(|p| p.image);
-    let text = all.into_iter().map(|p| p.text).collect::<Vec<_>>().join("\n\n");
+    let mut files = Vec::new();
+    let mut context = Context::default();
+    let mut texts = Vec::new();
+    for p in all {
+        files.extend(p.files);
+        context.merge(p.context);
+        if !p.text.trim().is_empty() {
+            texts.push(p.text);
+        }
+    }
+    // One message carries at most MAX_FILES files; the rest are named, not sent.
+    if files.len() > attach::MAX_FILES {
+        let left: Vec<String> = files.split_off(attach::MAX_FILES).into_iter().map(|f| f.name).collect();
+        let max = attach::MAX_FILES.to_string();
+        chat.notice(trf("ui.agent_chat_files_left_out", &[("max", &max), ("files", &left.join(", "))]), true);
+    }
+    let text = texts.join("\n\n");
     let text: String = text.chars().take(MAX_PROMPT).collect();
-    submit(app, ctx, text, image, interrupted);
+    submit(app, ctx, text, image, context, files, interrupted);
 }
 
 /// Send now: stop the running step and send the queue as the next prompt once the agent has said
@@ -652,7 +1051,12 @@ pub fn new_chat(app: &mut SolveApp) {
     let chat = &mut app.agent_chat;
     chat.confirm_new = false;
     chat.items.clear();
+    chat.gallery = None;
+    chat.picked.clear();
+    chat.picked_context = Context::default();
     chat.pending.clear();
+    chat.attachments.clear();
+    chat.loading.clear();
     chat.pending_edit = None;
     chat.queued = None;
     chat.last = None;
@@ -671,7 +1075,7 @@ pub fn new_chat(app: &mut SolveApp) {
 
 /// Whether New chat would throw something away that the user may want (so it asks first).
 pub fn new_chat_needs_confirm(app: &SolveApp) -> bool {
-    app.agent_chat.state() == State::Busy || !app.agent_chat.pending.is_empty()
+    app.agent_chat.state() == State::Busy || !app.agent_chat.pending.is_empty() || app.agent_chat.files() > 0
 }
 
 /// Take a queued message out of the queue.
@@ -698,33 +1102,141 @@ fn after_turn(app: &mut SolveApp, ctx: &egui::Context) {
     }
 }
 
-fn start_turn(app: &mut SolveApp, text: String, image: bool) {
-    start_turn_with(app, text, image, None);
+fn start_turn(app: &mut SolveApp, text: String, image: bool, at: Option<usize>, files: Vec<attach::Attachment>) {
+    start_turn_with(app, text, image, at, files, None);
 }
 
-/// Start a message; `note` goes before the text for the agent, not into the conversation.
-fn start_turn_with(app: &mut SolveApp, text: String, image: bool, note: Option<&str>) {
-    let sent = match note {
+/// Start a message; `note` goes before the text for the agent, not into the conversation. The
+/// files are named after the text (text files in full), and pictures go as images to an agent
+/// that takes them. `at` is the message's place in the conversation, where its picture is kept.
+fn start_turn_with(app: &mut SolveApp, text: String, image: bool, at: Option<usize>, files: Vec<attach::Attachment>, note: Option<&str>) {
+    let (pictures, documents) = (app.agent_chat.images, app.agent_chat.documents);
+    let lead = match note {
         Some(n) => format!("{n}\n\n{text}"),
         None => text.clone(),
     };
+    // The whole message stays within the cap: the files' text gets what the words leave.
+    let budget = MAX_PROMPT.saturating_sub(lead.chars().count() + FILE_NAMES_ROOM);
+    let about_files = attach::note(&files, pictures, documents, budget);
+    let sent: String = format!("{lead}{about_files}").chars().take(MAX_PROMPT).collect();
     let mut parts = vec![PromptPart::Text(sent)];
     if image {
         match crate::control::view_png(app, VIEW_IMAGE.0, VIEW_IMAGE.1) {
-            Ok(png) => parts.push(PromptPart::Image { mime: "image/png".into(), base64: backend::base64(&png) }),
+            Ok(png) => {
+                parts.push(PromptPart::Image { mime: "image/png".into(), base64: backend::base64(&png) });
+                app.agent_chat.keep_picture(at, png);
+            }
             Err(e) => log::warn!("the view's picture is left out of the prompt: {e}"),
         }
     }
-    let label: String = text.lines().next().unwrap_or("").chars().take(48).collect();
+    parts.extend(attach::parts(&files, pictures, documents));
+    // The undo step is named after the message, or its first file when it has no words.
+    let first_line = text.lines().find(|l| !l.trim().is_empty()).or_else(|| files.first().map(|f| f.name.as_str())).unwrap_or("");
+    let label: String = first_line.chars().take(48).collect();
     app.agent_chat.turn =
         Some(Turn { start_doc: app.session.doc.clone(), start_undo: app.session.undo.len(), changes: 0, requests: 0, limit_told: false, label });
-    app.agent_chat.last = Some((text, image));
+    app.agent_chat.last = Some((text, image, at, files));
     app.agent_chat.state = Some(State::Busy);
     app.agent_chat.stopped = false;
     app.agent_chat.steering = false;
     app.agent_chat.ended = None;
     if let Some(b) = app.agent_chat.backend.as_mut() {
         b.prompt(&parts);
+    }
+}
+
+/// Add a file to the next message. A picture or text file is read and kept (see [`attach`]); a CAD
+/// file is imported into the design at once, as its own component, and the message says so.
+pub fn attach_path(app: &mut SolveApp, path: &str) -> std::result::Result<String, String> {
+    if app.agent_chat.files() >= attach::MAX_FILES {
+        return Err(trf("ui.agent_chat_files_max", &[("max", &attach::MAX_FILES.to_string())]));
+    }
+    let p = std::path::Path::new(path);
+    let file = if attach::kind(p) == attach::Kind::Cad {
+        if !p.is_file() {
+            return Err(trf("ui.agent_chat_file_not_a_file", &[("name", path)]));
+        }
+        // Imported now, as a dropped file is; it joins the message once the import is in, so the
+        // agent is told it was added only when it was. A full queue is refused at once.
+        let name = attach::name_of(p);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut request = crate::file_load::Request::new(path, crate::file_load::Kind::Insert);
+        request.reply = Some(tx);
+        crate::file_load::begin_request(app, request).map_err(|e| trf("ui.agent_chat_import_failed", &[("name", &name), ("error", &e)]))?;
+        return Ok(app.agent_chat.importing(name, rx));
+    } else {
+        // A picture is decoded and a PDF read off the window thread: a large one takes long enough
+        // to stop it.
+        #[cfg(not(target_arch = "wasm32"))]
+        if matches!(attach::kind(p), attach::Kind::Picture | attach::Kind::Pdf) {
+            // A missing file is said at once; reading and decoding wait for the worker.
+            if !p.is_file() {
+                return Err(trf("ui.agent_chat_file_not_a_file", &[("name", &attach::name_of(p))]));
+            }
+            let path = p.to_path_buf();
+            return app.agent_chat.load(attach::name_of(p), move || attach::read(&path));
+        }
+        attach::read(p)?
+    };
+    Ok(app.agent_chat.add_file(file))
+}
+
+/// Add a picture from the clipboard (RGBA rows, as the system gives them) to the next message.
+pub fn attach_rgba(app: &mut SolveApp, width: usize, height: usize, rgba: &[u8]) -> std::result::Result<String, String> {
+    if app.agent_chat.files() >= attach::MAX_FILES {
+        return Err(trf("ui.agent_chat_files_max", &[("max", &attach::MAX_FILES.to_string())]));
+    }
+    let n = app.agent_chat.pasted + 1;
+    let name = format!("pasted picture {n}.png");
+    app.agent_chat.pasted = n;
+    // Encoded off the window thread, as a decoded picture is.
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let rgba = rgba.to_vec();
+        let named = name.clone();
+        app.agent_chat.load(name, move || attach::from_rgba(named, width, height, &rgba))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let file = attach::from_rgba(name, width, height, rgba)?;
+        Ok(app.agent_chat.add_file(file))
+    }
+}
+
+/// Attach the picture on the clipboard, if it holds one.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn paste_picture(app: &mut SolveApp) -> std::result::Result<String, String> {
+    let image = arboard::Clipboard::new().and_then(|mut c| c.get_image()).map_err(|_| tr("ui.agent_chat_no_picture").to_string())?;
+    attach_rgba(app, image.width, image.height, &image.bytes)
+}
+
+/// Files dropped on the chat attach to the next message; called before the app handles drops, so
+/// those taken aren't opened too. A drop is the chat's when the pointer was last seen over it:
+/// the platform gives no position during a drag (winit 0.30), so that is the best the chat can
+/// know; the + button always works.
+pub fn take_drops(app: &mut SolveApp, ctx: &egui::Context) {
+    if !drop_is_ours(app, ctx) || !ctx.input(|i| !i.raw.dropped_files.is_empty()) {
+        return;
+    }
+    let files = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
+    attach_dropped(app, files.iter().map(|f| f.path().to_path_buf()));
+}
+
+/// Whether files dropped now would be the chat's: the pointer was last seen over it.
+pub(crate) fn drop_is_ours(app: &SolveApp, ctx: &egui::Context) -> bool {
+    let Some(rect) = app.agent_chat.drop_rect else { return false };
+    ctx.input(|i| i.pointer.latest_pos()).is_some_and(|p| rect.contains(p))
+}
+
+/// Attach dropped files; a refused one says why in the conversation.
+pub(crate) fn attach_dropped(app: &mut SolveApp, paths: impl Iterator<Item = std::path::PathBuf>) {
+    for p in paths {
+        if p.as_os_str().is_empty() {
+            continue;
+        }
+        if let Err(e) = attach_path(app, &p.to_string_lossy()) {
+            app.agent_chat.notice(e, true);
+        }
     }
 }
 
@@ -954,6 +1466,48 @@ fn pump_tools(app: &mut SolveApp) {
 }
 
 /// Read what the agent sent since the last frame, its tool requests, and the agent search.
+/// Files read off the window thread join the message as they are done, where their ids put them;
+/// a refused one says why.
+pub(crate) fn take_loaded(app: &mut SolveApp, ctx: &egui::Context) {
+    use std::sync::mpsc::TryRecvError;
+    let chat = &mut app.agent_chat;
+    let mut i = 0;
+    while i < chat.loading.len() {
+        let name = chat.loading[i].name.clone();
+        let done = match &chat.loading[i].what {
+            Reading::File(rx) => match rx.try_recv() {
+                Ok(read) => Some(read),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => Some(Err(trf("ui.agent_chat_file_error", &[("name", &name), ("error", "stopped")]))),
+            },
+            Reading::Import(rx) => match rx.try_recv() {
+                Ok(answer) if answer["ok"].as_bool() == Some(true) => Some(Ok(attach::Attachment::imported(name))),
+                Ok(answer) => {
+                    let why = answer["error"].as_str().unwrap_or_default().to_string();
+                    Some(Err(trf("ui.agent_chat_import_failed", &[("name", &name), ("error", &why)])))
+                }
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => Some(Err(trf("ui.agent_chat_import_failed", &[("name", &name), ("error", "stopped")]))),
+            },
+        };
+        match done {
+            None => i += 1,
+            Some(read) => {
+                let l = chat.loading.remove(i);
+                match read {
+                    Ok(file) => {
+                        chat.place(l.id, file);
+                    }
+                    Err(e) => chat.notice(e, true),
+                }
+            }
+        }
+    }
+    if !chat.loading.is_empty() {
+        ctx.request_repaint_after(std::time::Duration::from_millis(50));
+    }
+}
+
 pub fn poll(app: &mut SolveApp, ctx: &egui::Context) {
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(rx) = &app.agent_chat.detecting
@@ -970,6 +1524,7 @@ pub fn poll(app: &mut SolveApp, ctx: &egui::Context) {
         }
         return;
     }
+    take_loaded(app, ctx);
     let events = app.agent_chat.backend.as_mut().map(|b| b.poll()).unwrap_or_default();
     for e in events {
         let ready = matches!(e, Event::Ready { .. });
@@ -984,8 +1539,8 @@ pub fn poll(app: &mut SolveApp, ctx: &egui::Context) {
         if ready {
             apply_saved_model(app);
         }
-        if ready && let Some((text, image)) = app.agent_chat.queued.take() {
-            start_turn(app, text, image);
+        if ready && let Some((text, image, at, files)) = app.agent_chat.queued.take() {
+            start_turn(app, text, image, at, files);
         }
     }
     pump_tools(app);
@@ -1020,7 +1575,7 @@ pub fn set_model(app: &mut SolveApp, model: &str) {
     }
     app.agent_chat.model = model.to_string();
     let agent = app.agent_chat.running_id.clone();
-    if let Some(a) = app.preferences.agents.iter_mut().find(|a| a.id == agent && a.kind == agents::Kind::Api) {
+    if let Some(a) = app.preferences.agents.iter_mut().find(|a| a.id == agent && a.kind.is_api()) {
         a.model = model.to_string();
     }
     app.preferences.agent_models.insert(agent, model.to_string());
@@ -1051,7 +1606,8 @@ pub fn set_mode(app: &mut SolveApp, mode: &str) {
 }
 
 /// `ui.agent_chat` on the control channel (tests and screenshots): `enabled`, `command`, `open`,
-/// `side`, `minimized`, `width`, `refresh`, `connect`, `stop`, `send`, `attach_view`,
+/// `side`, `minimized`, `width`, `refresh`, `connect`, `stop`, `attach` (a file's path, for the
+/// next message), `remove_file` (index), `send`, `attach_view`, `attach_selection`, `pick`,
 /// `permission` (an option id, or `"cancel"`), `approve` (`true`/`false`, the oldest held
 /// request), `cancel` (Stop), `send_now` (steer: stop, then send the queue), `remove_pending` (index), `undo` (the newest message's changes); returns the panel's state.
 pub fn control(app: &mut SolveApp, ctx: &egui::Context, p: &Value) -> Result<Value, String> {
@@ -1069,7 +1625,7 @@ pub fn control(app: &mut SolveApp, ctx: &egui::Context, p: &Value) -> Result<Val
     if let Some(a) = p.get("add_agent") {
         let mut c: agents::AgentConfig = serde_json::from_value(a.clone()).map_err(|e| format!("add_agent: {e}"))?;
         if c.id.is_empty() {
-            c.id = agents::new_id(&app.preferences, if c.kind == agents::Kind::Api { "api" } else { "custom" });
+            c.id = agents::new_id(&app.preferences, if c.kind.is_api() { c.kind.id() } else { "custom" });
         }
         c.key = false;
         app.preferences.agents.retain(|x| x.id != c.id);
@@ -1084,21 +1640,26 @@ pub fn control(app: &mut SolveApp, ctx: &egui::Context, p: &Value) -> Result<Val
             app.agent_chat.agent_id = Some(id.to_string());
         }
     }
-    // The Add agent dialog: open on a kind (`installed`, `custom`, `api`), or `false` to close.
+    // The Add agent dialog: open on a kind (`installed`, `custom`, `api`, `anthropic`), or `false`
+    // to close. `anthropic` is an API endpoint on the Anthropic-compatible protocol.
     if let Some(d) = p.get("add_dialog") {
         match d.as_str() {
             Some(k) => {
-                let kind = match k {
-                    "installed" => settings::AddKind::Installed,
-                    "custom" => settings::AddKind::Custom,
-                    "api" => settings::AddKind::Api,
-                    _ => return Err("add_dialog must be installed, custom, api or false".into()),
+                let (kind, protocol) = match k {
+                    "installed" => (settings::AddKind::Installed, None),
+                    "custom" => (settings::AddKind::Custom, None),
+                    "api" => (settings::AddKind::Api, Some(agents::Protocol::OpenAi)),
+                    "anthropic" => (settings::AddKind::Api, Some(agents::Protocol::Anthropic)),
+                    _ => return Err("add_dialog must be installed, custom, api, anthropic or false".into()),
                 };
                 settings::open_add(app);
                 if let Some(a) = app.agent_chat.settings.add.as_mut() {
                     a.kind = kind;
                     if kind != settings::AddKind::Api {
                         a.name.clear();
+                    }
+                    if let Some(protocol) = protocol {
+                        settings::choose_preset(a, protocol, 0);
                     }
                 }
             }
@@ -1129,12 +1690,28 @@ pub fn control(app: &mut SolveApp, ctx: &egui::Context, p: &Value) -> Result<Val
     if let Some(m) = p.get("minimized").and_then(Value::as_bool) {
         app.preferences.agent_chat_minimized = m;
     }
+    if let Some(w) = p.get("popped").and_then(Value::as_bool) {
+        app.preferences.agent_chat_popped = w;
+    }
     if let Some(w) = p.get("width").and_then(Value::as_f64).filter(|w| w.is_finite()) {
         app.preferences.agent_chat_width = (w as f32).clamp(panel::MIN_WIDTH, panel::MAX_WIDTH);
         panel::forget_width(ctx);
     }
+    if let Some(path) = p.get("attach").and_then(Value::as_str) {
+        attach_path(app, path)?;
+    }
+    if let Some(n) = p.get("remove_file").and_then(Value::as_u64) {
+        let n = usize::try_from(n).ok().filter(|n| *n < app.agent_chat.attachments.len()).ok_or("no such file on the next message")?;
+        app.agent_chat.attachments.remove(n);
+    }
     if let Some(a) = p.get("attach_view").and_then(Value::as_bool) {
         app.agent_chat.attach_view = a;
+    }
+    if let Some(a) = p.get("attach_selection").and_then(Value::as_bool) {
+        app.agent_chat.attach_selection = a;
+    }
+    if p.get("pick").and_then(Value::as_bool) == Some(true) {
+        start_pick(app);
     }
     if let Some(pick) = p.get("picker").and_then(Value::as_bool) {
         app.agent_chat.picking = Some(pick);
@@ -1193,7 +1770,7 @@ pub fn status(app: &SolveApp) -> Value {
         .items
         .iter()
         .map(|i| match i {
-            Item::User { text, image } => json!({"user": text, "image": image}),
+            Item::User { text, image, pictures, context, files } => json!({"user": text, "image": image, "pictures": pictures.len(), "files": files, "context": context.items.iter().map(|i| json!({"label": i.label, "detail": i.detail})).collect::<Vec<_>>(), "context_omitted": context.omitted}),
             Item::Agent { thought, text } => json!({"agent": text, "thought": thought}),
             Item::Tool { id, title, kind, status, output } => {
                 json!({"tool": id, "title": title, "kind": kind, "status": status.map(|s| format!("{s:?}")), "output": output})
@@ -1222,7 +1799,7 @@ pub fn status(app: &SolveApp) -> Value {
         "features": app.preferences.ai_features,
         "toolbarButton": app.preferences.ai_toolbar_button,
         "permissions": app.preferences.ai_permissions.id(),
-        "agents": agents::entries(app).iter().map(|e| json!({"id": e.id, "name": e.name, "kind": if e.kind == agents::Kind::Api { "api" } else { "acp" }, "found": e.found, "version": e.version, "login": e.login})).collect::<Vec<_>>(),
+        "agents": agents::entries(app).iter().map(|e| json!({"id": e.id, "name": e.name, "kind": e.kind.id(), "found": e.found, "version": e.version, "login": e.login})).collect::<Vec<_>>(),
         "currentAgent": agents::current(app).map(|e| e.id),
         "models": c.models.iter().map(|m| json!({"id": m.id, "name": m.name, "description": m.description})).collect::<Vec<_>>(),
         "model": c.model,
@@ -1231,16 +1808,22 @@ pub fn status(app: &SolveApp) -> Value {
         "open": c.open,
         "side": app.preferences.agent_chat_side,
         "minimized": app.preferences.agent_chat_minimized,
+        "popped": app.preferences.agent_chat_popped,
+        "window": app.preferences.agent_chat_window,
         "width": app.preferences.agent_chat_width,
         "state": c.state().id(),
         "agent": c.agent,
         "images": c.images,
+        "documents": c.documents,
         "authStatus": c.auth_status,
         "authMethods": c.auth.iter().map(|m| json!({"id": m.id, "name": m.name, "kind": match &m.kind { acp::AuthKind::Agent => "agent", acp::AuthKind::Terminal { .. } => "terminal", acp::AuthKind::EnvVar { .. } => "env_var" }})).collect::<Vec<_>>(),
         "toolsPort": c.tools_port,
         "pid": pid,
         "waiting": c.waiting(),
-        "pending": c.pending.iter().map(|p| json!({"text": p.text, "image": p.image})).collect::<Vec<_>>(),
+        "picked": c.picked_context.items.iter().map(|i| json!({"label": i.label, "detail": i.detail})).collect::<Vec<_>>(),
+        "pending": c.pending.iter().map(|p| json!({"text": p.text, "image": p.image, "context": p.context.total(), "files": p.files.iter().map(|f| f.name.clone()).collect::<Vec<_>>()})).collect::<Vec<_>>(),
+        "attachments": c.attachments.iter().map(|f| f.name.clone()).collect::<Vec<_>>(),
+        "loading": c.loading.iter().map(|f| f.name.clone()).collect::<Vec<_>>(),
         "stopped": c.stopped,
         "turn": c.turn.as_ref().map(|t| json!({"changes": t.changes, "requests": t.requests})),
         "detection": detection,

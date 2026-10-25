@@ -5,7 +5,7 @@
 //! have a direction (planar faces, straight edges), the angle.
 
 use serde_json::{Value, json};
-use solidcraft_geom::{Mesh, Vec3};
+use solidcraft_geom::{Mesh, UnitVec3, Vec3};
 
 use super::measure_shape::{Shape, Slot, add_round, centre};
 use crate::params::bad;
@@ -84,7 +84,7 @@ struct Item {
 
 /// The circle through a polyline's points (all on one within `tol`): a fallback for edges the
 /// kernel can't name (mesh bodies).
-fn fit_circle(pts: &[Vec3], tol: f64) -> Option<(Vec3, Vec3, f64)> {
+fn fit_circle(pts: &[Vec3], tol: f64) -> Option<(Vec3, UnitVec3, f64)> {
     let n = pts.len().checked_sub(1)?;
     let (a, b, c) = (*pts.first()?, *pts.get(n / 3)?, *pts.get(2 * n / 3)?);
     let (u, v) = (b - a, c - a);
@@ -93,7 +93,7 @@ fn fit_circle(pts: &[Vec3], tol: f64) -> Option<(Vec3, Vec3, f64)> {
         return None;
     }
     let center = a + (v * u.len2() - u * v.len2()).cross(w) * (1.0 / (2.0 * w.len2()));
-    let axis = w.normalized()?;
+    let axis = w.unit()?;
     let radius = center.dist(a);
     let on = pts.iter().all(|p| (p.dist(center) - radius).abs() <= tol && (*p - center).dot(axis).abs() <= tol);
     (on && radius.is_finite()).then_some((center, axis, radius))
@@ -123,7 +123,7 @@ fn edge_round(b: &solidcraft_doc::ModelBody, m: &Mesh, index: usize, whole: bool
 }
 
 /// Points along a circle or arc (`angle` from `start` about `axis`).
-fn arc_points(center: Vec3, axis: Vec3, start: Vec3, angle: f64) -> Vec<Vec3> {
+fn arc_points(center: Vec3, axis: UnitVec3, start: Vec3, angle: f64) -> Vec<Vec3> {
     let x = start - center;
     let y = axis.cross(x);
     let n = 128;
@@ -157,7 +157,7 @@ fn sketch_curve(ss: &solidcraft_doc::SolvedSketch, id: &str) -> Option<Item> {
     let sk = &ss.sketch;
     let c = sk.curves.get(sk.curve_index(id)?)?;
     let at = |i: usize| sk.points.get(i).map(|p| ss.plane.to_world(p.pos));
-    let normal = ss.plane.normal();
+    let normal = ss.plane.normal().unit()?;
     let (shape, pts) = match c.kind {
         CurveKind::Circle { c, r } => {
             let center = at(c)?;
@@ -203,7 +203,7 @@ fn profile(ss: &solidcraft_doc::SolvedSketch, index: usize) -> Option<Item> {
     let pr = ss.profiles.get(index)?;
     let outline: Vec<Vec3> = pr.region.outer.polyline(1e-3).iter().map(|p| ss.plane.to_world(*p)).collect();
     let mut json = json!({"type": "profile", "area_mm2": pr.region.area()});
-    let normal = ss.plane.normal();
+    let normal = ss.plane.normal().unit()?;
     // Arcs about one centre merge (a circle is two halves); straight pieces stay as they are.
     let mut arcs: Vec<(Vec2, f64, f64)> = Vec::new();
     let mut lines: Vec<(Vec2, Vec2)> = Vec::new();
@@ -242,7 +242,7 @@ fn profile(ss: &solidcraft_doc::SolvedSketch, index: usize) -> Option<Item> {
             slot = Some(s);
         }
     }
-    let planar = Some(normal);
+    let planar = Some(*normal);
     let geo = Geo::Points(densify(&outline));
     let shape = if matches!(shape, Shape::Other) { Shape::Plane { point: ss.plane.origin, normal } } else { shape };
     Some(Item { geo, dir: planar, json, shape, slot })
@@ -308,7 +308,7 @@ fn describe(s: &Session, sel: &Sel) -> Option<Item> {
             let patch = m.surface_patch(*index);
             let tris = patch.iter().flat_map(|f| face_tris(&m, *f)).collect::<Vec<_>>();
             let area: f64 = tris.iter().map(|[a, b, c]| (*b - *a).cross(*c - *a).len() * 0.5).sum();
-            let normals: Vec<Vec3> = tris.iter().filter_map(|[a, b, c]| (*b - *a).cross(*c - *a).normalized()).collect();
+            let normals: Vec<UnitVec3> = tris.iter().filter_map(|[a, b, c]| (*b - *a).cross(*c - *a).unit()).collect();
             let planar = normals.first().copied().filter(|n0| normals.iter().all(|n| n.dot(*n0) > 1.0 - 1e-6));
             let mut json = json!({"type": "face", "area_mm2": area, "planar": planar.is_some()});
             let verts: Vec<Vec3> = tris.iter().flat_map(|t| t.iter().copied()).collect();
@@ -328,7 +328,7 @@ fn describe(s: &Session, sel: &Sel) -> Option<Item> {
             if let Some(sl) = &slot {
                 json["slot"] = sl.json();
             }
-            Some(Item { geo: Geo::Tris(tris), dir: planar, json, shape, slot })
+            Some(Item { geo: Geo::Tris(tris), dir: planar.map(Vec3::from), json, shape, slot })
         }
         Sel::Body { name } => {
             let m = st.body(name)?.mesh();
@@ -408,6 +408,20 @@ fn closest(a: &Geo, b: &Geo) -> Option<(Vec3, Vec3)> {
             [ab, ba].into_iter().flatten().min_by(|x, y| x.0.dist(x.1).total_cmp(&y.0.dist(y.1)))
         }
     }
+}
+
+/// Two straight edges sharing exactly one end define rays away from that corner. Their
+/// stored directions are arbitrary, so use the rays to preserve obtuse (and straight) angles.
+/// Separate edges and coincident copies have no unique corner and keep the undirected angle.
+fn corner_cos(a: Shape, b: Shape) -> Option<f64> {
+    let (Shape::Line { a, b }, Shape::Line { a: c, b: d }) = (a, b) else { return None };
+    let tol = a.dist(b).min(c.dist(d)).max(1.0) * 1e-6;
+    let mut corners = [(a, b, c, d), (a, b, d, c), (b, a, c, d), (b, a, d, c)].into_iter().filter(|(p, _, q, _)| p.dist(*q) <= tol);
+    let (p, end_a, q, end_b) = corners.next()?;
+    if corners.next().is_some() {
+        return None;
+    }
+    Some((end_a - p).normalized()?.dot((end_b - q).normalized()?))
 }
 
 /// `inspect.measure` with `items` (one or two selections).
@@ -509,9 +523,8 @@ pub(crate) fn measure_items(s: &Session, items: &Value) -> Result<Value> {
         out["measure"] = json!(if c.is_some() { "center" } else { "min" });
         if let (Some(da), Some(db)) = (a.dir, b.dir) {
             let both_faces = matches!(sels.as_slice(), [Sel::Face { .. }, Sel::Face { .. }]);
-            let cos = da.dot(db).clamp(-1.0, 1.0);
-            let cos = if both_faces { cos } else { cos.abs() };
-            out["angle_deg"] = json!(cos.acos().to_degrees());
+            let cos = if both_faces { da.dot(db) } else { corner_cos(a.shape, b.shape).unwrap_or_else(|| da.dot(db).abs()) };
+            out["angle_deg"] = json!(cos.clamp(-1.0, 1.0).acos().to_degrees());
         }
     }
     Ok(out)

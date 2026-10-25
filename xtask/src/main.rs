@@ -1,17 +1,21 @@
 //! Workspace tooling: `cargo xtask <command>`.
 //!
-//! Pure Rust (std, serde_json and sha2). External tools (`cargo`) are invoked through
-//! `std::process::Command`.
+//! Rust workspace tooling. External tools (`cargo`, and Python 3.11+ for the
+//! original icon collection) are invoked through `std::process::Command`.
 
 mod app_icons;
 mod assets;
 mod book;
 mod features;
 mod i18n;
+mod icons;
 mod layers;
 mod licences;
 mod lists;
+mod render_assets;
 mod test;
+mod test_nextest;
+mod ui_containers;
 mod web_offline;
 mod web_offline_test;
 
@@ -22,9 +26,11 @@ const USAGE: &str = "\
 usage: cargo xtask <command>
 
 commands:
+  ui-containers   enforce the universal container for all UI hosts
   layers          enforce the crate dependency layering (plan/architecture.md §3)
   assets          check that every non-code asset file is attributed in ATTRIBUTION.md
   app-icons       regenerate shared app-icon exports for Linux, FreeBSD and Windows
+  icons           validate UI icon standards, discovery and review-tool behavior (Python 3.11+)
   features        list SolidCraft's commands by area in docs/features.md (from the registry)
   i18n [--check | --add-missing]
                   report how complete the message catalogs in assets/locales are:
@@ -53,15 +59,17 @@ commands:
                   message catalogs in assets/locales); --fix sorts them
   test [CARGO ARGS] [-- TEST ARGS]
                   build the tests with the ci profile, then run every test binary at once
-                  (and the doc tests alongside)
+                  (and the doc tests alongside); SOLIDCRAFT_TEST_JOBS=N bounds concurrent test
+                  and side commands for test/ci; inherited per-test/worker overrides are unchanged
   wasm            cargo check every library crate and the web app for wasm32-unknown-unknown
   web-offline [DIR]
                   write the web build's service worker (sw.js: offline use, updates); run by
                   Trunk after release builds of apps/solidcraft-web, or on a built site in DIR
+  web-api-test [--site DIR]  Test the command API in a real browser build (default: dist/web)
   web-offline-test [--site DIR]
                   check in headless Chrome that the web app works offline and updates to a new
                   build (a stand-in app, or the web build in DIR such as dist/web)
-  ci              fmt --check, assets, licences --check, lists, layers, clippy -D warnings, then the tests
+  ci              fmt --check, assets, icons, licences --check, lists, layers, ui-containers, clippy -D warnings, then the tests
                   with the wasm check alongside, then web-offline-test when Chrome is installed
                   (stops at the first failing step)
 ";
@@ -71,7 +79,9 @@ fn main() -> ExitCode {
     let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
     let result = match args.first().map(String::as_str) {
         Some("layers") => cmd_layers(),
+        Some("ui-containers") => ui_containers::run(&root()),
         Some("assets") => assets::run(&root()),
+        Some("icons") => icons::run(&root()),
         Some("app-icons") => app_icons::run(&root()),
         Some("features") => features::run(&root()),
         Some("i18n") => i18n::run(&root(), &rest),
@@ -93,6 +103,10 @@ fn main() -> ExitCode {
         Some("web-offline-test") => {
             let site = rest.iter().position(|a| *a == "--site").and_then(|i| rest.get(i + 1)).copied();
             web_offline_test::run(&root(), site, true)
+        }
+        Some("web-api-test") => {
+            let site = rest.iter().position(|a| *a == "--site").and_then(|i| rest.get(i + 1)).copied().unwrap_or("dist/web");
+            web_offline_test::run_api(site)
         }
         Some("-h" | "--help" | "help") | None => {
             print!("{USAGE}");
@@ -362,14 +376,16 @@ fn cmd_ci() -> Result<(), String> {
     c.args(["fmt", "--all", "--", "--check"]);
     run(c, "cargo fmt --check")?;
     assets::run(&root())?;
+    icons::run(&root())?;
     licences::run(&root(), true)?;
     lists::run(&root(), false)?;
     cmd_layers()?;
+    ui_containers::run(&root())?;
     let mut c = cargo();
     c.args(["clippy", "--workspace", "--all-targets", "--profile", "ci", "--", "-D", "warnings"]);
     run(c, "cargo clippy -D warnings")?;
     let (wasm, n) = wasm_check()?;
-    test::run(&[], &[], vec![(format!("wasm32-unknown-unknown check ({n} crates)"), wasm), test::doc_tests(&[], &[])])?;
+    test_nextest::run_selected(vec![(format!("wasm32-unknown-unknown check ({n} crates)"), wasm), test::doc_tests(&[], &[])])?;
     web_offline_test::run(&root(), None, false)?;
     eprintln!("ci: all gates passed");
     Ok(())

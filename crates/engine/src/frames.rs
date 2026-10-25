@@ -36,7 +36,8 @@ enum K {
     /// component frame, whichever component the geometry under it belongs to (a sketch in the
     /// root on a moved component's face finds the face where it is shown).
     Here,
-    /// A plane object for a new sketch or canvas: into the active component's frame.
+    /// A plane object for a new sketch or canvas (or a mirror's copies): into the active
+    /// component's frame.
     HerePlane,
 }
 
@@ -45,7 +46,9 @@ use K::*;
 /// The parameters each command takes in world coordinates.
 fn table(id: &str) -> &'static [(&'static str, K)] {
     match id {
-        "solid.extrude" => &[("face", Pick), ("face_body", Body), ("from", Make), ("to", Make), ("targets", Body), ("participants", Body)],
+        "solid.extrude" => {
+            &[("face", Pick), ("faces", Picks), ("face_body", Body), ("from", Make), ("to", Make), ("targets", Body), ("participants", Body)]
+        }
         "solid.revolve" => &[("face", Pick), ("axis", Axis), ("to", Make), ("targets", Body), ("participants", Body)],
         "solid.box" | "solid.sphere" => &[("corner", Make), ("center", Make)],
         "solid.cylinder" | "solid.coil" | "solid.torus" => &[("base", Make), ("center", Make), ("axis", Dir)],
@@ -59,7 +62,10 @@ fn table(id: &str) -> &'static [(&'static str, K)] {
         "solid.press_pull" => &[("face", Pick), ("edges", Picks)],
         "solid.replace_face" => &[("faces", Picks), ("target_face", Pick), ("target", Plane), ("body", Body)],
         "solid.align" => &[("from", Pick), ("from_face", Pick), ("to", Pick), ("to_face", Pick), ("bodies", Body)],
-        "solid.mirror" | "solid.split_body" => &[("plane", Plane), ("bodies", Body), ("body", Body)],
+        // A mirror keeps the placement its bodies were picked at (`cmd::features::placed_bodies`);
+        // its plane is in the active component, where the copies go.
+        "solid.mirror" => &[("plane", HerePlane)],
+        "solid.split_body" => &[("plane", Plane), ("bodies", Body), ("body", Body)],
         "plastic.boss" | "plastic.snap_fit" | "plastic.rest" => {
             &[("position", Pick), ("direction", Dir), ("hook", Dir), ("along", Dir), ("body", Body)]
         }
@@ -304,6 +310,20 @@ pub fn mapped() -> bool {
     MAPPED.with(std::cell::Cell::get)
 }
 
+/// Author generated geometry directly in the active component's local frame.
+/// Restores the enclosing command's mapping state, including on an error.
+pub(crate) fn local_geometry() -> LocalGeometry {
+    LocalGeometry(MAPPED.with(|m| m.replace(true)))
+}
+
+pub(crate) struct LocalGeometry(bool);
+
+impl Drop for LocalGeometry {
+    fn drop(&mut self) {
+        MAPPED.with(|m| m.set(self.0));
+    }
+}
+
 /// A command running inside another (its parameters are already in component frames).
 pub struct Nested;
 
@@ -331,6 +351,15 @@ impl Drop for Nested {
 
 /// `params` with world picks mapped into component frames (`None`: nothing to change).
 pub fn to_local(s: &Session, id: &str, params: &Value) -> Option<Value> {
+    if id == "library.apply" {
+        // Library targets are the same world selections as appearance.assign,
+        // nested one level down. Convert at the outer boundary exactly once;
+        // run_nested subsequently receives the component-local picks and names.
+        let targets = to_local(s, "appearance.assign", params.get("targets")?)?;
+        let mut out = params.clone();
+        out["targets"] = targets;
+        return Some(out);
+    }
     if id == "timeline.redefine" {
         let cmd = params.get("command")?.as_str()?;
         let key = params.get("feature").and_then(|v| v.as_str().map(str::to_string).or_else(|| v.as_u64().map(|id| id.to_string())))?;

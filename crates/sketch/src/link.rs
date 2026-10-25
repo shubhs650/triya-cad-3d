@@ -7,7 +7,7 @@
 //! constants; they still bound profiles and take constraints and dimensions like any curve.
 
 use serde::{Deserialize, Serialize};
-use solidcraft_geom::{Vec2, Vec3};
+use solidcraft_geom::{Aabb2, Vec2, Vec3};
 
 use crate::model::{Curve, CurveKind, Result, Sketch, SketchError, in_range, radius_in_range};
 
@@ -256,7 +256,7 @@ impl LinkGeom {
                 (!*periodic || (!*control && *degree == 3 && crate::periodic_beziers(pts).is_ok()))
                     && (2..=crate::curves::MAX_SPLINE_POINTS).contains(&pts.len())
                     && pts.iter().all(ok)
-                    && (1..=7).contains(degree)
+                    && (1..=solidcraft_geom::MAX_BEZIER_DEGREE as u8).contains(degree)
             }
         }
     }
@@ -294,6 +294,8 @@ fn layout(geom: &[LinkGeom]) -> Result<Layout> {
         pts.push(p);
         pts.len() - 1
     }
+    // A face seen edge-on projects its edges onto one another; one line stands for them.
+    let same_line = |cs: &[LCurve], a: usize, b: usize| cs.iter().any(|k| matches!(*k, LCurve::Line(x, y) if (x, y) == (a, b) || (x, y) == (b, a)));
     for g in geom.iter().filter(|g| g.finite()) {
         match g.clone() {
             LinkGeom::Point(p) => {
@@ -304,7 +306,7 @@ fn layout(geom: &[LinkGeom]) -> Result<Layout> {
             }
             LinkGeom::Line(a, b) => {
                 let (a, b) = (pt(&mut l.pts, a), pt(&mut l.pts, b));
-                if a != b {
+                if a != b && !same_line(&l.curves, a, b) {
                     l.curves.push(LCurve::Line(a, b));
                 }
             }
@@ -356,7 +358,31 @@ fn layout(geom: &[LinkGeom]) -> Result<Layout> {
     };
     let curves = l.curves.clone();
     l.lone.retain(|i| !used(*i, &curves));
+    // A face seen edge-on: every edge falls on one line, and one line end to end stands for
+    // them all (its vertices can be projected one by one).
+    if l.lone.is_empty() && l.curves.len() > 1 && flat(&l.curves, &l.pts) {
+        let (a, b) = extent(&l.pts);
+        l = Layout { pts: vec![a, b], lone: Vec::new(), curves: vec![LCurve::Line(0, 1)] };
+    }
     Ok(l)
+}
+
+/// The two points farthest apart.
+fn extent(pts: &[Vec2]) -> (Vec2, Vec2) {
+    let farthest = |from: Vec2| pts.iter().copied().max_by(|p, q| p.dist(from).total_cmp(&q.dist(from))).unwrap_or(from);
+    let a = farthest(pts.first().copied().unwrap_or(Vec2::ZERO));
+    (a, farthest(a))
+}
+
+/// Straight pieces along one line: a face seen edge-on, whose silhouette encloses nothing.
+fn flat(curves: &[LCurve], pts: &[Vec2]) -> bool {
+    if !curves.iter().all(|c| matches!(c, LCurve::Line(..))) {
+        return false;
+    }
+    let (a, b) = extent(pts);
+    let Some(dir) = (b - a).normalized() else { return true };
+    let tol = MERGE_TOL.max(1e-9 * a.dist(b));
+    pts.iter().all(|p| (*p - a).cross(dir).abs() <= tol)
 }
 
 fn same_shape(a: &LCurve, b: &LCurve) -> bool {
@@ -520,7 +546,8 @@ impl Sketch {
         self.links.iter().find(|l| l.id == id)
     }
 
-    /// The expressions of the sketch's texts, each with what it sets (`Text height`…).
+    /// The expressions of the sketch's texts and of its points placed by parameters, each with
+    /// what it sets (`Text height`, `Point X`…).
     pub fn text_exprs(&self) -> Vec<(&'static str, &String)> {
         self.links
             .iter()
@@ -529,6 +556,7 @@ impl Sketch {
                 _ => None,
             })
             .flatten()
+            .chain(self.points.iter().filter_map(|p| p.exprs.as_deref()).flat_map(crate::PointExprs::list))
             .collect()
     }
 
@@ -541,6 +569,7 @@ impl Sketch {
                 _ => None,
             })
             .flatten()
+            .chain(self.points.iter_mut().filter_map(|p| p.exprs.as_deref_mut()).flat_map(crate::PointExprs::list_mut))
             .collect()
     }
 
@@ -678,6 +707,7 @@ impl Sketch {
             && lay.curves.len() <= 512
             && lay.pts.len() <= 512
             && lay.curves.iter().all(|c| matches!(c, LCurve::Line(..) | LCurve::Arc(..) | LCurve::Circle(..)))
+            && !flat(&lay.curves, &lay.pts)
             && !loops::valid(&lay.curves, &lay.pts)
         {
             self.set_link_lost(id, true);
@@ -819,13 +849,14 @@ impl Sketch {
         {
             let old: Vec<Vec2> = points.iter().filter_map(|i| self.point(*i)).collect();
             let normalized = |ps: &[Vec2]| -> Vec<Vec2> {
-                let lo = ps.iter().fold(Vec2::new(f64::INFINITY, f64::INFINITY), |a, p| Vec2::new(a.x.min(p.x), a.y.min(p.y)));
-                let hi = ps.iter().fold(Vec2::new(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, p| Vec2::new(a.x.max(p.x), a.y.max(p.y)));
-                ps.iter().map(|p| Vec2::new((p.x - lo.x) / (hi.x - lo.x).max(1e-9), (p.y - lo.y) / (hi.y - lo.y).max(1e-9))).collect()
+                let b: Aabb2 = ps.iter().copied().collect();
+                ps.iter().map(|p| b.relative(*p)).collect()
             };
             let loop_roles_required = self.link(id).is_some_and(|l| matches!(l.source, LinkSource::Face { .. }))
                 && cur.iter().chain(&lay.curves).all(|c| matches!(c, LCurve::Line(..) | LCurve::Arc(..) | LCurve::Circle(..)))
-                && lay.lone.is_empty();
+                && lay.lone.is_empty()
+                && !flat(cur, &old)
+                && !flat(&lay.curves, &lay.pts);
             let loop_roles = loop_roles_required.then(|| loops::roles(cur, &old, &lay.curves, &lay.pts)).flatten();
             if loop_roles_required && loop_roles.is_none() {
                 self.set_link_lost(id, true);

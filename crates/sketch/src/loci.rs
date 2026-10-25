@@ -829,7 +829,7 @@ pub(crate) fn read(sk: &Sketch, before: &dyn Fn(usize) -> Option<Vec2>, on_curve
     let rounds: Vec<Option<Round>> = (0..m).map(|k| round_of(sk, k)).collect();
     let line = |l: usize| lines.get(l).copied().flatten();
     let round = |k: usize| rounds.get(k).copied().flatten();
-    let cons: Vec<&ConstraintKind> = sk.constraints.iter().filter(|c| !c.driven).map(|c| &c.kind).collect();
+    let cons: Vec<&ConstraintKind> = sk.constraints.iter().filter(|c| !c.driven && !sk.follows_its_source(&c.kind)).map(|c| &c.kind).collect();
     let dim = |v: f64| (v.is_finite() && (0.0..=MAX_COORD).contains(&v)).then_some(v);
 
     // Radii and lengths the dimensions set, also through equal curves.
@@ -885,6 +885,14 @@ pub(crate) fn read(sk: &Sketch, before: &dyn Fn(usize) -> Option<Vec2>, on_curve
                 let d = if matches!(**k, LinearDiameter { .. }) { value / 2.0 } else { value };
                 if let Some(d) = dim(d) {
                     ties.push(Tie::Offset { p, l, len: Len::Value(d) });
+                }
+            }
+            // The centre lies radius ± the gap from the line, on its side in the reference.
+            LineCircleDistance { l, c, value, inside } if line(l).is_some() => {
+                if let (Some(rd), Some(r)) = (round(c), r_of(c))
+                    && let Some(d) = dim(if inside { r - value } else { r + value })
+                {
+                    ties.push(Tie::Offset { p: rd.c, l, len: Len::Value(d) });
                 }
             }
             Tangent { a, b } => {

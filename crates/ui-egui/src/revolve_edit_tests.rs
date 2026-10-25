@@ -94,7 +94,7 @@ fn to_object_noop_retains_dormant_secondary_angle_and_downstream_dimension() {
 #[test]
 fn rotated_owner_to_point_remains_exact_on_noop_edit() {
     let mut h = Harness::new();
-    let owner = h.app.run("component.create", json!({"name":"Owner"})).unwrap();
+    let owner = h.app.run("component.create", json!({"name":"Owner","grounded":false})).unwrap();
     let mut h = make_params(h, json!({"origin":[0,0,0],"dir":[0,2,0]}), json!({"to":[0,2,12],"angle":"45 deg"}));
     h.app.run("occurrence.move", json!({"occurrence":owner["occurrence"],"translate":[100,0,20],"axis":[0,0,1],"angle":"17 deg"})).unwrap();
     h.app.run("component.create", json!({"name":"Other","parent":0})).unwrap();
@@ -127,8 +127,11 @@ fn second_active_occurrence_noop_preserves_definition_axis_target_and_instances(
     let placed = preview.after.bodies.iter().find(|body| body.mesh().bounds().center().x > 50.0).unwrap();
     assert!(placed.mesh().triangles.len() > 10);
     assert_eq!(placed.mesh().bounds(), before.iter().find(|(_, bounds)| bounds.center().x > 50.0).unwrap().1);
-    assert!(h.widget("↖ Custom Axis").is_some());
+    assert_eq!(crate::scenario::count_of("dialog:selection:Axis:filled"), Some(1.0), "the stored custom axis stays selected");
+    // In the floating shell the read-only Sweep badge overlaps OK at this placement.
+    // It must not intercept the dialog's click or leave the timeline rolled back.
     h.step(&json!({"widget":"OK"})).unwrap();
+    assert!(h.app.dialog.is_none(), "OK must apply even underneath the Sweep badge");
     assert_eq!(serde_json::to_value(&h.app.session.doc.find_feature("Turn").unwrap().kind).unwrap(), original);
     let after: Vec<_> = h.app.session.world_state().bodies.iter().map(|b| (b.name.clone(), b.mesh().bounds())).collect();
     assert_eq!(after, before);
@@ -189,7 +192,7 @@ fn revolve_angle_edit_preserves_axis_downstream_binding_and_one_undo() {
 #[test]
 fn rotated_owner_explicit_axis_is_lossless_with_another_component_active() {
     let mut h = Harness::new();
-    let owner = h.app.run("component.create", json!({"name":"Owner"})).unwrap();
+    let owner = h.app.run("component.create", json!({"name":"Owner","grounded":false})).unwrap();
     let mut h = make(h, json!({"origin":[0,0,0],"dir":[0,2,0]}));
     h.app.run("occurrence.move", json!({"occurrence":owner["occurrence"],"translate":[100,0,20],"axis":[0,0,1],"angle":"17 deg"})).unwrap();
     h.app.run("component.create", json!({"name":"Other","parent":0})).unwrap();
@@ -211,7 +214,7 @@ fn rotated_owner_explicit_axis_is_lossless_with_another_component_active() {
 fn world_and_sketch_axis_handles_follow_authoring_occurrence() {
     for selected in [json!("Y"), json!("y")] {
         let mut h = Harness::new();
-        let owner = h.app.run("component.create", json!({"name":"Owner"})).unwrap();
+        let owner = h.app.run("component.create", json!({"name":"Owner","grounded":false})).unwrap();
         let mut h = make(h, selected);
         h.app.run("occurrence.move", json!({"occurrence":owner["occurrence"],"translate":[100,0,20],"axis":[0,0,1],"angle":"17 deg"})).unwrap();
         let original = axis(&h);

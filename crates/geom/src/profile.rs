@@ -6,7 +6,7 @@ use std::f64::consts::TAU;
 
 use serde::{Deserialize, Serialize};
 
-use crate::Vec2;
+use crate::{Aabb2, Ring, Vec2};
 
 /// One boundary segment in sketch coordinates.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -38,26 +38,35 @@ pub enum Seg2 {
         b: Vec2,
         w: f64,
     },
-    /// Bézier of degree `n` (4…7) over `p[0..=n]` (the rest unused): pieces of higher-degree
-    /// splines.
+    /// Bézier of degree `n` (4…[`MAX_BEZIER_DEGREE`]) over `p[0..=n]` (the rest unused): pieces of
+    /// higher-degree splines.
     Bezier {
         n: u8,
-        p: [Vec2; 8],
+        p: [Vec2; MAX_BEZIER_CTRL],
     },
 }
 
-/// Highest degree of [`Seg2::Bezier`].
-pub const MAX_BEZIER_DEGREE: usize = 7;
+/// Highest degree of [`Seg2::Bezier`]: a degree-9 piece is the single Bézier a G4 blend curve
+/// (`sketch.blend_curve` with `continuity: "g4"`) is made of.
+pub const MAX_BEZIER_DEGREE: usize = 9;
 
-/// A Bézier segment over `pts` (2…8 points): a line, a cubic or a higher-degree piece. A
-/// quadratic becomes a conic of weight 1.
+/// Control points a [`Seg2::Bezier`] carries: its highest degree plus one (the unused tail is
+/// zero).
+pub const MAX_BEZIER_CTRL: usize = MAX_BEZIER_DEGREE + 1;
+
+/// Highest derivative order [`Seg2::derivatives`] hands out, and therefore the highest
+/// continuity order a blend curve can be built for (4 = G4).
+pub const MAX_DERIVATIVE_ORDER: usize = 4;
+
+/// A Bézier segment over `pts` (2…[`MAX_BEZIER_CTRL`] points): a line, a cubic or a higher-degree
+/// piece. A quadratic becomes a conic of weight 1.
 pub fn bezier(pts: &[Vec2]) -> Option<Seg2> {
     Some(match *pts {
         [a, b] => Seg2::Line { a, b },
         [a, apex, b] => Seg2::Conic { a, apex, b, w: 1.0 },
         [p0, p1, p2, p3] => Seg2::Cubic { p0, p1, p2, p3 },
-        _ if pts.len() <= MAX_BEZIER_DEGREE + 1 => {
-            let mut p = [Vec2::ZERO; 8];
+        _ if (2..=MAX_BEZIER_CTRL).contains(&pts.len()) => {
+            let mut p = [Vec2::ZERO; MAX_BEZIER_CTRL];
             for (d, s) in p.iter_mut().zip(pts) {
                 *d = *s;
             }
@@ -86,6 +95,38 @@ fn casteljau(c: &[Vec2], t: f64) -> (Vec2, Vec<Vec2>, Vec<Vec2>) {
     (left.last().copied().unwrap_or(Vec2::ZERO), left, right)
 }
 
+/// Binomial coefficient `C(n, k)` for the small orders the derivative rules need (0 when
+/// `k > n`).
+pub(crate) fn binom(n: usize, k: usize) -> f64 {
+    if k > n {
+        return 0.0;
+    }
+    (0..k.min(n - k)).fold(1.0, |v, i| v * (n - i) as f64 / (i + 1) as f64)
+}
+
+/// Derivatives 1…`order` of the Bézier over `c` (degree `c.len() - 1`) at `t`: the j-th forward
+/// difference of the control polygon, scaled by `n!/(n − j)!` and evaluated by de Casteljau.
+/// Exact in exact arithmetic, zero above the degree, `None` for non-finite input.
+fn bezier_derivatives(c: &[Vec2], t: f64, order: usize) -> Option<Vec<Vec2>> {
+    if !t.is_finite() || c.is_empty() || c.iter().any(|p| !p.is_finite()) {
+        return None;
+    }
+    let n = c.len() - 1;
+    let mut diffs = c.to_vec();
+    let mut scale = 1.0;
+    let mut out = Vec::with_capacity(order);
+    for j in 1..=order {
+        if diffs.len() < 2 {
+            out.push(Vec2::ZERO);
+            continue;
+        }
+        diffs = diffs.windows(2).map(|w| w[1] - w[0]).collect();
+        scale *= (n + 1 - j) as f64;
+        out.push(casteljau(&diffs, t).0 * scale);
+    }
+    Some(out)
+}
+
 /// Gauss–Legendre nodes and weights on [0, 1] (5 points).
 const GL5: [(f64, f64); 5] = [
     (0.046_910_077_030_668, 0.118_463_442_528_095),
@@ -96,7 +137,7 @@ const GL5: [(f64, f64); 5] = [
 ];
 
 impl Seg2 {
-    fn bez(n: u8, p: &[Vec2; 8]) -> &[Vec2] {
+    fn bez(n: u8, p: &[Vec2; MAX_BEZIER_CTRL]) -> &[Vec2] {
         &p[..(n as usize).clamp(1, MAX_BEZIER_DEGREE) + 1]
     }
     /// Derivative with respect to the parameter at `t` (Béziers and conics; lines and arcs too).
@@ -120,6 +161,86 @@ impl Seg2 {
                 casteljau(&diffs, t).0
             }
         }
+    }
+    /// Derivatives 1…`order` with respect to the segment's own parameter at `t`, exactly: a line
+    /// and an arc from their analytic form (an arc's are the circular-motion recurrence, zero
+    /// curvature terms included), a cubic and a higher-degree piece from the forward differences
+    /// of their controls, a conic through the quotient rule of its rational form. A blend curve
+    /// reads a reference curve's derivatives here to build a Hermite interpolation, so this is
+    /// exact at both ends (`t` = 0 and 1) and `None` — never a wrong number — when `order` is
+    /// above [`MAX_DERIVATIVE_ORDER`], `t` is not finite or a value is not finite, as with a
+    /// degenerate rational piece.
+    pub fn derivatives(&self, t: f64, order: usize) -> Option<Vec<Vec2>> {
+        if !t.is_finite() || order > MAX_DERIVATIVE_ORDER {
+            return None;
+        }
+        let mut d = match *self {
+            Seg2::Line { a, b } => {
+                if !a.is_finite() || !b.is_finite() {
+                    return None;
+                }
+                let mut d = vec![b - a];
+                d.resize(MAX_DERIVATIVE_ORDER, Vec2::ZERO);
+                d
+            }
+            Seg2::Arc { center, radius, start, sweep } => {
+                if !center.is_finite() || !radius.is_finite() || !start.is_finite() || !sweep.is_finite() {
+                    return None;
+                }
+                // Differentiating the radial direction twice returns its negative, so the
+                // directions of the successive derivatives are tangential, radial, tangential…
+                // with alternating signs, each order picking up one more factor of the sweep.
+                let mut v = Vec2::from_angle(start + sweep * t).perp();
+                let mut d = Vec::with_capacity(MAX_DERIVATIVE_ORDER);
+                for j in 1..=MAX_DERIVATIVE_ORDER {
+                    d.push(v * (radius * sweep.powi(j as i32)));
+                    v = v.perp();
+                }
+                d
+            }
+            Seg2::Cubic { p0, p1, p2, p3 } => bezier_derivatives(&[p0, p1, p2, p3], t, MAX_DERIVATIVE_ORDER)?,
+            Seg2::Bezier { n, ref p } => bezier_derivatives(Self::bez(n, p), t, MAX_DERIVATIVE_ORDER)?,
+            Seg2::Conic { a, apex, b, w } => {
+                if !a.is_finite() || !apex.is_finite() || !b.is_finite() || !w.is_finite() {
+                    return None;
+                }
+                // The conic is `N(t) / d(t)` with `N` the quadratic through `a`, `w·apex`, `b` and
+                // `d` its weight polynomial; both are evaluated here in the power basis (at the
+                // ends `d` = 1, so a join is never singular). The quotient rule in its
+                // derivative-of-a-product form gives the higher derivatives: the numerator of
+                // `x⁽ʲ⁾` is `N⁽ʲ⁾` minus the terms that already use `d` and a lower `x`.
+                let (n0, n1, n2) = (a, apex * (2.0 * w) - a * 2.0, a - apex * (2.0 * w) + b);
+                let (e1, e2) = (2.0 * (w - 1.0), 2.0 * (1.0 - w));
+                let quotient = |j: usize| match j {
+                    0 => n0 + n1 * t + n2 * (t * t),
+                    1 => n1 + n2 * (2.0 * t),
+                    2 => n2 * 2.0,
+                    _ => Vec2::ZERO,
+                };
+                let weight = |j: usize| match j {
+                    0 => 1.0 + e1 * t + e2 * (t * t),
+                    1 => e1 + e2 * (2.0 * t),
+                    2 => e2 * 2.0,
+                    _ => 0.0,
+                };
+                let den = weight(0);
+                if !(den.abs() > 1e-300) {
+                    return None;
+                }
+                let mut x = vec![quotient(0) / den];
+                for j in 1..=MAX_DERIVATIVE_ORDER {
+                    let mut v = quotient(j);
+                    for i in 1..=j {
+                        v -= x[j - i] * (weight(i) * binom(j, i));
+                    }
+                    x.push(v / den);
+                }
+                x.remove(0);
+                x
+            }
+        };
+        d.truncate(order);
+        d.iter().all(|q| q.is_finite()).then_some(d)
     }
     pub fn start(&self) -> Vec2 {
         match *self {
@@ -409,29 +530,26 @@ impl Loop2 {
     pub fn ccw(&self) -> Loop2 {
         if self.is_ccw() { self.clone() } else { self.reversed() }
     }
-    pub fn polyline(&self, tol: f64) -> Vec<Vec2> {
-        let mut out = Vec::new();
-        for s in &self.segs {
-            let p = s.polyline(tol);
-            out.extend(p.iter().take(p.len().saturating_sub(1)));
-        }
-        out
+    /// Each segment with the next and the last with the first: the loop's joints, where one
+    /// segment should end on the start of the next.
+    pub fn joints(&self) -> impl Iterator<Item = (&Seg2, &Seg2)> + Clone {
+        crate::chain::around(&self.segs)
+    }
+    /// The loop as a polyline within `tol`: each segment's points but its last, which the next
+    /// segment starts on.
+    pub fn polyline(&self, tol: f64) -> Ring<Vec2> {
+        self.segs
+            .iter()
+            .flat_map(|s| {
+                let p = s.polyline(tol);
+                let n = p.len().saturating_sub(1);
+                p.into_iter().take(n)
+            })
+            .collect()
     }
     /// Even-odd point containment against the polyline approximation.
     pub fn contains(&self, p: Vec2) -> bool {
-        let poly = self.polyline(1e-3);
-        let n = poly.len();
-        let mut inside = false;
-        for i in 0..n {
-            let (Some(a), Some(b)) = (poly.get(i), poly.get((i + 1) % n)) else { continue };
-            if (a.y > p.y) != (b.y > p.y) {
-                let x = a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x);
-                if p.x < x {
-                    inside = !inside;
-                }
-            }
-        }
-        inside
+        self.polyline(1e-3).contains(p)
     }
     /// Area-weighted centroid (of the polyline approximation).
     pub fn centroid(&self) -> Vec2 {
@@ -513,25 +631,20 @@ impl Region2 {
     /// before they meet (a taper going in closes it there). Found by a grid search refined
     /// around the best point, to about `tol`.
     pub fn inradius(&self, tol: f64) -> f64 {
-        let loops: Vec<Vec<Vec2>> = std::iter::once(&self.outer).chain(&self.holes).map(|l| l.polyline(tol)).collect();
+        let loops: Vec<Ring<Vec2>> = std::iter::once(&self.outer).chain(&self.holes).map(|l| l.polyline(tol)).collect();
         max_clearance(&loops)
     }
 }
 
 /// The largest distance from a point inside `loops` (even-odd) to their sides, by a grid search
 /// over their box refined around the best point. Zero for an empty or degenerate outline.
-fn max_clearance(loops: &[Vec<Vec2>]) -> f64 {
-    let sides: Vec<(Vec2, Vec2)> = loops
-        .iter()
-        .flat_map(|pl| (0..pl.len()).filter_map(move |i| Some((*pl.get(i)?, *pl.get((i + 1) % pl.len())?))))
-        .filter(|(a, b)| a.dist(*b) > 0.0)
-        .collect();
-    let (Some(lo), Some(hi)) = (
-        sides.iter().map(|s| s.0).reduce(|a, b| Vec2::new(a.x.min(b.x), a.y.min(b.y))),
-        sides.iter().map(|s| s.0).reduce(|a, b| Vec2::new(a.x.max(b.x), a.y.max(b.y))),
-    ) else {
+fn max_clearance(loops: &[Ring<Vec2>]) -> f64 {
+    let sides: Vec<(Vec2, Vec2)> = loops.iter().flat_map(|pl| pl.edges().map(|(a, b)| (*a, *b))).filter(|(a, b)| a.dist(*b) > 0.0).collect();
+    let corners: Aabb2 = sides.iter().map(|s| s.0).collect();
+    if corners.is_empty() {
         return 0.0;
-    };
+    }
+    let Aabb2 { min: lo, max: hi } = corners;
     let inside = |p: Vec2| {
         let mut odd = false;
         for (a, b) in &sides {
@@ -661,26 +774,24 @@ pub fn regions_apart(regions: &[Region2], gap: f64) -> bool {
     let tol = gap / 4.0;
     let reach = gap + 2.0 * tol;
     struct Outline {
-        loops: Vec<Vec<Vec2>>,
-        lo: Vec2,
-        hi: Vec2,
+        loops: Vec<Ring<Vec2>>,
+        bounds: Aabb2,
         inside: Vec2,
     }
     let mut outlines = Vec::with_capacity(regions.len());
     for r in regions {
-        let loops: Vec<Vec<Vec2>> = std::iter::once(&r.outer).chain(&r.holes).map(|l| l.polyline(tol)).collect();
+        let loops: Vec<Ring<Vec2>> = std::iter::once(&r.outer).chain(&r.holes).map(|l| l.polyline(tol)).collect();
         let Some(outer) = loops.first().filter(|l| l.len() >= 2) else { return false };
         if outer.iter().any(|p| !p.is_finite()) {
             return false;
         }
-        let lo = outer.iter().fold(Vec2::new(f64::MAX, f64::MAX), |m, p| Vec2::new(m.x.min(p.x), m.y.min(p.y)));
-        let hi = outer.iter().fold(Vec2::new(f64::MIN, f64::MIN), |m, p| Vec2::new(m.x.max(p.x), m.y.max(p.y)));
+        let bounds = outer.bounds();
         let Some(inside) = outer.first().copied() else { return false };
-        outlines.push(Outline { loops, lo, hi, inside });
+        outlines.push(Outline { loops, bounds, inside });
     }
     let mut order: Vec<usize> = (0..outlines.len()).collect();
     order.sort_by(|&i, &j| {
-        let x = |k: usize| outlines.get(k).map(|o| o.lo.x).unwrap_or(0.0);
+        let x = |k: usize| outlines.get(k).map(|o| o.bounds.min.x).unwrap_or(0.0);
         x(i).total_cmp(&x(j))
     });
     let mut work = 0usize;
@@ -688,10 +799,11 @@ pub fn regions_apart(regions: &[Region2], gap: f64) -> bool {
         let Some(a) = outlines.get(i) else { return false };
         for &j in order.iter().skip(k + 1) {
             let Some(b) = outlines.get(j) else { return false };
-            if b.lo.x > a.hi.x + reach {
+            let (a_box, b_box) = (a.bounds, b.bounds);
+            if b_box.min.x > a_box.max.x + reach {
                 break;
             }
-            if b.lo.y > a.hi.y + reach || a.lo.y > b.hi.y + reach {
+            if b_box.min.y > a_box.max.y + reach || a_box.min.y > b_box.max.y + reach {
                 continue;
             }
             // A boundary point of one inside the other: one holds the other (boundaries that do

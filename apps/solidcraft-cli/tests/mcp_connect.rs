@@ -9,8 +9,16 @@ use serde_json::{Value, json};
 
 #[test]
 fn mcp_connect_serves_before_the_app_runs_and_reaches_it_once_it_does() {
-    // A port that was free a moment ago: nothing listens on it.
-    let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    // This test needs the port closed until its second phase. A port obtained
+    // with bind(:0) and released can immediately be reused by another parallel
+    // test's mock server. Stay below the usual ephemeral ranges,
+    // with a process-specific starting point, and skip any occupied ports.
+    let port = (0..512u32)
+        .find_map(|offset| {
+            let port = 16000 + (std::process::id() + offset) % 16000;
+            TcpListener::bind(("127.0.0.1", port as u16)).ok().map(|listener| listener.local_addr().unwrap().port())
+        })
+        .expect("an unused non-ephemeral test port");
     let addr = format!("127.0.0.1:{port}");
     let control_dir = std::env::temp_dir().join(format!("solidcraft-mcp-connect-{}-{port}", std::process::id()));
     std::fs::create_dir_all(&control_dir).unwrap();
@@ -80,4 +88,66 @@ fn mcp_connect_without_a_port_is_refused_at_start() {
         assert!(!output.status.success(), "{addr}: {stderr}");
         assert!(stderr.contains("HOST:PORT"), "{addr}: {stderr}");
     }
+}
+
+/// `mcp` with no arguments finds the running app through the discovery file and uses that
+/// launch's token; with no app behind the file it stays a headless session.
+#[test]
+fn mcp_without_arguments_finds_the_running_app() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let control_dir = std::env::temp_dir().join(format!("solidcraft-mcp-discover-{}-{port}", std::process::id()));
+    std::fs::create_dir_all(&control_dir).unwrap();
+    let token = "fedcba9876543210".repeat(4);
+    std::fs::write(control_dir.join(format!("{port}.token")), &token).unwrap();
+    std::fs::write(control_dir.join("current.port"), format!("{port}\n")).unwrap();
+    let app = std::thread::spawn(move || {
+        // The discovery probe connects and leaves without a request; the tool call follows.
+        let (stream, line) = loop {
+            let (stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            if !line.is_empty() {
+                break (stream, line);
+            }
+        };
+        let req: Value = serde_json::from_str(&line).unwrap();
+        let ok = req["token"] == json!(token);
+        let reply = json!({"id": req["id"], "ok": ok, "result": {"bodies": [], "method": req["method"]}, "error": "unauthorized"});
+        writeln!(&stream, "{reply}").unwrap();
+    });
+    let mut child = Command::new(env!("CARGO_BIN_EXE_solidcraft-cli"))
+        .args(["mcp", "--allow-any-path"])
+        .env("SOLIDCRAFT_CONTROL_DIR", &control_dir)
+        .env_remove("SOLIDCRAFT_CONTROL_TOKEN")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    writeln!(stdin, "{}", json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "measure", "arguments": {}}})).unwrap();
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let r: Value = serde_json::from_str(&line).unwrap_or_else(|e| panic!("{e}: {line:?}"));
+    assert_ne!(r["result"]["isError"], true, "{r}");
+    assert!(r["result"]["content"][0]["text"].as_str().unwrap_or_default().contains("engine.execute"), "{r}");
+    app.join().unwrap();
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+
+    // The file names a port nothing listens on (the app crashed): a headless session instead.
+    let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+    let dead = closed.local_addr().unwrap().port();
+    drop(closed);
+    std::fs::write(control_dir.join("current.port"), format!("{dead}\n")).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_solidcraft-cli"))
+        .args(["mcp", "--allow-any-path"])
+        .env("SOLIDCRAFT_CONTROL_DIR", &control_dir)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("bridged to the running app"), "{}", String::from_utf8_lossy(&out.stderr));
+    std::fs::remove_dir_all(&control_dir).ok();
 }

@@ -72,6 +72,11 @@ pub(super) fn fixtures() -> Vec<(&'static str, Value)> {
         ("hole_drilled", hole(json!({"type": "drilled", "tip_angle": "hole.tip_angle"}))),
         ("hole_counterbore", hole(json!({"type": "counterbore", "cb_diameter": "hole.cb_diameter", "cb_depth": "hole.cb_depth"}))),
         ("hole_countersink", hole(json!({"type": "countersink", "cs_diameter": "hole.cs_diameter", "cs_angle": "hole.cs_angle"}))),
+        ("hole_references", {
+            let mut h = hole(json!({"type": "simple"}));
+            h["references"] = json!([{"edge": o, "distance": "hole.reference1"}, {"edge": o, "distance": "hole.reference2"}]);
+            h
+        }),
         ("thread", json!({"type": "thread", "face": o, "length": "thread.length"})),
         ("loft", json!({"type": "loft", "sections": []})),
         ("sweep", json!({"type": "sweep", "sketch": 1, "profiles": {"type": "all"}, "path_sketch": 2, "path": ["l1"]})),
@@ -103,6 +108,16 @@ pub(super) fn fixtures() -> Vec<(&'static str, Value)> {
         ("delete_face", json!({"type": "delete_face", "faces": [o]})),
         ("bounding_solid", json!({"type": "bounding_solid", "bodies": ["B"], "margin": "bounding.margin"})),
         ("pipe", json!({"type": "pipe", "path_sketch": 1, "path": ["l1"], "diameter": "pipe.diameter", "wall": "pipe.wall"})),
+        (
+            "frame_member",
+            json!({"type": "frame_member", "path_sketch": 1, "lines": ["l1"],
+                "profile": {"source": "library", "profile": {"kind": "rect_tube", "width": 40, "height": 40, "wall": 3}}, "angle": "frame_member.angle"}),
+        ),
+        (
+            "frame_member_sketch",
+            json!({"type": "frame_member", "path_sketch": 1, "profile": {"source": "sketch", "sketch": 2, "profiles": {"type": "all"}},
+                "anchor": "bottom_left", "mirror": true}),
+        ),
         ("emboss", json!({"type": "emboss", "sketch": 1, "profiles": {"type": "all"}, "depth": "emboss.depth"})),
         ("rib", json!({"type": "rib", "sketch": 1, "curves": ["l1"], "thickness": "rib.thickness", "depth": "rib.depth"})),
         ("replace_face", json!({"type": "replace_face", "faces": [o], "target": plane("replace_face")})),
@@ -159,11 +174,21 @@ pub(super) fn fixtures() -> Vec<(&'static str, Value)> {
                 "orientation": "parallel", "twist": "surface_sweep.twist", "scale": "surface_sweep.scale"}),
         ),
         ("surface_loft", json!({"type": "surface_loft", "sections": []})),
-        ("surface_blend", json!({"type": "surface_blend", "from": {"body": "B", "edges": [o]}, "to": {"body": "C", "edges": [o]}, "align": [o, o]})),
+        (
+            "surface_blend",
+            json!({"type": "surface_blend", "from": {"body": "B", "edges": [o]}, "to": {"body": "C", "edges": [o]}, "align": [o, o], "seam": [o, o]}),
+        ),
         ("surface_offset", json!({"type": "surface_offset", "faces": [o], "distance": "soff.distance", "tolerance": "soff.tolerance"})),
         // The Class-A surface family (surface.blend/boundary/match/fair).
-        ("surface_blend", json!({"type": "surface_blend", "from": {"body": "B", "edges": [o]}, "to": {"body": "C", "edges": [o]}, "align": [o, o]})),
+        (
+            "surface_blend",
+            json!({"type": "surface_blend", "from": {"body": "B", "edges": [o]}, "to": {"body": "C", "edges": [o]}, "align": [o, o], "seam": [o, o]}),
+        ),
         ("surface_boundary", json!({"type": "surface_boundary", "sketch": 1, "curves": ["l1", "l2"]})),
+        (
+            "surface_network",
+            json!({"type": "surface_network", "u": [{"sketch": 1, "curves": ["l1"]}, {"body": "B", "edges": [o], "continuity": "g1"}], "v": [{"sketch": 2, "curves": ["l1"]}, {"point": o}], "operation": "join"}),
+        ),
         ("surface_match", json!({"type": "surface_match", "body": "B", "faces": [o], "target": "C", "edges": [o]})),
         ("surface_fair", json!({"type": "surface_fair", "body": "B", "faces": [o], "tolerance": "sfair.tolerance"})),
         ("unstitch", json!({"type": "unstitch", "body": "B"})),
@@ -184,6 +209,15 @@ pub(super) fn fixtures() -> Vec<(&'static str, Value)> {
                 "direction": [0, 0, 1], "face": [1, 0, 0]}),
         ),
         ("surface_trim", json!({"type": "surface_trim", "body": "B", "plane": plane("trim"), "keep": o})),
+        (
+            "surface_trim_curves",
+            json!({"type": "surface_trim", "body": "B", "plane": plane("trim"), "keep": o, "keep_more": [o],
+                "curves": {"sketch": 1, "curves": ["l1"], "direction": [0, 0, 1]}}),
+        ),
+        (
+            "surface_trim_mutual",
+            json!({"type": "surface_trim", "body": "B", "plane": plane("trim"), "keep": o, "with": "B", "keep_with": [o, o], "stitch": true, "extend": true}),
+        ),
         ("move", json!({"type": "move", "bodies": ["B"], "translate": ["move.x", "move.y", "move.z"], "angle": "move.angle"})),
         ("import", json!({"type": "import", "file": "a.step", "step": ""})),
         ("mesh_convert", json!({"type": "mesh_convert", "body": "B", "tolerance": "mesh_convert.tolerance"})),
@@ -207,10 +241,11 @@ pub(super) fn with_refs(name: &str, mut v: Value) -> Value {
         "combine" => json!({"target": "B", "tools": ["B"]}),
         "pattern_rectangular" | "pattern_circular" | "pattern_path" | "mirror" => json!({"bodies": ["B"]}),
         "hole_simple" | "hole_drilled" | "hole_counterbore" | "hole_countersink" => json!({"points": {"sketch": 3, "ids": ["p"]}}),
-        "loft" => json!({"sections": [{"sketch": 4, "profiles": {"type": "all"}}, {"sketch": 5, "profiles": {"type": "all"}}], "targets": ["B"]}),
+        "loft" => json!({"sections": [{"sketch": 4, "profiles": {"type": "all"}}, {"sketch": 5, "profiles": {"type": "all"}}], "targets": ["B"],
+            "rails": [{"sketch": 6, "curves": ["l1"]}]}),
         "split" | "surface_trim" => json!({"tool": tool}),
         "split_line" => json!({"sketch": 6, "line": "l1"}),
-        "surface_loft" => json!({"sections": [{"sketch": 4}, {"sketch": 5}]}),
+        "surface_loft" => json!({"sections": [{"sketch": 4}, {"sketch": 5}], "rails": [{"sketch": 6, "curves": ["l1"]}]}),
         "split_face" => json!({"body": "B", "tool": tool, "sketch": 6}),
         "emboss" => json!({"face": {"body": "B", "at": o}, "targets": ["B"]}),
         "sheet_fold" => json!({"sketch": 7, "body": "B"}),
@@ -242,6 +277,9 @@ pub(super) fn with_points(name: &str, mut v: Value) -> Value {
         "surface_revolve" => json!({"axis": line}),
         "hole_simple" => json!({"points": null, "to": p(4.0)}),
         "hole_drilled" | "hole_counterbore" | "hole_countersink" => json!({"to": p(4.0)}),
+        "hole_references" => {
+            json!({"references": [{"edge": p(11.0), "distance": "hole.reference1"}, {"edge": p(12.0), "distance": "hole.reference2"}]})
+        }
         "emboss" => json!({"face": {"body": "B", "at": p(5.0)}}),
         "sheet_convert" => json!({"bends": [p(6.0)]}),
         "sheet_fold" => json!({"fixed": p(7.0)}),
