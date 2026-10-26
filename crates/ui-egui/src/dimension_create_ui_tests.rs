@@ -26,8 +26,198 @@ fn place(h: &mut Harness, picks: &[[f64; 2]], at: [f64; 2]) {
 }
 fn type_value(h: &mut Harness, text: &str) {
     h.step(&json!({"key":"A","cmd":true})).unwrap();
-    h.step(&json!({"text":text})).unwrap();
+    if text.is_empty() {
+        h.step(&json!({"key":"Backspace"})).unwrap();
+    } else {
+        h.step(&json!({"text":text})).unwrap();
+    }
 }
+
+#[test]
+fn dimension_editor_names_and_reference_picks_drive_new_and_existing_dimensions() {
+    let mut h = line([20., 0.]);
+    let source =
+        h.app.run("sketch.dimension", json!({"entities":["l1"],"value":20,"text_at":[10,8]})).unwrap()["param"].as_str().unwrap().to_string();
+    h.app.run("sketch.line", json!({"points":[[0,-10],[12,-10]],"infer":false})).unwrap();
+    h.settle();
+    place(&mut h, &[[6., -10.]], [6., -16.]);
+    let target = h.app.session.doc.next_d_name();
+    assert!(h.widget(&format!("Dimension: {target}")).is_some(), "new dimension shows its actual parameter name");
+    // Let the preceding placement clicks expire before starting a distinct double-click.
+    h.frames(40);
+    h.step(&json!({"click":{"dimension":source},"double":true})).unwrap();
+    assert!(crate::dim_view::editing(), "reference click keeps the draft open");
+    h.step(&json!({"text":" / 2"})).unwrap();
+    h.step(&json!({"key":"Enter"})).unwrap();
+    assert!(!crate::dim_view::editing(), "{}", h.call("ui.inspect", json!({})));
+    assert_eq!(h.app.session.doc.param(&target).unwrap().expr, format!("{source} / 2"));
+    h.app.tool = None;
+    h.settle();
+    crate::dim_view::edit_param(&h.app, &target);
+    h.frames(5);
+    assert!(h.widget(&format!("Dimension: {target}")).is_some());
+    type_value(&mut h, "2 * ");
+    h.frames(40);
+    h.step(&json!({"click":{"dimension":source},"double":true})).unwrap();
+    h.step(&json!({"key":"Enter"})).unwrap();
+    assert_eq!(h.app.session.doc.param(&target).unwrap().expr, format!("2 * {source}"));
+    h.app.run("parameters.change", json!({"name":source,"expression":"15 mm"})).unwrap();
+    assert!((h.app.session.doc.eval(&target, solidcraft_engine::doc::expr::Kind::Length).unwrap() - 30.).abs() < 1e-6);
+    crate::dim_view::cancel();
+}
+
+/// Two dimensioned lines, editing `d2` with `typed` in its value field.
+fn editing_d2(typed: &str) -> Harness {
+    let mut h = line([20., 0.]);
+    h.app.run("sketch.dimension", json!({"entities":["l1"],"value":20,"text_at":[10,8]})).unwrap();
+    h.app.run("sketch.line", json!({"points":[[0,-10],[12,-10]],"infer":false})).unwrap();
+    h.app.run("sketch.dimension", json!({"entities":["l2"],"value":12,"text_at":[6,-16]})).unwrap();
+    h.settle();
+    crate::dim_view::edit_param(&h.app, "d2");
+    h.frames(5);
+    type_value(&mut h, typed);
+    h
+}
+
+/// Click `d1`, check the editor stays focused, then apply and return d2's expression.
+fn click_d1_and_apply(h: &mut Harness) -> String {
+    h.step(&json!({"click":{"dimension":"d1"}})).unwrap();
+    assert!(crate::dim_view::editing(), "a reference click keeps the editor open");
+    h.frames(2);
+    assert_eq!(h.ctx.memory(|m| m.focused()), Some(egui::Id::new("sc_dim_edit")), "the value field keeps the keyboard");
+    h.step(&json!({"key":"Enter"})).unwrap();
+    assert!(!crate::dim_view::editing(), "{}", h.call("ui.inspect", json!({})));
+    let expr = h.app.session.doc.param("d2").unwrap().expr.clone();
+    crate::dim_view::cancel();
+    expr
+}
+
+#[test]
+fn clicking_another_dimension_appends_its_name_to_the_typed_text() {
+    for (typed, expected) in [("2 * ", "2 * d1"), ("10 + ", "10 + d1")] {
+        let mut h = editing_d2(typed);
+        assert_eq!(click_d1_and_apply(&mut h), expected, "typed {typed:?}");
+    }
+}
+
+#[test]
+fn clicking_another_dimension_replaces_a_lone_value() {
+    for typed in ["10", "10 mm", "-3.5"] {
+        let mut h = editing_d2(typed);
+        assert_eq!(click_d1_and_apply(&mut h), "d1", "typed {typed:?}");
+    }
+    // The cursor inside the number does not matter: the whole value goes.
+    let mut h = editing_d2("125");
+    h.step(&json!({"key":"Home"})).unwrap();
+    h.step(&json!({"key":"ArrowRight"})).unwrap();
+    assert_eq!(click_d1_and_apply(&mut h), "d1");
+}
+
+#[test]
+fn clicking_another_dimension_lets_typing_continue_after_its_name() {
+    let mut h = editing_d2("2 * ");
+    h.step(&json!({"click":{"dimension":"d1"}})).unwrap();
+    h.frames(2);
+    h.step(&json!({"text":" + 1"})).unwrap();
+    h.step(&json!({"key":"Enter"})).unwrap();
+    assert_eq!(h.app.session.doc.param("d2").unwrap().expr, "2 * d1 + 1");
+    crate::dim_view::cancel();
+}
+
+#[test]
+fn clicking_another_dimension_inserts_its_name_at_the_cursor() {
+    let mut h = editing_d2("( ) / 2");
+    h.step(&json!({"key":"Home"})).unwrap();
+    h.step(&json!({"key":"ArrowRight"})).unwrap();
+    h.step(&json!({"key":"ArrowRight"})).unwrap();
+    assert_eq!(click_d1_and_apply(&mut h), "( d1) / 2");
+}
+
+#[test]
+fn clicking_another_dimension_replaces_the_selected_text() {
+    let mut h = editing_d2("5 + 7");
+    h.step(&json!({"key":"ArrowLeft","shift":true})).unwrap();
+    assert_eq!(click_d1_and_apply(&mut h), "5 + d1");
+}
+
+#[test]
+fn double_clicking_another_dimension_inserts_its_name_once() {
+    let mut h = editing_d2("3 * ");
+    // Synthetic input feeds one pointer event per frame, so this is a click and, a frame
+    // later, a second click that egui reads as a double-click.
+    h.step(&json!({"click":{"dimension":"d1"},"double":true})).unwrap();
+    h.step(&json!({"key":"Enter"})).unwrap();
+    assert_eq!(h.app.session.doc.param("d2").unwrap().expr, "3 * d1");
+    crate::dim_view::cancel();
+}
+
+/// With the Dimension tool on, one click on an existing dimension edits its value, as a
+/// double-click does without a tool. The tool stays on, and geometry still starts a new one.
+#[test]
+fn dimension_tool_click_on_an_existing_dimension_edits_its_value() {
+    let mut h = line([20., 0.]);
+    h.app.run("sketch.dimension", json!({"entities":["l1"],"value":20,"text_at":[10,8]})).unwrap();
+    let created = h.app.run("sketch.line", json!({"points":[[0,-10],[12,-10]],"infer":false})).unwrap();
+    let second = created["created"]["curves"][0].as_str().unwrap().to_string();
+    h.settle();
+    h.step(&json!({"start":"sketch.dimension"})).unwrap();
+    h.step(&json!({"click":{"dimension":"d1"}})).unwrap();
+    assert!(crate::dim_view::editing(), "a click on the dimension opens its value");
+    h.frames(5);
+    assert_eq!(h.ctx.memory(|m| m.focused()), Some(egui::Id::new("sc_dim_edit")), "the value field takes the keyboard");
+    type_value(&mut h, "25");
+    h.step(&json!({"key":"Enter"})).unwrap();
+    assert!(!crate::dim_view::editing(), "{}", h.call("ui.inspect", json!({})));
+    assert!((h.app.session.doc.eval("d1", solidcraft_engine::doc::expr::Kind::Length).unwrap() - 25.).abs() < 1e-6);
+    assert_eq!(h.app.session.doc.next_d_name(), "d2", "no new dimension was made");
+    assert_eq!(h.app.tool.as_ref().map(|t| t.cmd), Some("sketch.dimension"), "the tool stays on");
+    // A click on geometry still picks it for a new dimension.
+    h.frames(40);
+    h.step(&json!({"click":{"world":[6,-10,0]}})).unwrap();
+    assert_eq!(h.app.tool.as_ref().map(|t| t.picks.clone()), Some(vec![second]));
+    crate::dim_view::cancel();
+}
+
+/// With dimensions off in the selection filter, the Dimension tool leaves them alone.
+#[test]
+fn dimension_tool_click_respects_the_selection_filter() {
+    let mut h = line([20., 0.]);
+    h.app.run("sketch.dimension", json!({"entities":["l1"],"value":20,"text_at":[10,8]})).unwrap();
+    h.app.ui.pick_off.push("dimensions".into());
+    h.settle();
+    h.step(&json!({"start":"sketch.dimension"})).unwrap();
+    h.step(&json!({"click":{"dimension":"d1"}})).unwrap();
+    assert!(!crate::dim_view::editing(), "a filtered-out dimension opened for editing");
+    crate::dim_view::cancel();
+}
+
+#[test]
+fn dimension_parameters_use_typing_and_ctrl_space_completion() {
+    for (prefix, expected) in [("wid", "width"), ("", "width"), ("d", "d1")] {
+        let mut h = line([20., 0.]);
+        h.app.run("parameters.add", json!({"name":"width","expression":"25 mm"})).unwrap();
+        if prefix == "d" {
+            h.app.run("sketch.line", json!({"points":[[0,-10],[12,-10]],"infer":false})).unwrap();
+            h.app.run("sketch.dimension", json!({"entities":["l2"],"value":12,"text_at":[6,-16]})).unwrap();
+            h.settle();
+        }
+        place(&mut h, &[[10., 0.]], [10., 6.]);
+        let baseline = h.app.session.doc.to_json();
+        type_value(&mut h, prefix);
+        if prefix.is_empty() {
+            h.step(&json!({"key":"Space","cmd":true})).unwrap();
+        }
+        assert!(h.widget(expected).is_some(), "parameter completion is available for {prefix:?}: {}", h.call("ui.inspect", json!({})));
+        h.step(&json!({"key":"Tab"})).unwrap();
+        assert!(crate::dim_view::editing(), "accepting completion does not apply the dimension");
+        assert_eq!(h.app.session.doc.to_json(), baseline);
+        h.step(&json!({"key":"Enter"})).unwrap();
+        assert!(!crate::dim_view::editing());
+        assert_eq!(h.app.session.doc.params.iter().rev().find(|p| p.model).unwrap().expr, expected);
+        crate::dim_view::cancel();
+    }
+}
+
 #[test]
 fn edge_and_endpoint_creation_commit_once_and_undo_restores_exact_design() {
     for (end, picks, at) in [
@@ -594,4 +784,351 @@ fn type_first_keeps_the_place_first_flow() {
     let new = added(&h, dims);
     assert!((new[0].kind.value().unwrap() - 21.).abs() < 1e-6);
     crate::dim_view::cancel();
+}
+
+/// Type-first, the text follows the pointer: moving it from across the picks (the distance
+/// between them) to above or beside them switches to the horizontal or vertical distance and
+/// back. Until something is typed the value follows the dimension, so the preview measures the
+/// picked points where they are (it neither moves nor scales them) and Enter keeps them there.
+#[test]
+fn type_first_switching_between_aligned_horizontal_and_vertical_keeps_the_picked_points() {
+    use solidcraft_engine::sketch::ConstraintKind as K;
+    let end = [12., 16.];
+    let mid = [6., 8.];
+    // Across from the picks, above them, beside them.
+    let (across, above, beside) = ([-5., 12.], [6., 25.], [-10., 1.]);
+    type Kind = fn(&K) -> bool;
+    let aligned: Kind = |k| matches!(k, K::Distance { .. } | K::Length { .. });
+    let horizontal: Kind = |k| matches!(k, K::DistanceX { .. });
+    let vertical: Kind = |k| matches!(k, K::DistanceY { .. });
+    let picks: [Vec<[f64; 2]>; 2] = [vec![[0., 0.], end], vec![mid]];
+    for picks in picks {
+        for (commit_at, commit_kind, commit_value) in [(above, horizontal, 12.), (beside, vertical, 16.), (across, aligned, 20.)] {
+            let mut h = sketch_with(&[("sketch.line", json!({"points":[[0,0],end],"infer":false}))], mid);
+            let undo = h.app.session.undo.len();
+            for p in &picks {
+                h.step(&json!({"click":{"world":[p[0],p[1],0]}})).unwrap();
+            }
+            assert_live(&h);
+            for (at, kind, value) in [
+                (across, aligned, 20.),
+                (above, horizontal, 12.),
+                (across, aligned, 20.),
+                (beside, vertical, 16.),
+                (commit_at, commit_kind, commit_value),
+            ] {
+                h.step(&json!({"move":{"world":[at[0],at[1],0]}})).unwrap();
+                h.settle();
+                let (expr, c, sk) = crate::dim_view::draft_preview().expect("the draft is open");
+                let ctx = format!("{picks:?} at {at:?}: {expr} {:?}", c.kind);
+                assert!(kind(&c.kind), "{ctx}");
+                assert!((c.kind.value().unwrap() - value).abs() < 1e-6, "{ctx}");
+                assert_eq!(expr, format!("{value} mm"), "{ctx}");
+                let a = sk.point(sk.resolve_point("l1.start").unwrap()).unwrap();
+                let b = sk.point(sk.resolve_point("l1.end").unwrap()).unwrap();
+                assert!(
+                    a.dist(solidcraft_engine::geom::Vec2::new(0., 0.)) < 1e-6 && b.dist(solidcraft_engine::geom::Vec2::new(end[0], end[1])) < 1e-6,
+                    "{ctx}: the preview moved the points to {a:?} {b:?}"
+                );
+            }
+            h.step(&json!({"key":"Enter"})).unwrap();
+            assert!(!crate::dim_view::editing());
+            assert_eq!(h.app.session.undo.len(), undo + 1);
+            let sk = solved(&h);
+            let a = sk.point(sk.resolve_point("l1.start").unwrap()).unwrap();
+            let b = sk.point(sk.resolve_point("l1.end").unwrap()).unwrap();
+            assert!(
+                a.dist(solidcraft_engine::geom::Vec2::new(0., 0.)) < 1e-6 && b.dist(solidcraft_engine::geom::Vec2::new(end[0], end[1])) < 1e-6,
+                "{picks:?} at {commit_at:?}: {a:?} {b:?}"
+            );
+            let new = added(&h, 0);
+            assert_eq!(new.len(), 1);
+            assert!(commit_kind(&new[0].kind), "{picks:?} at {commit_at:?}: {:?}", new[0].kind);
+            assert!((new[0].kind.value().unwrap() - commit_value).abs() < 1e-6, "{:?}", new[0].kind);
+            // The committed dimension's text is where the pointer left it, and its extension lines
+            // start at the picked points.
+            h.settle();
+            let shown = crate::dim_view::text_at(&new[0].id).expect("the new dimension is drawn");
+            let [x, y] = h.at(&json!({"world":[commit_at[0],commit_at[1],0]})).unwrap();
+            assert!(shown.distance(egui::pos2(x as f32, y as f32)) < 40.0, "{picks:?}: text at {shown:?}, cursor at {x},{y}");
+            crate::dim_view::cancel();
+        }
+    }
+}
+
+#[test]
+fn midpoint_then_edge_creates_a_distance_in_one_undo_step() {
+    use solidcraft_engine::sketch::ConstraintKind;
+    let mut h = line([20., 0.]);
+    h.app.run("sketch.line", json!({"points":[[-10,-10],[-10,20]]})).unwrap();
+    h.app.run("sketch.constraint.fix", json!({"entity":"l2"})).unwrap();
+    h.settle();
+    let baseline = h.app.session.doc.to_json();
+    let undo = h.app.session.undo.len();
+    for accept in [false, true] {
+        place(&mut h, &[[10., 0.], [-10., -5.]], [0., -8.]);
+        let (_, c, sk) = crate::dim_view::draft_preview().unwrap();
+        let ConstraintKind::PointLineDistance { p, l, .. } = c.kind else { panic!("MID to edge must be a distance: {:?}", c.kind) };
+        assert_eq!(sk.curves[l].id, "l2");
+        assert!(sk.constraints.iter().any(|c| matches!(c.kind, ConstraintKind::Midpoint { p: q, l: 0 } if q == p)));
+        assert_eq!(h.app.session.doc.to_json(), baseline, "preview creates no persistent helper");
+        if !accept {
+            h.step(&json!({"key":"Escape"})).unwrap();
+            assert!(h.app.tool.as_ref().unwrap().point_picks.is_empty());
+            continue;
+        }
+        type_value(&mut h, "25 mm");
+        h.step(&json!({"key":"Enter"})).unwrap();
+        assert!(!crate::dim_view::editing());
+        assert_eq!(h.app.session.undo.len(), undo + 1);
+        let state = h.app.session.world_state();
+        let solved = state.sketch(h.app.session.active_sketch.unwrap()).unwrap();
+        assert!(solved.report.ok());
+        let sk = &solved.sketch;
+        let c = sk.constraints.iter().find(|c| c.param.is_some()).unwrap();
+        assert!(matches!(c.kind, ConstraintKind::PointLineDistance { .. }));
+        assert!((solidcraft_engine::sketch::measure_dimension(sk, &c.kind).unwrap() - 25.).abs() < 1e-6);
+        let accepted = h.app.session.doc.to_json();
+        h.app.run("edit.undo", json!({})).unwrap();
+        assert_eq!(h.app.session.doc.to_json(), baseline);
+        h.app.run("edit.redo", json!({})).unwrap();
+        assert_eq!(h.app.session.doc.to_json(), accepted);
+    }
+    crate::dim_view::cancel();
+}
+
+/// The short sketch edge overlaps a face's automatically projected boundary.
+fn midpoint_face_sketch() -> Harness {
+    use solidcraft_engine::geom::Vec3;
+    crate::dim_view::cancel();
+    let mut h = Harness::new();
+    h.app.run("sketch.create", json!({"plane":"XY"})).unwrap();
+    h.app.run("sketch.rectangle.two_point", json!({"p0":[-10,-5],"p1":[10,15]})).unwrap();
+    h.app.finish_sketch();
+    h.app.run("solid.extrude", json!({"distance":10})).unwrap();
+    h.app.run("sketch.create", json!({"plane":{"face":[0,5,10]}})).unwrap();
+    let state = h.app.session.world_state();
+    let ss = state.sketch(h.app.session.active_sketch.unwrap()).unwrap();
+    let plane = ss.plane;
+    assert!(ss.sketch.curves.iter().any(|c| c.link.is_some()));
+    for ends in [[[-8., -5.], [2., -5.]], [[3., 2.], [7., 6.]]] {
+        let points: Vec<_> = ends
+            .into_iter()
+            .map(|p| {
+                let q = plane.to_local(Vec3::new(p[0], p[1], 10.));
+                [q.x, q.y]
+            })
+            .collect();
+        h.app.run("sketch.line", json!({"points":points,"infer":false})).unwrap();
+    }
+    h.call("ui.view", json!({"view":"top"}));
+    h.app.cam.distance = 90.;
+    h.app.cam.target = Vec3::new(0., 5., 10.);
+    h.settle();
+    h
+}
+
+#[test]
+fn overlapping_sketch_midpoint_to_model_edge_dimensions_the_snapped_point() {
+    use solidcraft_engine::sketch::{ConstraintKind, Shape};
+    let mut h = midpoint_face_sketch();
+    let baseline = h.app.session.doc.to_json();
+    let undo = h.app.session.undo.len();
+    h.step(&json!({"start":"sketch.dimension"})).unwrap();
+    for p in [[-3., -5.], [10., 2.], [4., -10.]] {
+        h.step(&json!({"click":{"world":[p[0],p[1],10.]}})).unwrap();
+    }
+    let (_, c, sk) = crate::dim_view::draft_preview().expect("MID to projected model edge has a draft");
+    let ConstraintKind::PointLineDistance { p, l, .. } = c.kind else { panic!("expected point/edge distance: {:?}", c.kind) };
+    assert!(sk.curves[l].link.is_some());
+    let source = sk
+        .constraints
+        .iter()
+        .find_map(|c| match c.kind {
+            ConstraintKind::Midpoint { p: q, l } if p == q => Some(l),
+            _ => None,
+        })
+        .unwrap();
+    assert!(sk.curves[source].link.is_none(), "the short sketch edge won the overlapping pick");
+    let Shape::Line { a, b } = sk.shape(source).unwrap() else { panic!() };
+    assert!((a.dist(b) - 10.).abs() < 1e-6);
+    assert!((solidcraft_engine::sketch::measure_dimension(&sk, &c.kind).unwrap() - 13.).abs() < 1e-6);
+    assert_eq!(h.app.session.doc.to_json(), baseline);
+    type_value(&mut h, "12 mm");
+    h.step(&json!({"key":"Enter"})).unwrap();
+    assert!(!crate::dim_view::editing());
+    assert_eq!(h.app.session.undo.len(), undo + 1);
+    h.app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(h.app.session.doc.to_json(), baseline);
+    crate::dim_view::cancel();
+}
+
+#[test]
+fn midpoint_pairs_dimension_sketch_and_projected_model_edges() {
+    use solidcraft_engine::sketch::ConstraintKind;
+    for (first, second, projected) in [
+        ([-3_f64, -5.], [5., 4.], [false, false]),
+        ([-3., -5.], [10., 5.], [false, true]),
+        ([10., 5.], [-3., -5.], [true, false]),
+        ([0., -5.], [10., 5.], [true, true]),
+    ] {
+        let mut h = midpoint_face_sketch();
+        let baseline = h.app.session.doc.to_json();
+        let undo = h.app.session.undo.len();
+        h.step(&json!({"start":"sketch.dimension"})).unwrap();
+        for p in [first, second] {
+            h.step(&json!({"click":{"world":[p[0],p[1],10.]}})).unwrap();
+        }
+        let at = [(first[0] + second[0]) * 0.5, (first[1] + second[1]) * 0.5];
+        assert_eq!(h.app.session.doc.to_json(), baseline);
+        h.step(&json!({"click":{"world":[at[0],at[1],10.]}})).unwrap();
+        if crate::dim_view::editing() {
+            h.step(&json!({"key":"Enter"})).unwrap();
+        }
+        let state = h.app.session.world_state();
+        let sk = &state.sketch(h.app.session.active_sketch.unwrap()).unwrap().sketch;
+        let c = sk.constraints.iter().rev().find(|c| c.kind.is_dimension()).expect("two MID picks commit a distance");
+        let ConstraintKind::Distance { p, q, .. } = c.kind else { panic!("expected midpoint distance for {projected:?}: {:?}", c.kind) };
+        for (point, expected) in [(p, projected[0]), (q, projected[1])] {
+            let l = sk
+                .constraints
+                .iter()
+                .find_map(|c| match c.kind {
+                    ConstraintKind::Midpoint { p, l } if p == point => Some(l),
+                    _ => None,
+                })
+                .expect("each pick remains a midpoint");
+            assert_eq!(sk.curves[l].link.is_some(), expected);
+        }
+        let measured = ((first[0] - second[0]).powi(2) + (first[1] - second[1]).powi(2)).sqrt();
+        assert!((solidcraft_engine::sketch::measure_dimension(sk, &c.kind).unwrap() - measured).abs() < 1e-6);
+        assert_eq!(h.app.session.undo.len(), undo + 1);
+        h.app.run("edit.undo", json!({})).unwrap();
+        assert_eq!(h.app.session.doc.to_json(), baseline);
+        crate::dim_view::cancel();
+    }
+}
+
+#[test]
+fn midpoint_selection_keeps_line_circle_gap_dimensions_in_both_orders() {
+    use solidcraft_engine::sketch::ConstraintKind;
+    for reverse in [false, true] {
+        let mut h = line([20., 0.]);
+        h.app.run("sketch.circle.center", json!({"center":[10,10],"radius":3})).unwrap();
+        h.settle();
+        let baseline = h.app.session.doc.to_json();
+        let picks = if reverse { [[13., 10.], [10., 0.]] } else { [[10., 0.], [13., 10.]] };
+        place(&mut h, &picks, [25., 5.]);
+        let (_, c, sk) = crate::dim_view::draft_preview().expect("the edge-to-edge gap remains available");
+        assert!(matches!(c.kind, ConstraintKind::LineCircleDistance { value, .. } if (value - 7.).abs() < 1e-6));
+        assert!(!sk.constraints.iter().any(|c| matches!(c.kind, ConstraintKind::Midpoint { .. })));
+        h.step(&json!({"key":"Escape"})).unwrap();
+        assert_eq!(h.app.session.doc.to_json(), baseline);
+        crate::dim_view::cancel();
+    }
+}
+
+#[test]
+fn midpoint_dimension_orientation_follows_the_pointer_before_placement() {
+    use solidcraft_engine::sketch::ConstraintKind;
+    for (first, second) in [([-3_f64, -5.], [5., 4.]), ([-3., -5.], [10., 5.]), ([10., 5.], [-3., -5.]), ([0., -5.], [10., 5.])] {
+        for (horizontal, held_y, reused) in
+            [(true, false, false), (false, false, false), (true, true, false), (false, true, false), (true, false, true), (false, false, true)]
+        {
+            if held_y && (first != [-3., -5.] || second != [10., 5.]) {
+                continue;
+            }
+            let mut h = midpoint_face_sketch();
+            if held_y {
+                let state = h.app.session.world_state();
+                let ss = state.sketch(h.app.session.active_sketch.unwrap()).unwrap();
+                let short = ss.sketch.curves.iter().find(|c| c.link.is_none()).unwrap().id.clone();
+                let bottom = ss
+                    .sketch
+                    .curves
+                    .iter()
+                    .enumerate()
+                    .find_map(|(i, c)| {
+                        c.link.as_ref()?;
+                        let solidcraft_engine::sketch::Shape::Line { a, b } = ss.sketch.shape(i)? else {
+                            return None;
+                        };
+                        ((ss.plane.to_world(a).y + 5.).abs() < 1e-6 && (ss.plane.to_world(b).y + 5.).abs() < 1e-6).then(|| c.id.clone())
+                    })
+                    .unwrap();
+                for end in ["start", "end"] {
+                    h.app.run("sketch.constraint.coincident", json!({"a":format!("{short}.{end}"),"b":bottom})).unwrap();
+                }
+                h.settle();
+            }
+            if reused {
+                let state = h.app.session.world_state();
+                let ss = state.sketch(h.app.session.active_sketch.unwrap()).unwrap();
+                let mid_ref = |point: [f64; 2]| {
+                    ss.sketch
+                        .curves
+                        .iter()
+                        .enumerate()
+                        .find_map(|(i, c)| {
+                            let solidcraft_engine::sketch::Shape::Line { a, b } = ss.sketch.shape(i)? else {
+                                return None;
+                            };
+                            let at = ss.plane.to_world((a + b) * 0.5);
+                            ((at.x - point[0]).abs() < 1e-6 && (at.y - point[1]).abs() < 1e-6).then(|| format!("mid:{}", c.id))
+                        })
+                        .unwrap()
+                };
+                h.app.run("sketch.dimension", json!({"entities":[mid_ref(first),mid_ref(second)],"driven":true})).unwrap();
+                h.settle();
+            }
+            let baseline = h.app.session.doc.to_json();
+            let undo = h.app.session.undo.len();
+            h.step(&json!({"start":"sketch.dimension"})).unwrap();
+            for p in [first, second] {
+                h.step(&json!({"click":{"world":[p[0],p[1],10.]}})).unwrap();
+            }
+            assert!(!crate::dim_view::editing(), "choose the midpoint span's orientation before entering a value");
+            let above = [(first[0] + second[0]) * 0.5, first[1].max(second[1]) + 3.];
+            let beside = [first[0].max(second[0]) + 3., (first[1] + second[1]) * 0.5];
+            // Switch back and forth without accepting or changing the picked midpoints.
+            for is_x in [true, false, true, horizontal] {
+                let at = if is_x { above } else { beside };
+                h.step(&json!({"move":{"world":[at[0],at[1],10.]}})).unwrap();
+                h.settle();
+                let c = crate::dim_view::draft_preview()
+                    .map(|(_, c, _)| c)
+                    .or_else(|| crate::dim_view::placement_dimension_preview(&h.app))
+                    .expect("a midpoint dimension previews before placement");
+                assert!(
+                    if is_x { matches!(c.kind, ConstraintKind::DistanceX { .. }) } else { matches!(c.kind, ConstraintKind::DistanceY { .. }) },
+                    "{first:?} to {second:?}, horizontal={is_x}: {:?}",
+                    c.kind
+                );
+                let expected = if is_x { (first[0] - second[0]).abs() } else { (first[1] - second[1]).abs() };
+                assert!((c.kind.value().unwrap() - expected).abs() < 1e-6);
+                assert_eq!(h.app.session.doc.to_json(), baseline);
+            }
+            let at = if horizontal { above } else { beside };
+            h.step(&json!({"click":{"world":[at[0],at[1],10.]}})).unwrap();
+            if crate::dim_view::editing() {
+                h.step(&json!({"key":"Enter"})).unwrap();
+            }
+            let state = h.app.session.world_state();
+            let sk = &state.sketch(h.app.session.active_sketch.unwrap()).unwrap().sketch;
+            let c = sk.constraints.iter().rev().find(|c| c.kind.is_dimension()).unwrap();
+            assert!(if horizontal { matches!(c.kind, ConstraintKind::DistanceX { .. }) } else { matches!(c.kind, ConstraintKind::DistanceY { .. }) });
+            if held_y {
+                assert_eq!(c.driven, !horizontal, "the vertical span is fixed by the model edge");
+            }
+            assert_eq!(
+                sk.constraints.iter().filter(|c| matches!(c.kind, ConstraintKind::Midpoint { .. })).count(),
+                2,
+                "reuse the picked midpoint points"
+            );
+            assert_eq!(h.app.session.undo.len(), undo + 1);
+            h.app.run("edit.undo", json!({})).unwrap();
+            assert_eq!(h.app.session.doc.to_json(), baseline);
+            crate::dim_view::cancel();
+        }
+    }
 }

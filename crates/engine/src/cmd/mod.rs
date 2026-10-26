@@ -20,7 +20,9 @@ macro_rules! planned {
     };
 }
 
+mod bom;
 mod browser;
+pub(crate) mod clearance;
 mod clipboard;
 mod compare;
 mod component;
@@ -33,11 +35,19 @@ mod edit;
 mod face;
 mod features;
 mod features_more;
-pub use features::auto_operation;
+pub(crate) use face::{FaceRefForm, face_ref_form};
+pub(crate) use features::profiles as feature_profiles;
+pub(crate) use features::{EdgeRefForm, edge_ref_form, sketch_key};
+pub use features::{auto_operation, extrude_reach};
+pub use sketch_modify::{extend_arc_preview, extend_preview, trim_piece};
+pub use view_dxf::sketch::exportable as view_dxf_exportable;
+pub use view_navigation::standard_view;
 mod component_link;
 mod config;
 mod file;
+mod frame;
 mod inspect;
+mod interference;
 pub(crate) mod joints;
 mod libraries;
 mod material_properties;
@@ -59,6 +69,7 @@ mod render;
 #[cfg(test)]
 mod script_tests;
 mod sheet;
+mod silhouette;
 mod sketch;
 pub(crate) use sketch::author_path_for_rebind;
 pub(crate) use sketch::created as sketch_created;
@@ -67,6 +78,7 @@ mod sketch_canvas;
 pub mod sketch_clipboard;
 mod sketch_constraints;
 mod sketch_create;
+mod sketch_ends;
 mod sketch_freeform;
 mod sketch_import;
 mod sketch_inspect;
@@ -74,6 +86,7 @@ mod sketch_modify;
 mod sketch_project;
 mod surface;
 mod surface_analysis;
+mod surface_boundary;
 mod surface_match;
 pub mod triya_extra; // Modified by Triya CAD 3D: extension slot for command slices registered by overlay crates above the engine
 mod view_dxf;
@@ -90,6 +103,7 @@ pub type Run = fn(&mut Session, &Value) -> Result<Value>;
 /// evaluate as usual).
 pub type LiveRun = fn(&mut Session, &Value) -> Result<(Value, Option<crate::LiveEdit>)>;
 pub type Enabled = fn(&Session) -> std::result::Result<(), String>;
+pub type SchemaFn = fn() -> schemars::Schema;
 
 pub struct CommandSpec {
     pub id: &'static str,
@@ -114,6 +128,11 @@ pub struct CommandSpec {
     pub reads_model: bool,
     /// Registered but not built yet (see `planned!`): the GitHub issue number that tracks it.
     pub planned: Option<&'static str>,
+    /// The command's typed parameter contract, which carries its input schema; `None` until
+    /// the command is converted (see `crate::schema`).
+    pub contract: Option<&'static dyn crate::schema::Contract>,
+    /// The JSON Schema of a successful result; `None` until described.
+    pub output: Option<SchemaFn>,
 }
 
 impl CommandSpec {
@@ -132,6 +151,8 @@ impl CommandSpec {
             live: None,
             reads_model: true,
             planned: None,
+            contract: None,
+            output: None,
         }
     }
     /// Not built yet; `issue` tracks building it.
@@ -160,6 +181,16 @@ impl CommandSpec {
     }
     pub const fn key(mut self, k: &'static str) -> Self {
         self.shortcut = Some(k);
+        self
+    }
+    /// The command's typed parameter contract (see `crate::schema`).
+    pub const fn contract(mut self, c: &'static dyn crate::schema::Contract) -> Self {
+        self.contract = Some(c);
+        self
+    }
+    /// The JSON Schema of a successful result.
+    pub const fn output(mut self, f: SchemaFn) -> Self {
+        self.output = Some(f);
         self
     }
     pub const fn params(mut self, p: &'static str) -> Self {
@@ -234,9 +265,11 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     v.extend(sketch_constraints::COMMANDS.iter());
     v.extend(sketch_import::COMMANDS.iter());
     v.extend(sketch_inspect::COMMANDS.iter());
+    v.extend(sketch_ends::COMMANDS.iter());
     v.extend(sketch_canvas::COMMANDS.iter());
     v.extend(sketch_3d::COMMANDS.iter());
     v.extend(surface_analysis::COMMANDS.iter());
+    v.extend(surface_boundary::COMMANDS.iter());
     v.extend(surface::COMMANDS.iter());
     v.extend(surface_match::COMMANDS.iter());
     v.extend(sketch_modify::COMMANDS.iter());
@@ -247,12 +280,15 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     v.extend(construct::COMMANDS.iter());
     v.extend(sheet::COMMANDS.iter());
     v.extend(plastic::COMMANDS.iter());
+    v.extend(frame::COMMANDS.iter());
     v.extend(component::COMMANDS.iter());
     v.extend(component_link::COMMANDS.iter());
     v.extend(joints::COMMANDS.iter());
+    v.extend(clearance::COMMANDS.iter());
     v.extend(motion::COMMANDS.iter());
     v.extend(config::COMMANDS.iter());
     v.extend(parts::COMMANDS.iter());
+    v.extend(bom::COMMANDS.iter());
     v.extend(browser::COMMANDS.iter());
     v.extend(delete::COMMANDS.iter());
     v.extend(edit::COMMANDS.iter());
@@ -264,6 +300,7 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     v.extend(metadata::COMMANDS.iter());
     v.extend(inspect::COMMANDS.iter());
     v.extend(compare::COMMANDS.iter());
+    v.extend(silhouette::COMMANDS.iter());
     v.extend(materials::COMMANDS.iter());
     v.extend(material_properties::COMMANDS.iter());
     v.extend(libraries::COMMANDS.iter());
@@ -308,7 +345,7 @@ pub(crate) fn did_you_mean(id: &str) -> String {
 }
 
 /// Levenshtein distance: the single-character edits that turn `a` into `b`.
-fn edit_distance(a: &str, b: &str) -> usize {
+pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
     let b: Vec<char> = b.chars().collect();
     let mut row: Vec<usize> = (0..=b.len()).collect();
     for (i, ca) in a.chars().enumerate() {

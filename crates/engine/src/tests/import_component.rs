@@ -5,7 +5,7 @@
 //! imports sit loose in a component open and rebuild as they did.
 
 use serde_json::{Value, json};
-use solidcraft_geom::Vec3;
+use solidcraft_geom::{Aabb3, Vec3};
 use solidcraft_kernel::{ExportBody, ExportProduct, StepHeader, box_solid, step_export_products};
 
 use super::run;
@@ -113,12 +113,7 @@ fn corner_of(s: &Session, occurrence: &str) -> Vec3 {
     let names = s.occurrence_bodies(&path, true).unwrap();
     assert!(!names.is_empty());
     let world = s.world_state();
-    let mut lo = Vec3::new(f64::MAX, f64::MAX, f64::MAX);
-    for b in world.bodies.iter().filter(|b| names.contains(&b.name)) {
-        let bb = solidcraft_kernel::measure(&b.body).unwrap().bbox;
-        lo = Vec3::new(lo.x.min(bb.min.x), lo.y.min(bb.min.y), lo.z.min(bb.min.z));
-    }
-    lo
+    world.bodies.iter().filter(|b| names.contains(&b.name)).fold(Aabb3::EMPTY, |a, b| a.union(&solidcraft_kernel::measure(&b.body).unwrap().bbox)).min
 }
 
 fn close(a: Vec3, b: Vec3) -> bool {
@@ -226,6 +221,8 @@ fn an_imported_assembly_moves_as_one_until_it_is_unlocked() {
     for o in &inside {
         assert_eq!(dof.get(o), dof.get(&rig), "occurrence {o} moves only with the import: {r}");
     }
+    // The design's first part is grounded when it comes in; free, it moves.
+    run(&mut s, "occurrence.ground", json!({"occurrence": "rig:1", "grounded": false}));
 
     // Moving the import's component moves everything in it.
     run(&mut s, "occurrence.move", json!({"occurrence": "rig:1", "translate": [0, 0, 50]}));
@@ -320,5 +317,43 @@ fn a_design_with_a_loose_import_rebuilds_unchanged() {
     let names: Vec<String> = s.model.state().bodies.iter().map(|b| b.name.clone()).collect();
     assert_eq!(names, ["Base", "Beam", "Pin", "Beam (2)", "Pin (2)", "Pin (3)"]);
     assert_eq!(shown_boxes(&s), file_boxes(&path));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A design whose `Outer` component holds a plate and an `Inner` component placed twice (the
+/// first placement turned and moved), with `Outer` itself turned about X and lifted.
+fn nested_file(dir: &std::path::Path) -> String {
+    let mut s = Session::default();
+    let outer = run(&mut s, "component.create", json!({"name": "Outer", "grounded": false}))["occurrence"].clone();
+    run(&mut s, "solid.box", json!({"length": 30, "width": 30, "height": 5, "body_name": "Plate"}));
+    let inner = run(&mut s, "component.create", json!({"name": "Inner"}))["occurrence"].clone();
+    run(&mut s, "solid.box", json!({"length": 40, "width": 20, "height": 10, "body_name": "Block"}));
+    run(&mut s, "component.activate", json!({"component": "Outer"}));
+    run(&mut s, "occurrence.move", json!({"occurrence": inner, "axis": [0, 0, 1], "angle": "90 deg", "translate": [100, 0, 0]}));
+    run(&mut s, "occurrence.copy", json!({"component": "Inner", "translate": [0, 0, 30]}));
+    run(&mut s, "component.activate", json!({"component": "root"}));
+    run(&mut s, "occurrence.move", json!({"occurrence": outer, "space": "world", "axis": [1, 0, 0], "angle": "90 deg", "translate": [0, 0, 50]}));
+    let path = dir.join("nested.step").to_string_lossy().to_string();
+    run(&mut s, "file.export", json!({"path": path}));
+    path
+}
+
+#[test]
+fn an_inserted_assembly_exports_its_nested_parts_where_they_are() {
+    let dir = temp_dir("reexport");
+    let path = nested_file(&dir);
+    let placed = file_boxes(&path);
+    assert_eq!(placed.len(), 3, "a plate and two blocks: {placed:?}");
+    let mut s = Session::default();
+    run(&mut s, "file.insert_step", json!({"path": path}));
+    assert_eq!(shown_boxes(&s), placed);
+    // The whole design as an assembly: every part is placed once, by its occurrences.
+    let again = dir.join("again.step").to_string_lossy().to_string();
+    run(&mut s, "file.export", json!({"path": again}));
+    assert_eq!(file_boxes(&again), placed);
+    // And inserted again, it shows as the first file did.
+    let mut back = Session::default();
+    run(&mut back, "file.insert_step", json!({"path": again}));
+    assert_eq!(shown_boxes(&back), placed);
     let _ = std::fs::remove_dir_all(&dir);
 }

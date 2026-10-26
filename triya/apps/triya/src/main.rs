@@ -71,21 +71,36 @@ impl eframe::App for App {
     }
 }
 
+/// Each extension in lower and upper case (Linux dialogs match case), as upstream's shell does.
+fn case_variants(exts: &[&str]) -> Vec<String> {
+    let mut all: Vec<String> = Vec::new();
+    for e in exts {
+        for v in [e.to_ascii_lowercase(), e.to_ascii_uppercase()] {
+            if !all.contains(&v) {
+                all.push(v);
+            }
+        }
+    }
+    all
+}
+
 fn services(cc: &eframe::CreationContext<'_>) -> Services {
     let parent = rfd::AsyncFileDialog::new().set_parent(cc);
     let open_parent = parent.clone();
     Services {
-        pick_open: Some(Box::new(move || {
-            let future = open_parent
-                .clone()
-                .add_filter(
-                    "Designs, CAD files and meshes",
-                    &[io::DESIGN_EXT, "json", "step", "stp", "STEP", "STP", "igs", "iges", "3mf", "stl", "obj", "glb", "gltf"],
-                )
-                .add_filter("Design (container or JSON)", &[io::DESIGN_EXT, "json"])
-                .add_filter("STEP", &["step", "stp", "STEP", "STP"])
-                .add_filter("All files", &["*"])
-                .pick_file();
+        pick_open: Some(Box::new(move |first: &[&str]| {
+            // Upstream's picker (v0.22): the file type the command reads first, then the format
+            // registry's groups, then everything.
+            let mut dialog = open_parent.clone();
+            if !first.is_empty() {
+                let label = first.iter().map(|e| e.to_uppercase()).collect::<Vec<_>>().join(", ");
+                dialog = dialog.add_filter(label, &case_variants(first));
+            }
+            dialog = dialog.add_filter("Designs, CAD files and meshes", &case_variants(&io::formats::open_extensions(true)));
+            for (label, exts) in io::formats::import_filters(true) {
+                dialog = dialog.add_filter(label, &case_variants(&exts));
+            }
+            let future = dialog.add_filter("All files", &["*"]).pick_file();
             Box::pin(async move { future.await.map(|p| p.path().to_string_lossy().into_owned()) })
         })),
         pick_save: Some(Box::new(move |name: &str, exts: &[&str]| {
@@ -183,8 +198,10 @@ fn main() -> eframe::Result {
                 app.set_wgpu(rs, DEPTH_BITS, STENCIL_BITS, rs.msaa_samples);
                 solidcraft_ui_egui::gpu::install_picture_renderer(rs);
             }
-            if let Some(port) = control_port {
-                let rx = control_server::start(port, cc.egui_ctx.clone());
+            // `--control`/the environment name a port; otherwise upstream's preference (on by
+            // default) opens the default one (docs/control-protocol.md).
+            if let Some(listen_on) = solidcraft_engine::control_auth::plan(control_port, app.preferences.agent_control) {
+                let rx = control_server::start(listen_on, cc.egui_ctx.clone());
                 app = app.with_control(rx);
             }
             // The agent chat's MCP bridge reaches the app through an endpoint of its own.

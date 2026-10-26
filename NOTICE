@@ -1,7 +1,7 @@
 Triya CAD 3D
 Copyright (c) 2026 Triya CAD 3D contributors (Open Engineering Tools)
 
-Triya CAD 3D is based on SolidCraft, version 0.14.0 (commit 2bb9c8106920d2e2ac92e9f9fa90af0de0bfcaae),
+Triya CAD 3D is based on SolidCraft, version 0.22.0 (commit 0537623a75798f30e53ec976a61704defdf03011),
 Copyright (c) 2026 SolidCraft contributors, licensed under MIT OR Apache-2.0
 (https://github.com/tangency-labs/solidcraft). SolidCraft's own NOTICE, LICENSE-MIT,
 LICENSE-APACHE, ATTRIBUTION.md and THIRD-PARTY-LICENSES.txt are retained in this repository.

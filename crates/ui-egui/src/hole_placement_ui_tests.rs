@@ -1,5 +1,6 @@
 //! Hole placement on the canvas. A Single hole picked on or near a sketch point on the face (a
-//! circle's centre) goes to that point, as a Multiple pick of the same point does (#657); a pick
+//! circle's centre) goes to that point, as a Multiple pick of the same point does (#657), and
+//! follows it when the sketch changes (#2110); a pick
 //! away from sketch points, or near one off the face under the cursor, stays where it was clicked.
 //! Only points the sketch shows are snapped to (not lettering's outline points), and Select Other
 //! looks the face up once for every point near the cursor.
@@ -26,7 +27,7 @@ fn block_with_circle() -> (Harness, Vec3) {
 /// sketch `sketch` (`sketch.create`'s parameters) makes. Returns the circle centre in the world.
 fn block_and_circle_on(sketch: Value, at: [f64; 2]) -> (Harness, Vec3) {
     let mut h = Harness::new();
-    h.app.ui.show_origin = false;
+    h.app.set_origin_shown(false);
     h.app.run("solid.box", json!({"length": 40, "width": 30, "height": 20})).unwrap();
     h.app.run("sketch.create", sketch).unwrap();
     h.app.run("sketch.circle.center", json!({"center": at, "radius": 4})).unwrap();
@@ -118,7 +119,7 @@ fn a_single_hole_picked_near_a_circle_centre_goes_to_the_centre() {
     h.step(&json!({"key": "Enter"})).unwrap();
     assert!(h.app.dialog.is_none(), "OK closed the dialog: {:?}", h.app.dialog.as_ref().map(|d| &d.error));
     let (id, position, at_points) = hole(&h);
-    assert!(!at_points, "a Single hole is placed on its face");
+    assert!(at_points, "a Single hole snapped to the centre keeps the point");
     assert!(position.dist(centre) < 1e-9, "the hole is at the circle centre {centre:?}, not at {position:?}");
     assert!(h.app.session.model.result(id).is_some_and(|r| r.error.is_none() && r.warning.is_none()));
     // The bore (5 mm across, 10 mm deep) is round about the centre: empty on its axis and up to
@@ -144,8 +145,67 @@ fn a_single_hole_picked_near_a_circle_centre_goes_to_the_centre() {
     assert!(h.app.dialog.is_none(), "OK closed the dialog: {:?}", h.app.dialog.as_ref().map(|d| &d.error));
     let (again, position, at_points) = hole(&h);
     assert_eq!(again, id, "the same feature");
-    assert!(!at_points && position.dist(centre) < 1e-9, "{position:?}");
+    assert!(at_points && position.dist(centre) < 1e-9, "{position:?}");
     bore(&h);
+}
+
+#[test]
+fn a_single_hole_at_a_circle_centre_follows_the_circle() {
+    let (mut h, centre) = block_with_circle();
+    let click = near(&mut h, centre);
+    h.step(&json!({"start": "solid.hole"})).unwrap();
+    h.step(&json!({"click": click})).unwrap();
+    h.step(&json!({"key": "Enter"})).unwrap();
+    assert!(h.app.dialog.is_none(), "OK closed the dialog: {:?}", h.app.dialog.as_ref().map(|d| &d.error));
+    let (id, _, _) = hole(&h);
+    let sketch = h.app.session.world_state().sketches.first().unwrap().feature;
+    let circle = h
+        .app
+        .session
+        .world_state()
+        .sketches
+        .first()
+        .unwrap()
+        .sketch
+        .curves
+        .iter()
+        .find(|c| matches!(c.kind, CurveKind::Circle { .. }))
+        .unwrap()
+        .id
+        .clone();
+    // The circle's centre moves 8 mm along the sketch's first axis: the hole goes with it.
+    h.app.run("sketch.edit", json!({ "sketch": sketch })).unwrap();
+    h.app.run("sketch.move_point", json!({"point": format!("{circle}.center"), "to": [20, 9]})).unwrap();
+    h.app.run("sketch.finish", json!({})).unwrap();
+    h.settle();
+    let st = h.app.session.world_state();
+    let ss = st.sketches.first().unwrap();
+    let moved = ss
+        .sketch
+        .curves
+        .iter()
+        .find_map(|c| match c.kind {
+            CurveKind::Circle { c, .. } => Some(ss.plane.to_world(ss.sketch.points[c].pos)),
+            _ => None,
+        })
+        .unwrap();
+    assert!((moved.dist(centre) - 8.0).abs() < 1e-6, "the centre moved 8 mm: {centre:?} -> {moved:?}");
+    assert!(h.app.session.model.result(id).is_some_and(|r| r.error.is_none() && r.warning.is_none()));
+    let down = Vec3::new(0.0, 0.0, 5.0);
+    assert!(!solid_at(&h, moved - down), "the hole is at the moved centre {moved:?}");
+    assert!(solid_at(&h, centre - down), "the old centre {centre:?} is solid again");
+    // Edit Feature shows it as Single, picked where the centre is now, and OK keeps it there.
+    h.step(&json!({"call": "ui.editFeature", "params": {"feature": id}})).unwrap();
+    h.frames(4);
+    let d = h.app.dialog.as_ref().expect("the hole dialog");
+    assert!(matches!(&d.kind, Kind::Hole { opts, .. } if !opts.multiple), "{:?}", d.kind);
+    let places = face_places(&h);
+    assert!(matches!(places.as_slice(), [(_, p)] if p.dist(moved) < 1e-6), "{places:?}");
+    h.step(&json!({"key": "Enter"})).unwrap();
+    assert!(h.app.dialog.is_none(), "OK closed the dialog: {:?}", h.app.dialog.as_ref().map(|d| &d.error));
+    let (again, _, at_points) = hole(&h);
+    assert!(again == id && at_points, "the same feature, still at the point");
+    assert!(!solid_at(&h, moved - down));
 }
 
 #[test]
@@ -219,7 +279,7 @@ fn select_other_keeps_the_face_as_picked_beside_many_snapped_points() {
     // More points under the cursor than Select Other lists of one kind: the snapped places are
     // capped as points, and the face as picked keeps its row.
     let mut h = Harness::new();
-    h.app.ui.show_origin = false;
+    h.app.set_origin_shown(false);
     h.app.run("solid.box", json!({"length": 40, "width": 30, "height": 20})).unwrap();
     h.app.run("sketch.create", json!({"plane": {"face": [20, 15, 20]}})).unwrap();
     let many = crate::select_other::MAX_PER_KIND + 4;
@@ -244,7 +304,7 @@ fn select_other_keeps_the_face_as_picked_beside_many_snapped_points() {
 /// when given. Returns the corner, then the circle centre, in the world.
 fn block_with_lettering(circle: Option<f64>) -> (Harness, Vec3, Option<Vec3>) {
     let mut h = Harness::new();
-    h.app.ui.show_origin = false;
+    h.app.set_origin_shown(false);
     h.app.run("solid.box", json!({"length": 40, "width": 30, "height": 20})).unwrap();
     h.app.run("sketch.create", json!({"plane": {"face": [20, 15, 20]}})).unwrap();
     h.app.run("sketch.text", json!({"text": "L", "at": [5, 5], "height": 10})).unwrap();
@@ -321,7 +381,7 @@ fn a_single_hole_snaps_only_to_points_its_sketch_shows() {
     // where it was clicked while the sketch hides it (Show Projected off).
     for shown in [true, false] {
         let mut h = Harness::new();
-        h.app.ui.show_origin = false;
+        h.app.set_origin_shown(false);
         h.app.run("solid.box", json!({"length": 40, "width": 30, "height": 20})).unwrap();
         h.app.run("sketch.create", json!({"plane": {"face": [20, 15, 20]}})).unwrap();
         h.app.run("sketch.options", json!({"show_projected": shown})).unwrap();
@@ -352,7 +412,7 @@ fn a_single_hole_snaps_only_to_points_its_sketch_shows() {
     // Show Points off only hides the markers of the sketch being edited (a finished sketch draws
     // none): its circle's centre is still snapped to.
     let mut h = Harness::new();
-    h.app.ui.show_origin = false;
+    h.app.set_origin_shown(false);
     h.app.run("solid.box", json!({"length": 40, "width": 30, "height": 20})).unwrap();
     h.app.run("sketch.create", json!({"plane": {"face": [20, 15, 20]}})).unwrap();
     h.app.run("sketch.options", json!({"show_points": false})).unwrap();
@@ -401,7 +461,7 @@ fn rows_named(list: &Value, prefix: &str) -> usize {
 /// points within 0.1 mm of `at` in the sketch `sketch.create` makes with `sketch`.
 fn cylinder_with_cluster(sketch: Value, at: [f64; 2], view: &str) -> Cluster {
     let mut h = Harness::new();
-    h.app.ui.show_origin = false;
+    h.app.set_origin_shown(false);
     h.app.run("solid.cylinder", json!({"radius": 15, "height": 20})).unwrap();
     h.app.run("sketch.create", sketch).unwrap();
     let many = 3 * crate::select_other::MAX_PER_KIND;

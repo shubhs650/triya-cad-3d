@@ -26,14 +26,36 @@
 use egui::Pos2;
 use serde_json::{Map, Value, json};
 use solidcraft_engine::Sel;
+use solidcraft_engine::doc::Document;
 use solidcraft_engine::doc::expr::Kind as ValueKind;
 use solidcraft_engine::geom::{Vec2, Vec3};
 use solidcraft_engine::sketch::PatternAlignment;
 
 use crate::SolveApp;
-use crate::dialogs::{CHAMFER_TYPES, Dialog, Kind, check, field, icon_choice, pattern_toggle, row_label};
+use crate::dialogs::{CHAMFER_TYPES, Dialog, Kind};
 use crate::selection::{AXES, CURVES, SKETCH_POINTS, SelInput};
+use crate::tool_modifiers::{Audit, Scope, ToolModifiers};
+use crate::ui_kit;
 use crate::viewport::{Hit, Proj};
+
+const SELECT_MANIP: &[Scope] = &[Scope::Selection, Scope::Manipulator, Scope::FeaturePreview];
+const SELECT_ONLY: &[Scope] = &[Scope::Selection, Scope::FeaturePreview];
+
+/// Per-tool modifier descriptors owned by this host file.
+pub const MODIFIERS: &[ToolModifiers] = &[
+    ToolModifiers { tool: "sketch.scale", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.offset", scopes: SELECT_MANIP, bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.mirror", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
+    // Sketch Move: dialog/manipulator inherit only - no invented Alt-copy.
+    ToolModifiers { tool: "sketch.move", scopes: SELECT_MANIP, bindings: &[], audit: Audit::VerifiedNoOp },
+    // Pattern spacing/count live in the dialog - no viewport modifier chords.
+    ToolModifiers { tool: "sketch.pattern.rectangular", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.pattern.circular", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.fillet", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.chamfer.equal_distance", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.chamfer.two_distance", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.chamfer.distance_angle", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
+];
 
 /// The three chamfer types, drawn as the cut each one makes, in `CHAMFER_TYPES` order.
 const CHAMFER_TYPE_ICONS: [&str; 3] = ["sketch_chamfer_equal", "sketch_chamfer_two", "sketch_chamfer_angle"];
@@ -102,7 +124,7 @@ pub enum Mod {
 
 impl Mod {
     pub fn previews(&self) -> bool {
-        matches!(self, Self::Mirror | Self::PatternRect { .. } | Self::PatternCirc { .. } | Self::Offset { .. })
+        matches!(self, Self::Mirror | Self::PatternRect { .. } | Self::PatternCirc { .. } | Self::Offset { .. } | Self::Corner { .. })
     }
 
     pub fn title(&self) -> &'static str {
@@ -150,19 +172,20 @@ fn inputs(k: &Mod) -> Vec<SelInput> {
         // The centre is required: `sketch.pattern.circular` has no default for it.
         Mod::PatternCirc { .. } => vec![SelInput::new("Entities", CURVES | SKETCH_POINTS, true), SelInput::new("Center", SKETCH_POINTS, false)],
         // A fillet rounds any number of corners to one radius (`points`). Each chamfer command
-        // cuts one corner, so its input holds one.
-        Mod::Corner { chamfer: false, .. } => vec![SelInput::new("Corners", SKETCH_POINTS, true)],
-        Mod::Corner { .. } => vec![SelInput::new("Corner", SKETCH_POINTS, false)],
+        // cuts one corner: its point, or its two lines. Two lines name the corner between them
+        // where more lines meet at its point (#1824), for both.
+        Mod::Corner { chamfer: false, .. } => vec![SelInput::new("Corners", SKETCH_POINTS | CURVES, true)],
+        Mod::Corner { .. } => vec![SelInput::new("Corner", SKETCH_POINTS | CURVES, true)],
     }
 }
 
 /// The dialog for a sketch modify command.
-pub fn start(_app: &SolveApp, id: &str) -> Option<(Kind, Vec<SelInput>)> {
+pub fn start(app: &SolveApp, id: &str) -> Option<(Kind, Vec<SelInput>)> {
     let corner = |chamfer: bool, ctype: usize| Mod::Corner {
         chamfer,
         ctype,
-        size: "2 mm".into(),
-        distance2: "2 mm".into(),
+        size: crate::dialogs::length_default(&app.session, "2"),
+        distance2: crate::dialogs::length_default(&app.session, "2"),
         angle: "45 deg".into(),
         flip: false,
     };
@@ -214,7 +237,7 @@ pub fn edit_pattern(app: &mut SolveApp, id: &str) -> bool {
     let Some(pattern) = sk.patterns.iter().find(|p| p.id == id) else { return false };
     let kind = match &pattern.kind {
         SketchPatternKind::Circular { count, angle, alignment, reversed, .. } => Mod::PatternCirc {
-            count: count.to_string(),
+            count: pattern.count_expression.clone().unwrap_or_else(|| count.to_string()),
             angle: format!("{angle} deg"),
             alignment: if *alignment == PatternAlignment::Left { PatternAlignment::Right } else { *alignment },
             reversed: *reversed ^ (*alignment == PatternAlignment::Left),
@@ -282,105 +305,130 @@ pub fn pick_position(d: &mut Dialog, session: &solidcraft_engine::Session, point
     true
 }
 
-/// The rows after the inputs; true when Enter was pressed in a field.
-pub fn rows(ui: &mut egui::Ui, k: &mut Mod) -> bool {
+/// Command metadata for the active variant, including an explicitly chosen chamfer type.
+pub(crate) fn command(k: &Mod) -> &'static str {
+    match k {
+        Mod::Scale { .. } => "sketch.scale",
+        Mod::Offset { .. } => "sketch.offset",
+        Mod::Mirror => "sketch.mirror",
+        Mod::Move { .. } => "sketch.move",
+        Mod::PatternRect { .. } => "sketch.pattern.rectangular",
+        Mod::PatternCirc { .. } => "sketch.pattern.circular",
+        Mod::Corner { chamfer: false, .. } => "sketch.fillet",
+        Mod::Corner { ctype: 1, .. } => "sketch.chamfer.two_distance",
+        Mod::Corner { ctype: 2, .. } => "sketch.chamfer.distance_angle",
+        Mod::Corner { .. } => "sketch.chamfer.equal_distance",
+    }
+}
+
+/// Repeatable operations offer Apply for another selection, with the same typed values.
+pub(crate) fn repeatable(k: &Mod) -> bool {
+    matches!(k, Mod::Offset { .. } | Mod::Mirror | Mod::PatternRect { .. } | Mod::PatternCirc { .. })
+}
+
+/// A labelled value row. The value carries its own unit text ("2 mm", "45 deg").
+fn number(ui: &mut egui::Ui, label: &str, value: &mut String) -> bool {
+    ui_kit::row(ui, label, |ui| ui_kit::field(ui, value))
+}
+
+/// A pattern quantity row with step arrows. They keep the count from `min` up to `max`
+/// copies, evaluated against the design's parameters as `whole` evaluates it on OK.
+fn quantity(ui: &mut egui::Ui, doc: &Document, label: &str, value: &mut String, min: i64, max: i64) -> bool {
+    let eval = |text: &str| doc.eval(text.trim(), ValueKind::Unitless).ok();
+    ui_kit::count_row(ui, label, value, &ui_kit::Count { min, max: max.max(min), eval: &eval })
+}
+
+/// How many copies the other direction of a rectangular pattern leaves this one, so that
+/// both together stay within `MAX_COPIES`. All of them while the other count is not a number.
+fn copies_left(doc: &Document, other: &str) -> i64 {
+    let other = doc.eval(other.trim(), ValueKind::Unitless).ok().filter(|v| v.is_finite() && *v >= 1.0).map_or(1.0, f64::round);
+    (MAX_COPIES / other).floor() as i64
+}
+
+fn icons(ui: &mut egui::Ui, label: &str, labels: &[&'static str], icons: &[&'static str], selected: &mut usize) {
+    ui_kit::row(ui, label, |ui| {
+        let choices: Vec<_> =
+            labels.iter().zip(icons).map(|(key, icon)| ui_kit::IconSegment { key, icon, tip: crate::i18n::tr_label(key).to_string() }).collect();
+        ui_kit::segmented_icons(ui, selected, &choices, &[]);
+    });
+}
+
+fn alignment(ui: &mut egui::Ui, label: &str, alignment: &mut PatternAlignment, reversed: &mut bool) {
+    ui_kit::row(ui, label, |ui| {
+        ui_kit::toggle_icon(ui, label, "Flip direction", reversed, "pattern_flip");
+        let mut centered = *alignment == PatternAlignment::Center;
+        ui_kit::toggle_icon(ui, label, "Center", &mut centered, "pattern_center");
+        *alignment = if centered { PatternAlignment::Center } else { PatternAlignment::Right };
+    });
+}
+
+fn pattern_hint(ui: &mut egui::Ui) {
+    ui_kit::text(
+        ui,
+        crate::i18n::tr_label("Counts include the original. Center balances copies; Flip chooses the extra side for even totals."),
+        ui_kit::Text::Note("pattern"),
+    );
+}
+
+/// Dense rows after the selection inputs; true when an expression field accepts Enter.
+/// `doc` evaluates the pattern counts the step arrows change.
+pub fn rows(ui: &mut egui::Ui, k: &mut Mod, doc: &Document) -> bool {
     let mut enter = false;
     match k {
-        Mod::Scale { factor } => {
-            row_label(ui, "Factor");
-            enter |= field(ui, factor);
-            ui.end_row();
-        }
+        Mod::Scale { factor } => enter |= number(ui, "Factor", factor),
         Mod::Offset { distance, distance2, mode, chain, flip } => {
-            row_label(ui, "Direction");
-            icon_choice(ui, &OFFSET_MODES, &OFFSET_MODE_ICONS, mode);
-            ui.end_row();
-            row_label(ui, "Distance");
-            enter |= field(ui, distance);
-            ui.end_row();
+            icons(ui, "Direction", &OFFSET_MODES, &OFFSET_MODE_ICONS, mode);
+            enter |= number(ui, "Distance", distance);
             if *mode == TWO_SIDES {
-                row_label(ui, "Distance 2");
-                enter |= field(ui, distance2);
-                ui.end_row();
+                enter |= number(ui, "Distance 2", distance2);
             }
-            // Symmetric offsets both sides, so there is no side left for Flip to swap.
-            if *mode != SYMMETRIC {
-                row_label(ui, "Flip");
-                check(ui, flip);
-                ui.end_row();
-            }
-            row_label(ui, "Chain");
-            check(ui, chain);
-            ui.end_row();
+            ui_kit::section(ui, "offset_options", "Options", true, |ui| {
+                if *mode != SYMMETRIC {
+                    ui_kit::checkbox_grid(ui, &mut [("Flip", flip), ("Chain", chain)], 2);
+                } else {
+                    ui_kit::checkbox_grid(ui, &mut [("Chain", chain)], 2);
+                }
+            });
         }
-        // Mirror has no value of its own: its inputs are the whole window.
         Mod::Mirror => {}
         Mod::Move { x, y, angle, copy } => {
-            row_label(ui, "X Distance");
-            enter |= field(ui, x);
-            ui.end_row();
-            row_label(ui, "Y Distance");
-            enter |= field(ui, y);
-            ui.end_row();
-            row_label(ui, "Angle");
-            enter |= field(ui, angle);
-            ui.end_row();
-            row_label(ui, "Create Copy");
-            check(ui, copy);
-            ui.end_row();
+            enter |= ui_kit::value_pair(ui, "Position", [x, y], ["X", "Y"], Some(["X Distance", "Y Distance"]));
+            enter |= number(ui, "Angle", angle);
+            ui_kit::options(ui, "move_options", &mut [("Create Copy", copy)]);
         }
-        // Its two direction columns include both the reference picks and values.
-        Mod::PatternRect { .. } => {}
-        Mod::PatternCirc { count, angle, alignment, reversed } => {
-            for (label, value) in [("Quantity", count), ("Total angle", angle)] {
-                row_label(ui, label);
-                enter |= field(ui, value);
-                ui.end_row();
+        Mod::PatternRect { count, spacing, count2, spacing2, alignment: a, alignment2, reversed, reversed2 } => {
+            let (left1, left2) = (copies_left(doc, count2), copies_left(doc, count));
+            for (key, title, count, spacing, align, reverse, label, distance, align_label, left) in [
+                ("direction1", "Direction 1", count, spacing, a, reversed, "Quantity", "Spacing", "Alignment", left1),
+                ("direction2", "Direction 2", count2, spacing2, alignment2, reversed2, "Quantity 2", "Spacing 2", "Alignment 2", left2),
+            ] {
+                ui_kit::section(ui, key, title, true, |ui| {
+                    enter |= quantity(ui, doc, label, count, 1, left);
+                    enter |= number(ui, distance, spacing);
+                    alignment(ui, align_label, align, reverse);
+                });
             }
-            row_label(ui, "Alignment");
-            ui.horizontal(|ui| {
-                pattern_toggle(ui, "Alignment", "Flip direction", "pattern_flip", reversed);
-                let mut centered = *alignment == PatternAlignment::Center;
-                pattern_toggle(ui, "Alignment", "Center", "pattern_center", &mut centered);
-                *alignment = if centered { PatternAlignment::Center } else { PatternAlignment::Right };
-            });
-            ui.end_row();
-            row_label(ui, "");
-            ui.add(
-                egui::Label::new(
-                    egui::RichText::new(crate::i18n::tr_label(
-                        "Counts include the original. Center balances copies; Flip chooses the extra side for even totals.",
-                    ))
-                    .small(),
-                )
-                .wrap(),
-            );
-            ui.end_row();
+            pattern_hint(ui);
+        }
+        Mod::PatternCirc { count, angle, alignment: a, reversed } => {
+            enter |= quantity(ui, doc, "Quantity", count, 2, MAX_COPIES as i64);
+            enter |= number(ui, "Total angle", angle);
+            alignment(ui, "Alignment", a, reversed);
+            pattern_hint(ui);
         }
         Mod::Corner { chamfer, ctype, size, distance2, angle, flip } => {
             if *chamfer {
-                row_label(ui, "Chamfer Type");
-                icon_choice(ui, &CHAMFER_TYPES, &CHAMFER_TYPE_ICONS, ctype);
-                ui.end_row();
+                icons(ui, "Chamfer Type", &CHAMFER_TYPES, &CHAMFER_TYPE_ICONS, ctype);
             }
-            row_label(ui, size_label(*chamfer, *ctype));
-            enter |= field(ui, size);
-            ui.end_row();
+            enter |= number(ui, size_label(*chamfer, *ctype), size);
             if *chamfer && *ctype == 1 {
-                row_label(ui, "Distance 2");
-                enter |= field(ui, distance2);
-                ui.end_row();
+                enter |= number(ui, "Distance 2", distance2);
             }
             if *chamfer && *ctype == 2 {
-                row_label(ui, "Angle");
-                enter |= field(ui, angle);
-                ui.end_row();
+                enter |= number(ui, "Angle", angle);
             }
-            // With two equal distances there is nothing to swap.
             if *chamfer && *ctype > 0 {
-                row_label(ui, "Flip");
-                check(ui, flip);
-                ui.end_row();
+                ui_kit::options(ui, "corner_options", &mut [("Flip", flip)]);
             }
         }
     }
@@ -407,10 +455,7 @@ pub fn arrow(app: &SolveApp, d: &Dialog) -> Option<Vec3> {
     match k {
         Mod::PatternRect { alignment, reversed, .. } => {
             let plane = app.session.world_state().sketch(app.session.active_sketch?)?.plane;
-            let dir = match d.inputs.get(1).and_then(|i| i.items.first()) {
-                Some(sel) => sketch_dir(app, sel)?,
-                None => Vec2::X,
-            };
+            let dir = pattern_dir(app, d)?;
             Some(plane.dir_to_world(if (*alignment == PatternAlignment::Left) ^ *reversed { -dir } else { dir }))
         }
         // A total angle is a rotation. The viewport draws a straight drag arrow and a rotation
@@ -418,6 +463,30 @@ pub fn arrow(app: &SolveApp, d: &Dialog) -> Option<Vec3> {
         // pattern takes the value box alone until that manipulator is made general.
         _ => None,
     }
+}
+
+/// The rectangular pattern's first direction in the sketch: the picked one, or the sketch's x axis.
+fn pattern_dir(app: &SolveApp, d: &Dialog) -> Option<Vec2> {
+    match d.inputs.get(1).and_then(|i| i.items.first()) {
+        Some(sel) => sketch_dir(app, sel),
+        None => Some(Vec2::X),
+    }
+}
+
+/// The world direction the rectangular pattern's Spacing 2 grows along, for its own drag arrow
+/// (#2462): the picked second direction, the one an edited pattern was made with, or square to
+/// the first, as the command does.
+pub fn arrow2(app: &SolveApp, d: &Dialog) -> Option<Vec3> {
+    let Kind::SketchModify(Mod::PatternRect { alignment2, reversed2, .. }) = &d.kind else { return None };
+    let plane = app.session.world_state().sketch(app.session.active_sketch?)?.plane;
+    let dir = match d.inputs.get(2).and_then(|i| i.items.first()) {
+        Some(sel) => sketch_dir(app, sel)?,
+        None => match d.extra.get("dir2").and_then(|v| serde_json::from_value::<Vec2>(v.clone()).ok()).and_then(Vec2::normalized) {
+            Some(kept) => kept,
+            None => pattern_dir(app, d)?.perp(),
+        },
+    };
+    Some(plane.dir_to_world(if (*alignment2 == PatternAlignment::Left) ^ *reversed2 { -dir } else { dir }))
 }
 
 /// What the first value means for this corner type.
@@ -548,6 +617,17 @@ fn length(app: &SolveApp, label: &str, text: &str) -> Result<f64, String> {
     }
     Ok(v)
 }
+/// The curve ids picked in input `i` (a corner's two lines, #1824).
+fn line_ids(inputs: &[SelInput], i: usize) -> Vec<String> {
+    items(inputs, i)
+        .iter()
+        .filter_map(|x| match x {
+            Sel::SketchCurve { id } => Some(id.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Corner point ids within the active sketch, including qualified script selections.
 fn corner_ids(app: &SolveApp, inputs: &[SelInput], i: usize) -> Vec<String> {
     items(inputs, i).iter().filter_map(|sel| point_id(&app.session, sel).map(str::to_string)).collect()
@@ -602,7 +682,8 @@ fn picked_point(session: &solidcraft_engine::Session, inputs: &[SelInput], i: us
 }
 
 /// The command a sketch modify dialog makes. Scale, Move, and patterns send evaluated
-/// numbers. Offset and Fillet retain expressions in persistent driving dimensions.
+/// numbers, except circular Quantity, which keeps its authored expression. Offset and Fillet
+/// retain expressions in persistent driving dimensions.
 pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String, Value>) -> Result<Vec<(String, Value)>, String> {
     if inputs.iter().flat_map(|input| &input.items).any(|sel| matches!(sel, Sel::SketchPoint { .. }) && point_id(&app.session, sel).is_none()) {
         return Err("Select points of the sketch being edited".into());
@@ -729,20 +810,33 @@ pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String
             let a = total_angle(app, "Total angle", angle)?;
             (
                 "sketch.pattern.circular",
-                json!({"entities": entities, "center": center, "count": n, "angle": a, "alignment": alignment, "reversed": reversed}),
+                json!({"entities": entities, "center": center, "count": count.trim().parse::<u64>().map_or_else(|_| json!(count.trim()), |_| json!(n)), "angle": a, "alignment": alignment, "reversed": reversed}),
             )
         }
         Mod::Corner { chamfer: false, size, .. } => {
             let corners = corner_ids(app, inputs, 0);
-            if corners.is_empty() {
-                return Err("select the corners to round first".into());
+            let lines = line_ids(inputs, 0);
+            // The engine keeps its millimetre API; bare UI values use the design unit.
+            // Keep expressions intact so the radius remains a driving dimension.
+            let radius = app.session.doc.with_design_unit(size.trim(), ValueKind::Length);
+            match (corners.is_empty(), lines.as_slice()) {
+                (true, []) => return Err("select the corners to round first".into()),
+                (false, []) => ("sketch.fillet", json!({"points": corners, "radius": radius})),
+                // Two lines name their corner even where other lines end at its point (#1824).
+                (true, [a, b]) => ("sketch.fillet", json!({"a": a, "b": b, "radius": radius})),
+                _ => return Err("select corner points, or the two lines of one corner".into()),
             }
-            // The radius is checked where it is evaluated, against the document's parameters.
-            ("sketch.fillet", json!({"points": corners, "radius": size.trim()}))
         }
         Mod::Corner { ctype, size, distance2, angle, flip, .. } => {
-            let point = corner_ids(app, inputs, 0).into_iter().next().ok_or("select the corner to cut first")?;
-            let mut p = corner_ref(app, &point, *flip && *ctype > 0)?;
+            let flipped = *flip && *ctype > 0;
+            let mut p = match (corner_ids(app, inputs, 0).as_slice(), line_ids(inputs, 0).as_slice()) {
+                ([point], []) => corner_ref(app, point, flipped)?,
+                // Flip swaps the lines, so `distance` applies to the other leg.
+                ([], [a, b]) if flipped => json!({"a": b, "b": a}),
+                ([], [a, b]) => json!({"a": a, "b": b}),
+                ([], []) => return Err("select the corner to cut first".into()),
+                _ => return Err("select one corner point, or the two lines of one corner".into()),
+            };
             p["distance"] = json!(corner_size(app, size_label(true, *ctype), size, ValueKind::Length)?);
             match ctype {
                 1 => {

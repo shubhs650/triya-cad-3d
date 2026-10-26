@@ -3,7 +3,7 @@
 //! drags, toolbar starts) the way a person would use it, with checks on the result.
 //!
 //! A scenario is a JSON list of steps:
-//! - `{"start": "solid.extrude"}`: a toolbar click; `{"key": "E", "shift"?, "cmd"?}`; `{"text": "20"}`
+//! - `{"start": "solid.extrude"}`: a toolbar click; `{"key": "E", "shift"?, "cmd"?, "ctrl"?, "alt"?, "pressed"?}`; `{"text": "20"}`
 //! - `{"widget": "Revolute", "near"?: "Type"}`: click a dialog field, choice or button by its
 //!   text (with `near`: the one in that label's row)
 //! - `{"click": AT, "double"?, "shift"?, "ctrl"?, "button"?}`, `{"move": AT, "shift"?, "alt"?, "ctrl"?, "cmd"?}`,
@@ -31,6 +31,7 @@
 //!   "close"}`: the app dies (or closes) and a new one starts on the same folders
 //! - `{"script": "examples/…/x.json"}`: run a command script through the engine; `"$DIR"` in a
 //!   `call` step's string parameters is the scenario's folder
+//! - `{"frames": 20}`: advance up to 600 frames at the harness clock (60 Hz)
 //! - `{"note": "…"}`: a comment; `{"pending": "why"}`: the scenario waits for a fix (its test
 //!   is ignored)
 //! - `{"expect": {…}}`: checks, see [`check`]; `{"until": {…}}` waits (frames) until they pass
@@ -67,6 +68,17 @@ pub fn publish_handle(name: &str, at: egui::Pos2) {
     HANDLES.with(|h| h.borrow_mut().push((name.to_string(), at)));
 }
 
+/// Publish a rectangle and its centered interaction handle with the same explicit identity.
+pub(crate) fn publish_target(name: &str, rect: egui::Rect) {
+    publish_target_as(name, name, rect);
+}
+
+/// Publish centered geometry with explicit, independently named handle and rectangle aliases.
+pub(crate) fn publish_target_as(handle: &str, rect_name: &str, rect: egui::Rect) {
+    publish_handle(handle, rect.center());
+    publish_rect(rect_name, rect);
+}
+
 /// Where a handle was drawn last frame.
 pub fn handle_at(name: &str) -> Option<egui::Pos2> {
     HANDLES.with(|h| h.borrow().iter().rfind(|(n, _)| n == name).map(|x| x.1))
@@ -84,6 +96,11 @@ pub fn publish_rect(name: &str, r: egui::Rect) {
 
 pub fn rect_of(name: &str) -> Option<egui::Rect> {
     RECTS.with(|h| h.borrow().iter().rfind(|(n, _)| n == name).map(|x| x.1))
+}
+
+#[cfg(test)]
+pub(crate) fn rects(prefix: &str) -> Vec<(String, egui::Rect)> {
+    RECTS.with(|r| r.borrow().iter().filter(|(name, _)| name.starts_with(prefix)).cloned().collect())
 }
 
 /// A number about this frame's drawing, by name ("axis_view_highlights": the axis view's highlighted tips).
@@ -160,7 +177,11 @@ impl Harness {
     pub fn new() -> Harness {
         let mut h = Harness {
             app: SolveApp::new(Session::default(), Services::default()),
-            ctx: egui::Context::default(),
+            ctx: {
+                let ctx = egui::Context::default();
+                crate::fonts::setup_bundled_fonts(&ctx);
+                ctx
+            },
             output: Default::default(),
             dir: scratch_dir(),
             next_file: Rc::new(RefCell::new(None)),
@@ -183,7 +204,7 @@ impl Harness {
         self.app.services.pick_save =
             Some(Box::new(move |name, _| Box::pin(std::future::ready(Some(dir.join(name).to_string_lossy().into_owned())))));
         let next = self.next_file.clone();
-        self.app.services.pick_open = Some(Box::new(move || Box::pin(std::future::ready(next.borrow_mut().take()))));
+        self.app.services.pick_open = Some(Box::new(move |_| Box::pin(std::future::ready(next.borrow_mut().take()))));
     }
 
     /// Autosave into the scenario's recovery folder (as the desktop app does into the user's).
@@ -193,11 +214,18 @@ impl Harness {
 
     /// Lay out and draw one frame (feeding queued pointer and key events).
     pub fn frame(&mut self) {
+        self.frame_with(Vec::new());
+    }
+
+    /// One frame that receives all these events at once (a quick tap, or input queued during a
+    /// slow frame), before any queued ones.
+    pub fn frame_with(&mut self, events: Vec<egui::Event>) {
         self.time += 1.0 / 60.0;
         let mut raw = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, self.size)),
             time: Some(self.time),
             focused: true,
+            events,
             ..Default::default()
         };
         self.app.raw_input_hook(&mut raw);
@@ -217,18 +245,48 @@ impl Harness {
         }
     }
 
+    /// One frame in which the platform drops `files`, the pointer last seen at `at` (a drop
+    /// itself carries no position with winit 0.30).
+    pub fn drop_files(&mut self, at: egui::Pos2, files: Vec<egui::DroppedFileHandle>) {
+        self.drag_files(at, Vec::new(), files);
+    }
+
+    /// One frame in which files are dragged over the window (`hovered`) or dropped, the pointer
+    /// last seen at `at`.
+    pub fn drag_files(&mut self, at: egui::Pos2, hovered: Vec<egui::HoveredFile>, dropped: Vec<egui::DroppedFileHandle>) {
+        self.time += 1.0 / 60.0;
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, self.size)),
+            time: Some(self.time),
+            focused: true,
+            events: vec![egui::Event::PointerMoved(at)],
+            hovered_files: hovered,
+            dropped_files: dropped,
+            ..Default::default()
+        };
+        let app = &mut self.app;
+        let mut out = self.ctx.run_ui(raw, |ui| {
+            app.logic(ui.ctx());
+            app.ui(ui);
+        });
+        out.textures_delta.clear();
+        self.output = out.platform_output;
+    }
+
     /// Frames until the queued input is used up (and the view has settled).
     pub fn settle(&mut self) {
         for _ in 0..2000 {
             // Queued input used up and the view no longer moving.
-            if self.app.synthetic.is_empty() && self.app.cam_anim.is_none() && self.app.viewport.orbit_snap.is_none() {
+            if self.app.synthetic.is_empty() && self.app.cam_anim.is_none() {
                 break;
             }
             self.frame();
         }
-        // A file opening or recovering in the background: wait for it (as a person would).
+        // A file opening, recovering or saving in the background: wait for it (as a person would).
         let began = std::time::Instant::now();
-        while !self.app.file_load.idle() && began.elapsed() < std::time::Duration::from_secs(120) {
+        while (!self.app.file_load.idle() || self.app.saving.is_some() || crate::open_meshing::active(&self.app))
+            && began.elapsed() < std::time::Duration::from_secs(120)
+        {
             self.frame();
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
@@ -335,7 +393,7 @@ impl Harness {
         let basis = |c: &solidcraft_engine::render::Camera| c.basis();
         let mut prev = basis(&self.app.cam);
         self.app.animate_view(v);
-        if self.app.cam_anim.is_none() && self.app.viewport.orbit_snap.is_none() {
+        if self.app.cam_anim.is_none() {
             return Err(format!("view_anim {v}: no animation started"));
         }
         let mut worst = (0.0f64, 0usize);
@@ -348,7 +406,7 @@ impl Harness {
                 worst = (d, i);
             }
             prev = now;
-            if self.app.cam_anim.is_none() && self.app.viewport.orbit_snap.is_none() {
+            if self.app.cam_anim.is_none() {
                 if worst.0 > max_deg {
                     return Err(format!("view_anim {v}: frame {} of {} turns the view {:.1}° (limit {max_deg}°)", worst.1 + 1, i + 1, worst.0));
                 }
@@ -365,7 +423,22 @@ impl Harness {
             if let Some(id) = s.get("start").and_then(Value::as_str) {
                 self.call("ui.start", json!({ "command": id }))
             } else if let Some(k) = s.get("key").and_then(Value::as_str) {
-                self.call("ui.key", json!({"key": k, "shift": flag("shift"), "cmd": flag("cmd")}))
+                {
+                    let mut params = json!({"key": k, "shift": flag("shift"), "cmd": flag("cmd"), "alt": flag("alt")});
+                    if let Some(ctrl) = s.get("ctrl") {
+                        params["ctrl"] = ctrl.clone();
+                    }
+                    if let Some(pressed) = s.get("pressed") {
+                        params["pressed"] = pressed.clone();
+                    }
+                    self.call("ui.key", params)
+                }
+            } else if let Some(n) = s.get("frames").and_then(Value::as_u64) {
+                if n > 600 {
+                    return Err("frames must be at most 600".into());
+                }
+                self.frames(n as usize);
+                return Ok(());
             } else if let Some(t) = s.get("text").and_then(Value::as_str) {
                 self.call("ui.text", json!({ "text": t }))
             } else if let Some(at) = s.get("click") {
@@ -487,6 +560,7 @@ impl Harness {
                 }
                 drop(old);
                 self.ctx = egui::Context::default();
+                crate::fonts::setup_bundled_fonts(&self.ctx);
                 self.ctx.enable_accesskit();
                 self.install();
                 self.start_autosave();
@@ -750,7 +824,8 @@ pub fn check(h: &mut Harness, e: &Value) -> Result<(), String> {
                 if r.width() < lo - 0.5 || r.width() > hi + 0.5 {
                     return Err(format!("dialog width {:.0}, want {lo}..{hi}", r.width()));
                 }
-                if (r.right() - vp.right()).abs() > 2.0 || r.top() < vp.top() || r.bottom() > vp.bottom() + 1.0 {
+                let clearance = if rect_of("dialog:header").is_some() { crate::theme::Tokens::get().space_8 } else { 0.0 };
+                if (r.right() - (vp.right() - clearance)).abs() > 0.5 || r.top() < vp.top() || r.bottom() > vp.bottom() + 1.0 {
                     return Err(format!("dialog {r:?} is not docked right inside the viewport {vp:?}"));
                 }
             }
@@ -1023,6 +1098,14 @@ pub fn check(h: &mut Harness, e: &Value) -> Result<(), String> {
                     return Err(format!("browser selection: {}", r["result"]));
                 }
             }
+            "shortcuts" => {
+                for (id, want) in v.as_object().ok_or("shortcuts takes a command-to-key object")? {
+                    let got = h.call("ui.shortcut", json!({"command": id}));
+                    if got["result"]["key"] != *want {
+                        return Err(format!("shortcut {id}: got {}, want {want}", got["result"]["key"]));
+                    }
+                }
+            }
             "query" => {
                 // {command, params?, path: [keys or indices], value}: a command's result at path.
                 let cmd = v["command"].as_str().ok_or("query needs `command`")?;
@@ -1049,3 +1132,7 @@ pub fn check(h: &mut Harness, e: &Value) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "scenario_publication_tests.rs"]
+mod publication_tests;

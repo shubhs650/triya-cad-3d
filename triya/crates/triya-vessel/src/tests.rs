@@ -867,10 +867,12 @@ fn vessel_a_shell_regenerates() {
     assert!((m.bbox.max.z - (8762.543 + 14.0)).abs() < 0.01, "{:?}", m.bbox);
 }
 
-/// The captured kernel case (AGENTS.md §5): with plain arcs the revolve's measured volume is
-/// far off; the emitter's conic arcs avoid it (the test above). Kept so a kernel fix shows up.
+/// The captured kernel case (AGENTS.md §5): on SolidCraft v0.14.0 the revolve of plain arcs was
+/// far off in volume, so the emitter draws knuckles and crowns as conic arcs (the test above).
+/// Upstream v0.22.0 revolves it right (measured 12,222,458 mm³, −0.019 %). The conic workaround
+/// stays until a follow-up switches `emit::draw` back to arcs; this guard keeps the fix honest.
 #[test]
-fn kernel_case_torispherical_arc_revolve_is_still_wrong_with_plain_arcs() {
+fn kernel_case_torispherical_arc_revolve_is_right_since_v0_22() {
     registered();
     let script: Value = serde_json::from_str(include_str!("../tests/kernel-cases/torispherical-arc-revolve.json")).unwrap();
     let mut s = Session::default();
@@ -878,8 +880,7 @@ fn kernel_case_torispherical_arc_revolve_is_still_wrong_with_plain_arcs() {
     let st = s.model.state();
     let v = solidcraft_engine::kernel::measure(&st.bodies[0].body).unwrap().volume;
     let analytic = 12_224_761.0;
-    // When this fails the kernel got fixed: the conic workaround in `emit::draw` can go.
-    assert!((v - analytic).abs() / analytic > 0.01, "the kernel now revolves this case right ({v})");
+    assert!((v - analytic).abs() / analytic < 0.001, "plain-arc revolve is off again ({v} vs {analytic})");
 }
 
 // ---------------------------------------------------------------------------------------------

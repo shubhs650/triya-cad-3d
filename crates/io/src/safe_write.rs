@@ -23,7 +23,23 @@ fn temp_beside(path: &Path, tag: &str) -> PathBuf {
 fn write_synced(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut f = OpenOptions::new().write(true).create_new(true).open(path)?;
     f.write_all(bytes)?;
-    f.sync_all()
+    flush(&f)
+}
+
+/// Flush a written file to the disk. On Apple systems `sync_all` asks the drive itself to flush
+/// (`F_FULLFSYNC`), which a network share refuses (an SMB share: "Operation not supported", os
+/// error 45), so a save there failed before it replaced anything. The plain `fsync` the share
+/// does offer is used then, as SQLite and git do.
+fn flush(f: &fs::File) -> std::io::Result<()> {
+    flush_with(f, fs::File::sync_all)
+}
+
+fn flush_with(f: &fs::File, full: impl FnOnce(&fs::File) -> std::io::Result<()>) -> std::io::Result<()> {
+    match full(f) {
+        #[cfg(target_vendor = "apple")]
+        Err(e) if e.kind() == std::io::ErrorKind::Unsupported || e.raw_os_error() == Some(45) => rustix::fs::fsync(f).map_err(std::io::Error::from),
+        r => r,
+    }
 }
 
 /// Flush the directory entry (the rename) to disk where the platform allows it.
@@ -73,6 +89,33 @@ fn keep_permissions(old: &Option<fs::Permissions>, new: &Path) {
     }
 }
 
+// Retrying only the already-synced atomic rename avoids rewriting a large image
+// or deleting/truncating its existing target. ACL/read-only/other permanent
+// refusals still fail. No file lock is broken and no security setting is changed.
+fn replace_synced(source: &Path, destination: &Path) -> std::io::Result<()> {
+    rename_with_retry(|| fs::rename(source, destination), cfg!(windows), std::thread::sleep)
+}
+
+fn rename_with_retry(
+    mut rename: impl FnMut() -> std::io::Result<()>,
+    windows: bool,
+    mut wait: impl FnMut(std::time::Duration),
+) -> std::io::Result<()> {
+    // Windows can refuse rename while an independently opened handle withholds
+    // FILE_SHARE_DELETE. Access denied may also be permanent, so keep both an
+    // attempt bound and the original last error. Requested sleeps total 127 ms;
+    // scheduling/OS operation time is not a wall-clock latency guarantee.
+    let mut result = rename();
+    for milliseconds in [1, 2, 4, 8, 16, 32, 64] {
+        if !windows || !result.as_ref().is_err_and(|error| matches!(error.raw_os_error(), Some(5 | 32))) {
+            return result;
+        }
+        wait(std::time::Duration::from_millis(milliseconds));
+        result = rename();
+    }
+    result
+}
+
 fn write_steps(path: &Path, bytes: &[u8], backup: bool, stop: Option<Step>) -> std::io::Result<()> {
     let permissions = fs::metadata(path).ok().filter(|m| m.is_file()).map(|m| m.permissions());
     let tmp = temp_beside(path, "new");
@@ -91,7 +134,7 @@ fn write_steps(path: &Path, bytes: &[u8], backup: bool, stop: Option<Step>) -> s
         let r = old
             .and_then(|old| write_synced(&bak_tmp, &old))
             .map(|_| keep_permissions(&permissions, &bak_tmp))
-            .and_then(|_| fs::rename(&bak_tmp, backup_path(path)));
+            .and_then(|_| replace_synced(&bak_tmp, &backup_path(path)));
         if let Err(e) = r {
             let _ = fs::remove_file(&bak_tmp);
             let _ = fs::remove_file(&tmp);
@@ -101,7 +144,7 @@ fn write_steps(path: &Path, bytes: &[u8], backup: bool, stop: Option<Step>) -> s
     if stop == Some(Step::BackupWritten) {
         return Ok(());
     }
-    if let Err(e) = fs::rename(&tmp, path) {
+    if let Err(e) = replace_synced(&tmp, path) {
         let _ = fs::remove_file(&tmp);
         return Err(e);
     }
@@ -142,7 +185,7 @@ pub fn create_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = temp_beside(path, "create");
     // Only remove a temporary file that this invocation successfully created.
     let mut file = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
-    let result = file.write_all(bytes).and_then(|_| file.sync_all());
+    let result = file.write_all(bytes).and_then(|_| flush(&file));
     drop(file);
     let result = result.and_then(|_| fs::hard_link(&tmp, path));
     let _ = fs::remove_file(&tmp);
@@ -214,6 +257,29 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    /// A network share (SMB on macOS) refuses the drive flush `sync_all` asks for with "Operation
+    /// not supported" (os error 45). The file is then flushed the plain way and the save goes on;
+    /// any other failure still fails the save.
+    #[test]
+    fn a_share_that_refuses_the_full_flush_gets_a_plain_one() {
+        let d = dir("flush");
+        let p = d.join("a.solidcraft");
+        fs::write(&p, b"saved").unwrap();
+        let f = fs::File::open(&p).unwrap();
+        let refused = |_: &fs::File| Err(std::io::Error::from_raw_os_error(45));
+        #[cfg(target_vendor = "apple")]
+        flush_with(&f, refused).unwrap();
+        #[cfg(not(target_vendor = "apple"))]
+        assert!(flush_with(&f, refused).is_err(), "elsewhere sync_all is the plain flush already");
+        let unsupported = |_: &fs::File| Err(std::io::Error::from(std::io::ErrorKind::Unsupported));
+        assert_eq!(flush_with(&f, unsupported).is_ok(), cfg!(target_vendor = "apple"));
+        let broken = |_: &fs::File| Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        assert_eq!(flush_with(&f, broken).unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
+        flush_with(&f, |_| Ok(())).unwrap();
+        drop(f);
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -354,5 +420,121 @@ mod tests {
             assert_eq!(mode(&backup_path(&target)), 0o600);
             let _ = fs::remove_dir_all(&d);
         }
+    }
+}
+
+#[cfg(test)]
+mod rename_retry_tests {
+    use super::*;
+    use std::cell::Cell;
+    #[test]
+    fn only_windows_sharing_or_access_errors_retry_with_an_exact_finite_budget() {
+        for code in [5, 32] {
+            let calls = Cell::new(0);
+            let mut waits = Vec::new();
+            let result = rename_with_retry(
+                || {
+                    calls.set(calls.get() + 1);
+                    if calls.get() < 3 { Err(std::io::Error::from_raw_os_error(code)) } else { Ok(()) }
+                },
+                true,
+                |delay| waits.push(delay.as_millis()),
+            );
+            assert!(result.is_ok());
+            assert_eq!(calls.get(), 3);
+            assert_eq!(waits, [1, 2]);
+            let calls = Cell::new(0);
+            let mut waits = Vec::new();
+            let error = rename_with_retry(
+                || {
+                    calls.set(calls.get() + 1);
+                    Err(std::io::Error::from_raw_os_error(code))
+                },
+                true,
+                |delay| waits.push(delay.as_millis()),
+            )
+            .unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(code));
+            assert_eq!(calls.get(), 8);
+            assert_eq!(waits, [1, 2, 4, 8, 16, 32, 64]);
+            assert_eq!(waits.iter().sum::<u128>(), 127);
+        }
+        for (windows, code) in [(false, 5), (false, 32), (true, 2), (true, 3), (true, 87), (true, 183)] {
+            let calls = Cell::new(0);
+            let error = rename_with_retry(
+                || {
+                    calls.set(calls.get() + 1);
+                    Err(std::io::Error::from_raw_os_error(code))
+                },
+                windows,
+                |_| panic!("unexpected retry"),
+            )
+            .unwrap_err();
+            assert_eq!(calls.get(), 1);
+            assert_eq!(error.raw_os_error(), Some(code));
+        }
+        let mut calls = 0;
+        rename_with_retry(
+            || {
+                calls += 1;
+                Ok(())
+            },
+            true,
+            |_| panic!("success must not wait"),
+        )
+        .unwrap();
+        assert_eq!(calls, 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn native_windows_rename_preserves_old_bytes_until_a_reader_releases_delete_sharing() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let directory = std::env::temp_dir().join(format!("solidcraft-rename-reader-release-{}", std::process::id()));
+        fs::create_dir(&directory).unwrap();
+        let old = directory.join("image.png");
+        let pending = directory.join("completed.tmp");
+        fs::write(&old, b"old complete image").unwrap();
+        write_synced(&pending, b"new complete image").unwrap();
+        let mut reader = Some(OpenOptions::new().read(true).share_mode(1).open(&old).unwrap());
+        let error = fs::rename(&pending, &old).unwrap_err();
+        assert!(matches!(error.raw_os_error(), Some(5 | 32)), "{error}");
+        let calls = Cell::new(0);
+        rename_with_retry(
+            || {
+                calls.set(calls.get() + 1);
+                fs::rename(&pending, &old)
+            },
+            true,
+            |delay| {
+                assert_eq!(fs::read(&old).unwrap(), b"old complete image");
+                drop(reader.take());
+                std::thread::sleep(delay);
+            },
+        )
+        .unwrap();
+        assert!(calls.get() >= 2 && calls.get() <= 8);
+        assert_eq!(fs::read(&old).unwrap(), b"new complete image");
+        assert!(!pending.exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn persistent_native_lock_is_an_error_without_destroying_or_bypassing_the_target() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let directory = std::env::temp_dir().join(format!("solidcraft-rename-persistent-reader-{}", std::process::id()));
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("image.exr");
+        fs::write(&path, b"old whole raw master").unwrap();
+        let reader = OpenOptions::new().read(true).share_mode(1).open(&path).unwrap();
+        let error = write_atomic(&path, b"new whole raw master", false).unwrap_err();
+        assert!(matches!(error.raw_os_error(), Some(5 | 32)), "{error}");
+        assert_eq!(fs::read(&path).unwrap(), b"old whole raw master");
+        assert!(stale_temps(&path).is_empty());
+        drop(reader);
+        write_atomic(&path, b"new whole raw master", false).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"new whole raw master");
+        fs::remove_dir_all(directory).unwrap();
     }
 }

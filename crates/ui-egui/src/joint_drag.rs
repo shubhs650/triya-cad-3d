@@ -105,6 +105,7 @@ mod tests {
     use solidcraft_engine::geom::Vec3;
 
     use crate::scenario::Harness;
+    use crate::test_support::play;
 
     fn run(h: &mut Harness, id: &str, p: Value) -> Value {
         h.app.run(id, p.clone()).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
@@ -146,13 +147,6 @@ mod tests {
         (h, end, a, b)
     }
 
-    fn play(h: &mut Harness) {
-        while !h.app.synthetic.is_empty() {
-            h.frame();
-        }
-        h.frames(2);
-    }
-
     /// Press at `a` and move to `b` in 12 frames, holding the button there.
     fn press_and_move(h: &mut Harness, a: egui::Pos2, b: egui::Pos2) {
         h.app.synthetic.push(egui::Event::PointerMoved(a));
@@ -191,6 +185,24 @@ mod tests {
         assert!(!h.app.session.log.iter().any(|l| l.contains("Reach")), "frames are not echoed: {:?}", h.app.session.log);
         run(&mut h, "edit.undo", json!({}));
         assert!(arm_at(&h, end).dist(end) < 1e-9, "{:?}", arm_at(&h, end));
+    }
+
+    /// #5137: while a part is dragged along its joint, nothing under the pointer highlights; hover
+    /// comes back once the drag ends.
+    #[test]
+    fn dragging_a_jointed_part_highlights_nothing_under_the_pointer() {
+        let (mut h, _, a, b) = hinged_arm();
+        h.app.synthetic.push(egui::Event::PointerMoved(a));
+        play(&mut h);
+        assert!(h.app.viewport.hover.is_some(), "the arm under the pointer must highlight before the drag");
+        press_and_move(&mut h, a, b);
+        assert!(h.app.viewport.joint_drag.is_some(), "the drag must move the arm");
+        assert!(h.app.viewport.hover.is_none(), "dragging a part must not highlight what is under the pointer");
+        h.frames(2);
+        assert!(h.app.viewport.hover.is_none(), "a drag held still must not highlight either");
+        release(&mut h, b);
+        h.frames(2);
+        assert!(h.app.viewport.hover.is_some(), "hover must return after the drag");
     }
 
     /// With the undo history full, a drag still adds one step: it drops the oldest once, not one

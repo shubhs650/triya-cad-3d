@@ -89,7 +89,7 @@ extension slot is the one exception and is named for greppability).
 - Tests first per task: the acceptance test named in PLAN.md exists and fails before the
   implementation lands.
 - `cargo xtask ci` green; `cargo test -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui`
-  green; `bash triya/ci/check-patch-whitelist.sh v0.14.0` green; wasm builds
+  green; `bash triya/ci/check-patch-whitelist.sh v0.22.0` green; wasm builds
   (`cargo xtask wasm`); the web app serves (`trunk serve` in `triya/apps/triya-web`) and the
   vessel regenerates in the browser for UI tasks (take a screenshot via `solidcraft-cli snapshot`
   or the control channel and look at it).
@@ -108,9 +108,10 @@ extension slot is the one exception and is named for greppability).
   `gh pr merge --squash --delete-branch`. Never push to `main` directly; never force-push `main`.
 - Commit messages: `triya(<crate>): <what>` for overlay code, `seam: <file> — <why>` for the
   rare upstream touch, `plan: …` / `docs: …` for documents. Reference PLAN task ids (`T2.3`).
-- **Freeze**: until the tag `triya-v0.1.0-beta` exists, do not merge `upstream/main`
-  (ADR-0002). The `upstream-sync` workflow is manual-only until then. After the beta, the first
-  merge is its own task (PLAN.md P1.1, `prompts/08-first-upstream-merge.md`).
+- **Upstream base: v0.22.0** (merged 2026-10-25, ADR-0002 amendment). Until the tag
+  `triya-v0.1.0-beta` exists, merge an upstream release tag only when the owner asks; never
+  `upstream/main` between releases. The `upstream-sync` workflow is manual-only until then.
+  Recipe: `docs/sync-playbook.md` (incl. §5, re-merging the copied web shell).
 - **Cloud sessions** (Claude Code Projects): keep one thread per phase so `target/` survives; run
   `cargo check` + Triya tests while working and the full `cargo xtask ci` once before the PR; GitHub
   Actions is the gate. Tags via `gh api repos/<owner>/<repo>/git/refs -f ref=refs/tags/<tag> -f sha=<sha>`
@@ -122,7 +123,7 @@ extension slot is the one exception and is named for greppability).
   (the Triya CLI wrapper registers `vessel.*` then delegates to upstream's CLI; plain
   `solidcraft-cli` does not know the vessel commands); MCP: `cargo run -p triya-cli -- mcp`.
 
-## 8a. Upstream facts you will trip over (verified in v0.14.0; details in `docs/upstream-map.md`)
+## 8a. Upstream facts you will trip over (verified in v0.22.0; details in `docs/upstream-map.md`, v0.22.0 delta first)
 - `command_specs()` builds a `Vec` from static per-module arrays; Triya commands enter through
   the extension slot `crates/engine/src/cmd/triya_extra.rs` (`register(&'static [CommandSpec])`,
   idempotent, refuses duplicate ids; `extend()` is called at the end of `command_specs()`). The
@@ -135,13 +136,15 @@ extension slot is the one exception and is named for greppability).
   makes it one undo step (asserted in the skeleton's test). `run_nested` is `pub(crate)`.
   Alternative for scratch-and-accept: `s.scratch()` → `scratch.execute(step)` →
   `scratch.undo.clear()` → `s.accept_computed(scratch)` (`sketch_dimensioned.rs`).
-- Toolbar `TABS` is a fixed constant in `ui-egui/src/toolbar.rs`; panel contents come from
-  `CommandSpec.tab/.panel` automatically. The skeleton adds a `VESSEL` tab (seam) plus
-  `ui.heading_vessel` in `assets/locales/{en,ja,zh}.json` (upstream's i18n tests require every
-  tab in the catalogs). Dropping that seam = move the commands to an existing tab via `.at(…)`.
+- The ribbon is `ui-egui/src/workspace.rs`: `TABS`, then `SECTIONS` (a tab's panels) and
+  `PLACEMENTS` (`.at(tab, panel)` → section). The `VESSEL` tab is a seam there (TABS + four empty
+  `SECTIONS` rows + four `PLACEMENTS` rows) plus `ui.heading_vessel` in
+  `assets/locales/{en,ja,zh}.json`. Dropping it = move the commands to an existing tab via `.at(…)`.
+- Panels and windows go through `ui_kit` (`Container::new(ctx, Surface::…)`, `ui_kit::Window`);
+  `frame::window`/`docked_on` no longer exist. Canvases with a camera use `navigation::handle`.
 - `Tool::for_command`/`Dialog::for_command` are closed in-crate matches: no external dialog hook.
   Triya panels are drawn by the Triya app shell around `SolveApp::ui` (pub API: `run`, `start`,
-  `set_status`, `session`, `frame::window`, `theme::Tokens`). Programmatic calls never open
+  `set_status`, `session`, `ui_kit`, `theme::Tokens`). Programmatic calls never open
   dialogs — our panels call `app.run`, never `app.start`.
 - Layers: `xtask/src/layers.rs` `TABLE` is hard-coded with a strictly-lower rule; the skeleton
   registers `triya-brand` (standalone), `triya-stdlib` L0, `triya-vessel` L4 and `triya-drawing`

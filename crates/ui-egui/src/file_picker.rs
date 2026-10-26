@@ -29,15 +29,36 @@ impl Wake for Repaint {
 
 impl SolveApp {
     /// Keep the target design and editors unchanged until the picker answers.
+    /// (A save being written keeps it unchanged too, see [`crate::save_job`].)
     pub fn file_picker_busy(&self) -> bool {
-        self.file_picker.is_some()
+        self.file_picker.is_some() || self.saving.is_some()
     }
 
     pub(crate) fn pick_open(&mut self, complete: impl FnOnce(&mut SolveApp, Option<String>) + 'static) {
+        self.pick_open_for(&[], complete);
+    }
+
+    /// Open a file of this type: the picker offers these extensions first (#1801).
+    pub(crate) fn pick_open_for(&mut self, extensions: &[&str], complete: impl FnOnce(&mut SolveApp, Option<String>) + 'static) {
         if self.file_picker_busy() {
             return;
         }
-        let future = self.services.pick_open.as_ref().map(|pick| pick());
+        let future = self.services.pick_open.as_ref().map(|pick| pick(extensions));
+        self.begin_picker(future, Box::new(complete));
+    }
+
+    /// Ask for one file of a kind (`label`, `extensions`), with the host's dialog for it, or the
+    /// Open dialog where the host has none. (The agent chat asks for its files; the web build has
+    /// no chat.)
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(crate) fn pick_file(&mut self, label: &str, extensions: &[&str], complete: impl FnOnce(&mut SolveApp, Option<String>) + 'static) {
+        if self.file_picker_busy() {
+            return;
+        }
+        let future = match self.services.pick_file.as_ref() {
+            Some(pick) => Some(pick(label, extensions)),
+            None => self.services.pick_open.as_ref().map(|pick| pick(extensions)),
+        };
         self.begin_picker(future, Box::new(complete));
     }
 
@@ -66,9 +87,9 @@ impl SolveApp {
         self.file_picker = Some(Pending { future, complete });
     }
 
-    pub(crate) fn pick_open_command(&mut self, command: &str, params: Value) {
+    pub(crate) fn pick_open_command(&mut self, command: &str, params: Value, extensions: &[&str]) {
         let command = command.to_string();
-        self.pick_open(move |app, path| {
+        self.pick_open_for(extensions, move |app, path| {
             if let Some(path) = path {
                 let mut params = params;
                 params["path"] = json!(path);
@@ -144,7 +165,7 @@ mod tests {
         if save {
             app.services.pick_save = Some(Box::new(move |_, _| Box::pin(Delayed(captured.clone()))));
         } else {
-            app.services.pick_open = Some(Box::new(move || Box::pin(Delayed(captured.clone()))));
+            app.services.pick_open = Some(Box::new(move |_| Box::pin(Delayed(captured.clone()))));
         }
         answer
     }
@@ -154,7 +175,9 @@ mod tests {
         if let Some(waker) = answer.waker.borrow_mut().take() {
             waker.wake();
         }
-        tick(app, &egui::Context::default());
+        tick(app, &crate::fonts::test_context());
+        // A save the answer started is written on a worker: wait for it.
+        crate::save_job::tick(app, true);
         assert!(!app.file_picker_busy());
     }
 
@@ -275,6 +298,31 @@ mod tests {
         assert!(!crate::documents::any_dirty(&h.app));
     }
 
+    /// #1801: Insert SVG and Insert DXF ask the host for their own file type first; other
+    /// opens keep the default list.
+    #[test]
+    fn sketch_inserts_ask_for_their_file_type() {
+        let mut h = crate::scenario::Harness::new();
+        let asked: Rc<RefCell<Vec<Vec<String>>>> = Rc::default();
+        let log = asked.clone();
+        h.app.services.pick_open = Some(Box::new(move |extensions| {
+            log.borrow_mut().push(extensions.iter().map(|e| e.to_string()).collect());
+            Box::pin(std::future::ready(None))
+        }));
+        h.app.run("sketch.create", json!({"plane": "XY"})).unwrap();
+        for (command, want) in [
+            ("sketch.insert_svg", vec!["svg"]),
+            ("sketch.insert_dxf", vec!["dxf"]),
+            ("file.insert_step", vec![]),
+            ("canvas.insert", vec!["png", "jpg", "jpeg"]),
+            ("canvas.decal", vec!["png", "jpg", "jpeg"]),
+        ] {
+            h.app.start(command);
+            tick(&mut h.app, &h.ctx);
+            assert_eq!(asked.borrow().last().cloned(), Some(want.iter().map(|e| e.to_string()).collect::<Vec<_>>()), "{command}");
+        }
+    }
+
     #[test]
     fn picker_holds_engine_requests_but_answers_window_resize_requests() {
         let mut h = crate::scenario::Harness::new();
@@ -316,5 +364,51 @@ mod tests {
         h.app.start("canvas.insert");
         finish(&mut h.app, &answer, None);
         assert!(h.app.tool.is_none(), "cancelling does not resume the old placement");
+    }
+
+    /// #3216: pickers for files that aren't designs list the files' own types. On macOS a type
+    /// no filter names can't be picked: CSV parameters were greyed out.
+    #[test]
+    fn parameter_import_and_canvas_images_ask_for_their_file_types() {
+        let mut h = crate::scenario::Harness::new();
+        h.app.home.open = false;
+        let asked: Rc<RefCell<Vec<Vec<String>>>> = Rc::default();
+        let log = asked.clone();
+        h.app.services.pick_open = Some(Box::new(move |types: &[&str]| {
+            log.borrow_mut().push(types.iter().map(|t| t.to_string()).collect());
+            Box::pin(std::future::ready(None))
+        }));
+        crate::params_dialog::open(&mut h.app);
+        h.frames(2);
+        h.step(&json!({"widget": "Import…"})).unwrap();
+        h.frames(2);
+        h.app.params = None;
+        h.app.run("sketch.create", json!({"plane": "XY"})).unwrap();
+        h.app.start("canvas.insert");
+        h.frames(2);
+        assert_eq!(*asked.borrow(), [vec!["csv", "json"], vec!["png", "jpg", "jpeg"]]);
+    }
+
+    /// #4717: a canvas placed with a click on the origin of a sketch on XY, seen from the top,
+    /// lies on XY. The origin's XZ square is under the cursor there too, edge-on, and the image
+    /// went onto it, out of sight.
+    #[test]
+    fn a_canvas_clicked_at_the_sketch_origin_lies_where_it_can_be_seen() {
+        let mut h = crate::scenario::Harness::new();
+        h.app.run("sketch.create", json!({"plane": "XY"})).unwrap();
+        for step in [
+            json!({"make_image": "pic.png"}),
+            json!({"choose_file": "pic.png"}),
+            json!({"call": "ui.view", "params": {"view": "top"}}),
+            json!({"start": "canvas.insert"}),
+            json!({"click": {"world": [0, 0, 0]}}),
+        ] {
+            h.step(&step).unwrap();
+        }
+        let doc = &h.app.session.doc;
+        let canvas = doc.canvases.first().expect("the canvas is placed");
+        let (vals, _) = doc.param_values();
+        let n = doc.canvas_plane(&vals, canvas).unwrap().normal();
+        assert!(n.z.abs() > 0.99, "the canvas lies on {n:?}, not on XY");
     }
 }

@@ -4,19 +4,19 @@
 #
 # T7.3 / ADR-0006: a design Triya saves opens in UNMODIFIED upstream SolidCraft with its geometry.
 # Builds Triya's CLI from this tree and upstream's `solidcraft-cli` from a clean worktree of the
-# freeze tag, regenerates a vessel with Triya, saves it as `.solidcraft`, and compares the body
+# upstream base tag, regenerates a vessel with Triya, saves it as `.solidcraft`, and compares the body
 # volumes both CLIs measure after opening it (upstream rebuilds every feature from the file).
 #
 #   bash triya/ci/upstream-roundtrip.sh [script.json] [tag]
-#   (default: triya/crates/triya-vessel/examples/vessel-a-shell.json, v0.14.0)
+#   (default: triya/crates/triya-vessel/examples/vessel-a-shell.json, v0.22.0)
 #
-# Needs the tag locally (`git tag v0.14.0 2bb9c81` in a shallow clone). Upstream builds in its own
+# Needs the tag locally (`git tag v0.22.0 0537623` in a shallow clone). Upstream builds in its own
 # target folder (`target-upstream/`, gitignored as `target*/`): the first run compiles it all.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 SCRIPT="${1:-triya/crates/triya-vessel/examples/vessel-a-shell.json}"
-TAG="${2:-v0.14.0}"
+TAG="${2:-v0.22.0}"
 cd "$ROOT"
 WORK="$(mktemp -d)"
 trap 'git worktree remove --force "$WORK/upstream" >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT

@@ -7,7 +7,7 @@ use solidcraft_doc::sheet::{self, SheetBody, SheetRule};
 use solidcraft_doc::{BodyName, SketchId};
 use solidcraft_doc::{FacePick, Position};
 use solidcraft_doc::{FeatureKind, FlangeEdge};
-use solidcraft_geom::{Vec2, Vec3};
+use solidcraft_geom::{Aabb2, Ring, Vec2, Vec3};
 
 use super::CommandSpec;
 use super::features::{add_feature, check_expr, feature_sketch, profiles, sketch_id};
@@ -25,7 +25,7 @@ pub static COMMANDS: &[CommandSpec] = &[
          Thickness, K-factor and bend radius come from the rule (sheet.manage_rules); passing them here is refused, \
          and so is the corner relief on a base or contour flange",
     ),
-    CommandSpec::new("sheet.perforate", "Perforate", perforate).at("SHEET METAL", "CREATE").icon("hem").params(
+    CommandSpec::new("sheet.perforate", "Perforate", perforate).at("SHEET METAL", "CREATE").icon("perforate").params(
         "diameter, pitch: expr; margin?: expr (clear of edges, cut-outs and bends; default: the diameter); pattern?: staggered (60°, default) | square; body? - a perforation field over the whole flat sheet: holes in the flat pattern (perforations), the DXF (layer PERFORATION) and the measured volume, not cut into the B-rep (#732)",
     ),
     CommandSpec::new("sheet.hem", "Hem", hem)
@@ -59,7 +59,7 @@ pub static COMMANDS: &[CommandSpec] = &[
          `corner_relief` across; tear none, each bend's end is cut straight from the corner to its flange's end; default notch); \
          active?: bool; delete?: bool",
     ),
-    CommandSpec::new("sheet.rules", "List Sheet Metal Rules", list_rules).noundo().doc_only().params("→ rules with their expressions and values, and the active one"),
+    CommandSpec::new("sheet.rules", "List Sheet Metal Rules", list_rules).icon("sheet_rules").noundo().doc_only().params("→ rules with their expressions and values, and the active one"),
     CommandSpec::new("sheet.flat_pattern", "Create Flat Pattern", flat_pattern)
         .at("SHEET METAL", "CREATE")
         .icon("flat")
@@ -67,7 +67,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params(
             "body? → flat size, outline loops and cut-outs (flat coordinates, as point lists), cutout_shapes (the same cut-outs exactly, in the same order: {circle: {center, radius}} for a round hole, else {segments: [{line: [a, b]} | {arc: {center, radius, start_deg, sweep_deg}} | {polyline: [...]}]}), pockets (with their own cutout_shapes), bend lines and the bend table",
         ),
-    CommandSpec::new("sheet.export_dxf", "Export Flat Pattern as DXF", export_dxf)
+    CommandSpec::new("sheet.export_dxf", "Export Flat Pattern as DXF", export_dxf).icon("dxf")
         .noundo()
         .params(
             "body?, path?, curves?: exact|arcs (default exact: an ellipse as ELLIPSE, splines, text outlines and other Béziers as SPLINE; arcs: tangent arcs and lines within 0.001 mm, for machines that read only those), \
@@ -77,7 +77,7 @@ pub static COMMANDS: &[CommandSpec] = &[
              → DXF (AutoCAD 2000, mm): layers OUTLINE (the outer contour), CUT (what is cut out inside it), TEXT or ETCH (letters), BEND_UP and BEND_DOWN (dashed centre lines), BEND_NOTES, \
              POCKET_<BOTTOM|TOP|INTERNAL>_Z<from>_TO_<to>_MM (one per side and depth) and PERFORATION; inner contours come before the outline",
         ),
-    CommandSpec::new("sheet.export_bend_table", "Export Bend Table", export_bend_table)
+    CommandSpec::new("sheet.export_bend_table", "Export Bend Table", export_bend_table).icon("bendtable")
         .noundo()
         .params("body?, format?: csv|json (default csv), path? → bend table in mm and degrees, including rule and flat centre-line coordinates; a bend that cut-outs split has a row for each piece"),
 ];
@@ -205,6 +205,9 @@ fn flange(s: &mut Session, p: &Value) -> Result<Value> {
             let position = str_(p, "position").unwrap_or("inside").to_ascii_lowercase();
             if !matches!(position.as_str(), "inside" | "outside" | "middle") {
                 return Err(bad(cmd, "`position` must be inside, outside or middle"));
+            }
+            if s.model.state().sheets.is_empty() {
+                return Err(no_sheet_body(cmd));
             }
             let body = str_(p, "body").map(str::to_string);
             // The corner relief these flanges make, in place of the rule's; null is not given.
@@ -402,16 +405,7 @@ fn rules(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let mut rule =
         s.doc.sheet.rules.iter().find(|r| r.name == name).cloned().unwrap_or_else(|| SheetRule { name: name.clone(), ..s.doc.sheet_rule(None) });
-    for (k, slot) in [
-        ("thickness", &mut rule.thickness),
-        ("k_factor", &mut rule.k_factor),
-        ("bend_radius", &mut rule.bend_radius),
-        ("relief_width", &mut rule.relief_width),
-        ("relief_depth", &mut rule.relief_depth),
-        ("corner_relief", &mut rule.corner_relief),
-        ("hem_gap", &mut rule.hem_gap),
-        ("gap", &mut rule.gap),
-    ] {
+    for (k, slot) in rule.fields_mut() {
         if let Some(e) = expr(p, k) {
             *slot = e.into();
         }
@@ -451,11 +445,18 @@ fn list_rules(s: &mut Session, _p: &Value) -> Result<Value> {
     Ok(json!({"rules": rules, "active": active}))
 }
 
+fn no_sheet_body(cmd: &str) -> EngineError {
+    bad(
+        cmd,
+        "there is no sheet metal body: start one with Flange > Base, or turn a plate into sheet metal with Convert to Sheet Metal (pick its large flat face)",
+    )
+}
+
 fn sheet_of(s: &Session, p: &Value, cmd: &str) -> Result<SheetBody> {
     let st = s.model.state();
     match str_(p, "body") {
         Some(b) => st.sheets.iter().find(|x| x.body == b).cloned().ok_or_else(|| bad(cmd, format!("`{b}` is not a sheet metal body"))),
-        None => st.sheets.last().cloned().ok_or_else(|| bad(cmd, "there is no sheet metal body")),
+        None => st.sheets.last().cloned().ok_or_else(|| no_sheet_body(cmd)),
     }
 }
 
@@ -494,13 +495,9 @@ fn loop_shape(lp: &solidcraft_geom::Loop2) -> Value {
 
 fn flat_json(sh: &SheetBody) -> Result<Value> {
     let regions = sh.flat_regions()?;
-    let loops: Vec<Vec<Vec2>> = regions.iter().map(|r| r.outer.polyline(1e-3)).collect();
-    let (mut lo, mut hi) = (Vec2::new(f64::MAX, f64::MAX), Vec2::new(f64::MIN, f64::MIN));
-    for p in loops.iter().flatten() {
-        lo = Vec2::new(lo.x.min(p.x), lo.y.min(p.y));
-        hi = Vec2::new(hi.x.max(p.x), hi.y.max(p.y));
-    }
-    let (w, h) = (hi.x - lo.x, hi.y - lo.y);
+    let loops: Vec<Ring<Vec2>> = regions.iter().map(|r| r.outer.polyline(1e-3)).collect();
+    let size = loops.iter().fold(Aabb2::EMPTY, |b, l| b.union(&l.bounds())).size();
+    let (w, h) = (size.x, size.y);
     let pt = |v: &Vec2| json!([v.x, v.y]);
     let outline: Vec<Value> = loops.iter().map(|l| Value::Array(l.iter().map(pt).collect())).collect();
     let holes: Vec<Value> = regions.iter().flat_map(|r| &r.holes).map(|h| Value::Array(h.polyline(1e-3).iter().map(pt).collect())).collect();
@@ -562,6 +559,7 @@ fn flat_json(sh: &SheetBody) -> Result<Value> {
 
 fn flat_pattern(s: &mut Session, p: &Value) -> Result<Value> {
     let sh = sheet_of(s, p, "sheet.flat_pattern")?;
+    sh.flat_matches_body()?;
     flat_json(&sh)
 }
 
@@ -819,10 +817,16 @@ fn export_dxf(s: &mut Session, p: &Value) -> Result<Value> {
         }
         let sheets = &s.model.state().sheets;
         if sheets.is_empty() {
-            return Err(bad(cmd, "there is no sheet metal body"));
+            return Err(no_sheet_body(cmd));
         }
         // Every file is made before the first is written.
-        let texts = sheets.iter().map(|sh| flat_dxf(sh, &options)).collect::<Result<Vec<_>>>()?;
+        let texts = sheets
+            .iter()
+            .map(|sh| {
+                sh.flat_matches_body()?;
+                flat_dxf(sh, &options)
+            })
+            .collect::<Result<Vec<_>>>()?;
         let paths = path.map(|path| body_paths(path, &sheets.iter().map(|sh| sh.body.clone()).collect::<Vec<_>>()));
         let mut files = Vec::new();
         for (i, (sh, text)) in sheets.iter().zip(&texts).enumerate() {
@@ -837,6 +841,7 @@ fn export_dxf(s: &mut Session, p: &Value) -> Result<Value> {
         return Ok(json!({"files": files}));
     }
     let sh = sheet_of(s, p, cmd)?;
+    sh.flat_matches_body()?;
     let text = flat_dxf(&sh, &options)?;
     if let Some(path) = path {
         solidcraft_io::vfs::write(path, text.as_bytes()).map_err(|e| EngineError::Other(format!("{path}: {e}")))?;
@@ -852,6 +857,7 @@ fn export_bend_table(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad(cmd, "`format` must be csv or json"));
     }
     let sh = sheet_of(s, p, cmd)?;
+    sh.flat_matches_body()?;
     let table = flat_json(&sh)?;
     let text = if format == "json" {
         serde_json::to_string_pretty(&table).map_err(|e| EngineError::Other(e.to_string()))?
@@ -894,9 +900,17 @@ fn export_bend_table(s: &mut Session, p: &Value) -> Result<Value> {
 mod tests;
 
 #[cfg(test)]
+#[path = "sheet_batch_cuts_tests.rs"]
+mod batch_cuts_tests;
+
+#[cfg(test)]
 #[path = "sheet_convert_tests.rs"]
 mod convert_tests;
 
 #[cfg(test)]
 #[path = "sheet_dxf_tests.rs"]
 mod dxf_tests;
+
+#[cfg(test)]
+#[path = "sheet_face_names_tests.rs"]
+mod face_names_tests;

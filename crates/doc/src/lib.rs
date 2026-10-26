@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod appearance;
+pub mod appearance_pack;
 mod assembly;
 mod body_transfer;
 mod body_transfer_sheet;
@@ -14,9 +15,12 @@ pub use body_transfer::{valid_transfer_matrix, validate_body_transfer};
 pub mod canvas;
 mod clipboard;
 pub use clipboard::{clone_expression, remap_topology};
+mod component_removal;
+pub use component_removal::RemovedTree;
 pub mod config;
 pub mod construct;
 pub mod display_quality;
+pub mod display_units;
 mod document;
 mod eval;
 pub mod expr;
@@ -26,7 +30,9 @@ mod feature_refs;
 pub use face_anchor::{FaceAnchor, FaceAttachmentStatus};
 pub mod format;
 mod format_offsets;
+pub mod frame;
 mod history_names;
+pub mod hole_reference;
 pub use format_offsets::whole_profile_selection_from_value;
 pub mod joints;
 mod lineage;
@@ -39,15 +45,23 @@ pub mod naming;
 mod params;
 pub mod physical_material;
 mod piece_names;
+pub mod pipe_thread_catalog;
 mod points;
 mod profile_refs;
 pub mod progress;
+mod thread_catalog;
+pub use thread_catalog::{TappedThread, TappedThreadFamily, parse_tapped_thread, tapped_thread_sizes};
 mod walk;
-pub use profile_refs::{capture_profile_selection, profile_selection_indices};
+pub use profile_refs::{capture_profile_selection, profile_fallback_notes, profile_selection_indices, profile_selection_indices_lenient};
 pub mod plastic;
 pub mod project;
 mod project3d;
+pub mod render_aging;
+pub mod render_job;
+pub mod render_optics;
+pub mod render_resources;
 pub mod render_settings;
+pub mod render_surface;
 pub use project3d::iso_grid;
 pub mod sheet;
 
@@ -56,11 +70,12 @@ pub use assembly::{
     rigid,
 };
 pub use document::*;
+pub use eval::KeptResults;
 pub use eval::{
-    EdgeRef, FeatureResult, Model, ModelBody, ModelState, PlacedBodies, RevolveExtent, SolvedSketch, ThreadInfo, curve_pick_error, edge_names_for,
-    edge_refs, face_point_names, face_point_state, hole_direction_at, import_body_names, object_height, parse_metric_thread, pattern_matrices,
-    revolve_extent, revolve_extent_with_convention, select_profiles, sketch_hole_direction, sketch_line_plane, state_in_frame, state_in_frame_at,
-    through_all_distance, world_state, world_state_reusing,
+    EdgeRef, FeatureResult, Model, ModelBody, ModelState, PlacedBodies, RevolveExtent, SavedModel, SolvedSketch, ThreadInfo, curve_pick_error,
+    edge_names_for, edge_refs, face_point_names, face_point_state, hole_direction_at, import_body_names, metric_thread_sizes, object_height,
+    parse_metric_thread, pattern_matrices, revolve_extent, revolve_extent_with_convention, select_profiles, sketch_hole_direction, sketch_line_plane,
+    state_in_frame, state_in_frame_at, suggested_thread, tangent_face_chain, through_all_distance, world_state, world_state_reusing,
 };
 pub use expr::Expr;
 pub use names::{BodyName, FeatureName, SketchId};

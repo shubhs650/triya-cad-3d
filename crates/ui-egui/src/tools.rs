@@ -6,7 +6,43 @@ use serde_json::{Value, json};
 use solidcraft_engine::geom::Vec2;
 
 use crate::SolveApp;
-use crate::viewport::{Hit, Proj, pick, sketch_point_at};
+use crate::tool_modifiers::{Audit, Scope, ToolModifiers};
+use crate::viewport::{Hit, Proj, pick_for_tool as pick, sketch_point_at};
+
+const DRAW_SCOPES: &[Scope] = &[Scope::SketchDraw, Scope::SketchDrag];
+
+/// Per-tool modifier descriptors owned by this host file (coordinator seeds / audits these).
+pub const MODIFIERS: &[ToolModifiers] = &[
+    ToolModifiers { tool: "sketch.line", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.rectangle.two_point", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.rectangle.center", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.rectangle.rounded", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.rectangle.three_point", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.circle.center", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.circle.two_point", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.circle.three_point", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.arc.three_point", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.arc.center_point", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.polygon.inscribed", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.polygon.circumscribed", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.polygon.edge", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.slot.center_to_center", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.slot.overall", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.point", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    ToolModifiers { tool: "sketch.dimension", scopes: DRAW_SCOPES, bindings: &[], audit: Audit::Implemented },
+    // Constraint tools: pick-only; no tool-specific modifier chords.
+    ToolModifiers { tool: "sketch.constraint.horizontal_vertical", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.fix", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.coincident", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.tangent", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.equal", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.parallel", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.perpendicular", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.concentric", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.collinear", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.midpoint", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.constraint.symmetry", scopes: &[], bindings: &[], audit: Audit::VerifiedNoOp },
+];
 
 #[cfg(test)]
 #[path = "sketch_display_preview_tests.rs"]
@@ -42,6 +78,8 @@ pub struct Tool {
     pub hover: Option<(Vec2, Option<String>)>,
     /// Picked entity ids.
     pub picks: Vec<String>,
+    /// Horizontal/Vertical point references, or the Dimension tool's midpoint snaps.
+    pub point_picks: Vec<Value>,
     /// Inline dimension boxes for the shape being drawn, the point count they were made for,
     /// and whether the first box should take the keyboard.
     pub dims: Vec<crate::sketch_dims::DimBox>,
@@ -90,6 +128,7 @@ impl Tool {
             pts: Vec::new(),
             hover: None,
             picks: Vec::new(),
+            point_picks: Vec::new(),
             dims: Vec::new(),
             dim_history: Vec::new(),
             dims_stage: usize::MAX,
@@ -108,9 +147,12 @@ pub fn hint(id: &str) -> String {
         "sketch.circle.center" => "Circle: click the centre, then a point on the circle".into(),
         "sketch.arc.three_point" => "Arc: click start, end, then a point on the arc".into(),
         "sketch.arc.center_point" => "Arc: click centre and start, then click end or type a signed sweep".into(),
-        "sketch.dimension" => "Dimension: pick one or two entities and type the value (or click to place it first); Enter applies".into(),
-        "sketch.constraint.horizontal_vertical" => "Horizontal/Vertical: pick a line or two points to align".into(),
+        "sketch.dimension" => {
+            "Dimension: pick one or two entities and type the value (or click to place it first); click a dimension to edit it; Enter applies".into()
+        }
+        "sketch.constraint.horizontal_vertical" => "Horizontal/Vertical: pick a line or two points; hold Shift to pick a line midpoint".into(),
         "sketch.slot.center_to_center" | "sketch.slot.overall" => "Slot: click both ends, then the width".into(),
+        "sketch.constraint.midpoint" => "MidPoint: pick a point and a line, or two lines to centre the second on the first".into(),
         _ if id.starts_with("sketch.constraint.") => "Constraint: pick the sketch entities".into(),
         _ => crate::sketch_tools::hint(id).unwrap_or_else(|| "Click in the sketch".into()),
     }
@@ -127,9 +169,32 @@ fn xy(p: &(Vec2, Option<String>)) -> Value {
     json!([p.0.x, p.0.y])
 }
 
-pub fn on_hover(app: &mut SolveApp, proj: &Proj, pos: Pos2) {
+/// Shift exposes a line midpoint as a point target, only in the alignment tool.
+fn midpoint_at(app: &SolveApp, proj: &Proj, pos: Pos2, radius: f32) -> Option<(Vec2, String)> {
+    let sid = app.session.active_sketch?;
+    let state = app.session.world_state();
+    let ss = state.sketch(sid)?;
+    pick(app, proj, pos).into_iter().find_map(|hit| {
+        let Hit::SketchCurve { sketch, id, straight: true, .. } = hit else { return None };
+        if sketch != sid {
+            return None;
+        }
+        let l = ss.sketch.curve_index(&id)?;
+        let solidcraft_engine::sketch::Shape::Line { a, b } = ss.sketch.shape(l)? else { return None };
+        let mid = (a + b) * 0.5;
+        let screen = proj.to_screen(ss.plane.to_world(mid))?;
+        (screen.distance(pos) <= radius).then_some((mid, id))
+    })
+}
+
+pub fn on_hover(app: &mut SolveApp, proj: &Proj, pos: Pos2, shift: bool) {
     crate::sketch3d::on_hover(app, proj, pos);
-    let h = if let Some(point) = app.tool.as_ref().and_then(|tool| crate::sketch_tools::periodic_start_snap(app, tool, proj, pos)) {
+    let midpoint = (shift && app.tool.as_ref().is_some_and(|t| t.kind == Kind::HorizontalVertical))
+        .then(|| midpoint_at(app, proj, pos, f32::INFINITY))
+        .flatten();
+    let h = if let Some((point, _)) = midpoint {
+        Some((point, Some("Midpoint".into())))
+    } else if let Some(point) = app.tool.as_ref().and_then(|tool| crate::sketch_tools::periodic_start_snap(app, tool, proj, pos)) {
         Some((point, Some("Close smooth loop".into())))
     } else {
         sketch_point_at(app, proj, pos)
@@ -139,7 +204,7 @@ pub fn on_hover(app: &mut SolveApp, proj: &Proj, pos: Pos2) {
     }
 }
 
-pub fn on_click(app: &mut SolveApp, proj: &Proj, pos: Pos2) {
+pub fn on_click(app: &mut SolveApp, proj: &Proj, pos: Pos2, shift: bool) {
     // A click away dismisses the inline editor; it must not also pick the first entity of
     // the next dimension before that cancellation has been processed. The type-first value
     // of the Dimension tool takes clicks itself (a second pick, or where its text goes).
@@ -170,25 +235,28 @@ pub fn on_click(app: &mut SolveApp, proj: &Proj, pos: Pos2) {
         }
         Kind::HorizontalVertical => {
             let hits = pick(app, proj, pos);
+            let midpoint = shift.then(|| midpoint_at(app, proj, pos, 12.0)).flatten();
             let hit = hits.iter().find(|hit| match hit {
                 Hit::SketchPoint { sketch, .. } | Hit::SketchCurve { sketch, .. } => Some(*sketch) == app.session.active_sketch,
                 _ => false,
             });
-            match hit {
-                Some(Hit::SketchPoint { id, .. }) => {
-                    if let Some(first) = tool.picks.first() {
-                        if first != id {
-                            let _ = app.run(tool.cmd, json!({"points": [first, id]}));
-                            tool.picks.clear();
-                        }
-                    } else {
-                        tool.picks.push(id.clone());
+            let point = midpoint.map(|(_, id)| json!({"midpoint": id})).or_else(|| match hit {
+                Some(Hit::SketchPoint { id, .. }) => Some(json!(id)),
+                _ => None,
+            });
+            if let Some(point) = point {
+                if let Some(first) = tool.point_picks.first() {
+                    if first != &point && app.run(tool.cmd, json!({"points": [first, point]})).is_ok() {
+                        tool.point_picks.clear();
                     }
+                } else {
+                    tool.point_picks.push(point);
                 }
-                Some(Hit::SketchCurve { id, straight: true, .. }) if tool.picks.is_empty() => {
-                    let _ = app.run(tool.cmd, json!({"line": id}));
-                }
-                _ => {}
+            } else if !shift
+                && tool.point_picks.is_empty()
+                && let Some(Hit::SketchCurve { id, straight: true, .. }) = hit
+            {
+                let _ = app.run(tool.cmd, json!({"line": id}));
             }
         }
         Kind::Pick(n) => {
@@ -211,24 +279,70 @@ pub fn on_click(app: &mut SolveApp, proj: &Proj, pos: Pos2) {
         Kind::Ext => crate::sketch_tools::on_click(app, &mut tool, proj, pos),
         Kind::Dimension => {
             let hits = pick(app, proj, pos);
-            let hit = hits.iter().find_map(|h| match h {
-                Hit::SketchPoint { id, .. } => Some((id.clone(), false)),
-                Hit::SketchCurve { id, .. } => Some((id.clone(), true)),
-                _ => None,
+            // The snap identifies the intended line even when another (projected) edge
+            // overlaps it and wins the ordinary curve hit. Both picks can be midpoints.
+            let midpoint = sketch_point_at(app, proj, pos).and_then(|(_, snap)| snap).and_then(|id| {
+                if id.starts_with("mid:") { return Some(id); }
+                // An earlier dimension may already have materialized this midpoint.
+                // Picking that point retains the same midpoint intent on subsequent dimensions.
+                let state = app.session.world_state();
+                let ss = app.session.active_sketch.and_then(|sid| state.sketch(sid))?;
+                let point = ss.sketch.resolve_point(&id)?;
+                ss.sketch.constraints.iter().find_map(|c| match c.kind {
+                    solidcraft_engine::sketch::ConstraintKind::Midpoint { p, l } if !c.driven && p == point => {
+                        ss.sketch.curves.get(l).map(|c| format!("mid:{}", c.id))
+                    }
+                    _ => None,
+                })
+            }).filter(|id| {
+                let Some(line) = id.strip_prefix("mid:") else { return false };
+                let state = app.session.world_state();
+                app.session
+                    .active_sketch
+                    .and_then(|sid| state.sketch(sid))
+                    .is_some_and(|ss| {
+                        ss.sketch.curve_index(line).is_some_and(|l| solidcraft_engine::view::sketch_curve_visible(&ss.sketch, l))
+                            // A circle/arc and a line still measure their edge-to-edge gap.
+                            && tool.picks.first().is_none_or(|first| {
+                                ss.sketch.curve_index(first).is_none_or(|l| matches!(ss.sketch.shape(l), Some(solidcraft_engine::sketch::Shape::Line { .. })))
+                            })
+                    })
+            });
+            let hit = midpoint.as_deref().and_then(|id| id.strip_prefix("mid:")).map(|id| (id.to_string(), true, true)).or_else(|| {
+                hits.iter().find_map(|h| match h {
+                    Hit::SketchPoint { sketch, id, .. } if Some(*sketch) == app.session.active_sketch => Some((id.clone(), false, true)),
+                    Hit::SketchCurve { sketch, id, straight, .. } if Some(*sketch) == app.session.active_sketch => {
+                        Some((id.clone(), true, *straight))
+                    }
+                    _ => None,
+                })
             });
             let fresh = |tool: &Tool, id: &String| !tool.picks.contains(id) && tool.picks.len() < 2;
+            // Before a new dimension is under way, a click on an existing one edits its value;
+            // the tool stays on for the next dimension.
+            if crate::dim_view::live().is_none()
+                && tool.picks.is_empty()
+                && !app.ui.pick_off.iter().any(|k| k == "dimensions")
+                && crate::dim_view::tool_click(app, pos, hit.is_some())
+            {
+                app.tool = Some(tool);
+                return;
+            }
             if let Some(typed) = crate::dim_view::live() {
                 match hit {
                     // Before anything is typed, another entity joins the dimension, as in the
                     // place-first flow (a distance, an angle between lines).
-                    Some((id, _)) if !typed && fresh(&tool, &id) => {
-                        let mut picks = tool.picks.clone();
-                        picks.push(id);
+                    Some((id, _, midpoint_target)) if !typed && fresh(&tool, &id) => {
+                        let picks = dimension_picks(&tool, id, midpoint.as_deref(), midpoint_target);
                         match crate::dim_view::begin_live(app, picks.clone(), Some(pos)) {
-                            Ok(true) => tool.picks = picks,
-                            Ok(false) => {
-                                crate::dim_view::cancel();
+                            Ok(live) => {
+                                if !live {
+                                    crate::dim_view::cancel();
+                                }
                                 tool.picks = picks;
+                                if let Some(midpoint) = midpoint {
+                                    tool.point_picks.push(json!(midpoint));
+                                }
                             }
                             Err(error) => app.set_status(error, true),
                         }
@@ -240,9 +354,12 @@ pub fn on_click(app: &mut SolveApp, proj: &Proj, pos: Pos2) {
                         }
                     }
                 }
-            } else if let Some((id, curve)) = hit {
+            } else if let Some((id, curve, midpoint_target)) = hit {
                 if fresh(&tool, &id) {
-                    tool.picks.push(id);
+                    tool.picks = dimension_picks(&tool, id, midpoint.as_deref(), midpoint_target);
+                    if let Some(midpoint) = midpoint {
+                        tool.point_picks.push(json!(midpoint));
+                    }
                     // As soon as the picks determine a dimension (one line, circle or arc, or a
                     // second entity), its value takes the keyboard: D, click, type. A pick that
                     // doesn't keeps the place-first flow; placing reports why.
@@ -254,7 +371,10 @@ pub fn on_click(app: &mut SolveApp, proj: &Proj, pos: Pos2) {
                 && let Some((at, _)) = sketch_point_at(app, proj, pos)
             {
                 match crate::dim_view::begin_dimension(app, tool.picks.clone(), at) {
-                    Ok(()) => tool.picks.clear(),
+                    Ok(()) => {
+                        tool.picks.clear();
+                        tool.point_picks.clear();
+                    }
                     Err(error) => app.set_status(error, true),
                 }
             }
@@ -263,6 +383,20 @@ pub fn on_click(app: &mut SolveApp, proj: &Proj, pos: Pos2) {
     if !crate::sketch_text::editing(app) {
         app.tool = Some(tool);
     }
+}
+
+/// A single edge still measures its length; a second pick uses the snapped midpoints.
+fn dimension_picks(tool: &Tool, id: String, midpoint: Option<&str>, midpoint_target: bool) -> Vec<String> {
+    let mut picks = tool.picks.clone();
+    if midpoint_target
+        && picks.len() == 1
+        && let Some(midpoint) = tool.point_picks.first().and_then(Value::as_str)
+        && let Some(first) = picks.first_mut()
+    {
+        *first = midpoint.to_string();
+    }
+    picks.push(if picks.len() == 1 { midpoint.map(str::to_string).unwrap_or(id) } else { id });
+    picks
 }
 
 /// Put down the next point of the shape being drawn; the last point runs the command (with
@@ -333,7 +467,7 @@ pub fn place(app: &mut SolveApp, p: (Vec2, Option<String>)) {
 }
 
 /// Geometry and typed constraints are committed atomically, as one undo step.
-fn draw(app: &mut SolveApp, t: &Tool, params: Value) -> Result<Value, String> {
+pub(crate) fn draw(app: &mut SolveApp, t: &Tool, params: Value) -> Result<Value, String> {
     let dimensions = crate::sketch_dims::dimensions(t);
     if dimensions.as_object().is_none_or(|values| values.is_empty()) {
         app.run(t.cmd, params)
@@ -359,10 +493,17 @@ fn run_shape(app: &mut SolveApp, t: &Tool) -> Result<Vec<String>, String> {
             json!({"p0": xy(&p[0]), "p1": xy(&p[1]), "radius": crate::sketch_dims::rounded_radius_value(app, t, p[0].0, p[1].0)})
         }
         "sketch.rectangle.three_point" => json!({"p0": xy(&p[0]), "p1": xy(&p[1]), "p2": xy(&p[2])}),
-        "sketch.circle.center" => json!({"center": arg(&p[0]), "radius": d(0, 1)}),
+        "sketch.circle.center" => {
+            // A second click snapped to a point keeps the circle on that point (#3099).
+            let mut v = json!({"center": arg(&p[0]), "radius": d(0, 1)});
+            if p[1].1.is_some() {
+                v["through"] = arg(&p[1]);
+            }
+            v
+        }
         "sketch.circle.two_point" => json!({"p0": xy(&p[0]), "p1": xy(&p[1])}),
         "sketch.circle.three_point" => json!({"p0": xy(&p[0]), "p1": xy(&p[1]), "p2": xy(&p[2])}),
-        "sketch.arc.three_point" => json!({"start": arg(&p[0]), "end": arg(&p[1]), "through": xy(&p[2])}),
+        "sketch.arc.three_point" => json!({"start": arg(&p[0]), "end": arg(&p[1]), "through": arg(&p[2])}),
         "sketch.arc.center_point" => match crate::sketch_dims::locked_value(app, t, "Sweep") {
             Some(sweep) => json!({"center": arg(&p[0]), "start": arg(&p[1]), "sweep": sweep.to_degrees()}),
             None => json!({"center": arg(&p[0]), "start": arg(&p[1]), "end": xy(&p[2])}),
@@ -374,10 +515,17 @@ fn run_shape(app: &mut SolveApp, t: &Tool) -> Result<Vec<String>, String> {
         "sketch.polygon.edge" => json!({"p0": xy(&p[0]), "p1": xy(&p[1]), "sides": sides}),
         "sketch.slot.center_to_center" | "sketch.slot.overall" => {
             let dir = (p[1].0 - p[0].0).normalized().unwrap_or(Vec2::X);
-            let w = 2.0 * dir.cross(p[2].0 - p[0].0).abs();
-            json!({"p0": xy(&p[0]), "p1": xy(&p[1]), "width": w.max(1e-3)})
+            // Seed the creator with the typed width too: an Overall slot places its cap
+            // centres from this width before the driving dimension is applied.
+            let width = crate::sketch_dims::locked_value(app, t, "Width").unwrap_or_else(|| (2.0 * dir.cross(p[2].0 - p[0].0).abs()).max(1e-3));
+            json!({"p0": xy(&p[0]), "p1": xy(&p[1]), "width": width})
         }
-        "sketch.point" => json!({"point": xy(&p[0])}),
+        // A midpoint or on-curve snap goes as itself, so the point is held there (#4691); a
+        // snap to an existing point goes as its place, where `connect` joins them.
+        "sketch.point" => match &p[0].1 {
+            Some(id) if ["mid:", "on:", "vertex:"].iter().any(|k| id.starts_with(k)) => json!({"point": id}),
+            _ => json!({"point": xy(&p[0])}),
+        },
         _ => return Err(format!("drawing {} is not supported", t.cmd)),
     };
     let result = draw(app, t, params)?;
@@ -405,9 +553,11 @@ pub(crate) fn constraint_preselection(command: &str, selection: &[solidcraft_eng
     match (command, selection) {
         ("sketch.constraint.fix", _) => selected_ids(false, 1).map(|ids| json!({"entities":ids})),
         ("sketch.constraint.polygon", _) => selected_ids(true, 3).map(|ids| json!({"lines":ids})),
+        // Three or more curves: all of them equal, in pick order (#4985). Two keep the `a, b` form.
+        ("sketch.constraint.equal", _) if selection.len() >= 3 => selected_ids(true, 3).map(|ids| json!({"curves":ids})),
         ("sketch.constraint.curvature", [SketchCurve { id: a }, SketchCurve { id: b }]) if a != b => Some(json!({"a":a,"b":b})),
         ("sketch.constraint.horizontal_vertical", [SketchCurve { id }]) => Some(json!({"line":id})),
-        ("sketch.constraint.horizontal_vertical", [SketchPoint { id: a }, SketchPoint { id: b }]) if a != b => Some(json!({"points":[a,b]})),
+        ("sketch.constraint.horizontal_vertical", _) => crate::selection::alignment_points(selection).map(|points| json!({"points": points})),
         ("sketch.constraint.coincident", [a, b]) => {
             let entity = |s: &solidcraft_engine::Sel| match s {
                 SketchPoint { id } | SketchCurve { id } => Some(id.clone()),
@@ -420,6 +570,7 @@ pub(crate) fn constraint_preselection(command: &str, selection: &[solidcraft_eng
             "sketch.constraint.midpoint",
             [SketchPoint { id: point }, SketchCurve { id: line }] | [SketchCurve { id: line }, SketchPoint { id: point }],
         ) => Some(json!({"point":point,"line":line})),
+        ("sketch.constraint.midpoint", [SketchCurve { id: a }, SketchCurve { id: b }]) if a != b => Some(json!({"a":a,"b":b})),
         ("sketch.constraint.symmetry", [a, b, c]) => {
             let mut points = Vec::new();
             let mut lines = Vec::new();
@@ -493,7 +644,8 @@ fn run_pick(app: &mut SolveApp, t: &Tool) {
     let params = match t.cmd {
         "sketch.constraint.fix" => json!({"entity": k[0]}),
         "sketch.constraint.coincident" => json!({"a": k[0], "b": k[1]}),
-        "sketch.constraint.midpoint" => json!({"point": k[0], "line": k[1]}),
+        // In pick order: a point and a line either way round, or two lines to centre.
+        "sketch.constraint.midpoint" => json!({"a": k[0], "b": k[1]}),
         "sketch.constraint.symmetry" => json!({"a": k[0], "b": k[1], "line": k[2]}),
         _ => json!({"a": k[0], "b": k[1]}),
     };
@@ -536,9 +688,13 @@ pub(crate) fn paint_preview_curve(
         let line = matches!(curve.kind, solidcraft_engine::sketch::CurveKind::Line { .. });
         curve.centerline = mode == 2 && line;
         curve.infinite = mode == 3 && line;
-        curve.construction = mode != 0 && !curve.centerline;
+        curve.construction |= mode != 0 && !curve.centerline;
     }
-    paint_curve(&sketch, 0, plane, painter, proj, stroke, &mut solidcraft_engine::render::SamplingBudget::new(4096, 65_536));
+    let mut budget = solidcraft_engine::render::SamplingBudget::new(4096, 65_536);
+    for index in 0..sketch.curves.len() {
+        paint_curve(&sketch, index, plane, painter, proj, stroke, &mut budget);
+    }
+    crate::scenario::publish_count("tool_preview_curves", sketch.curves.len() as f64);
 }
 
 pub(crate) fn paint_sketch_path(points: &[solidcraft_engine::geom::Vec3], mode: u8, painter: &egui::Painter, proj: &Proj, stroke: Stroke) {
@@ -574,7 +730,13 @@ pub(crate) fn paint_curve(
 
 /// Temporary analytic geometry uses the same exact span extraction as committed curves.
 /// It never solves constraints or modifies the document.
-pub(crate) fn preview_curve(t: &Tool, hover: Vec2, sweep: Option<f64>, rho: Option<f64>) -> Option<solidcraft_engine::sketch::Sketch> {
+pub(crate) fn preview_curve(
+    t: &Tool,
+    hover: Vec2,
+    sweep: Option<f64>,
+    rho: Option<f64>,
+    slot_width: Option<f64>,
+) -> Option<solidcraft_engine::sketch::Sketch> {
     use solidcraft_engine::sketch::{CurveKind, Sketch};
     if !hover.is_finite() || t.pts.len() >= solidcraft_engine::sketch::MAX_SPLINE_POINTS || t.pts.iter().any(|p| !p.0.is_finite()) {
         return None;
@@ -597,13 +759,7 @@ pub(crate) fn preview_curve(t: &Tool, hover: Vec2, sweep: Option<f64>, rho: Opti
             sk.add_line(*m * 2.0 - hover, hover, None, None, None).ok()?;
         }
         ("sketch.circle.three_point" | "sketch.arc.three_point", [a, b]) => {
-            let ab = *b - *a;
-            let ah = hover - *a;
-            let d = 2.0 * ab.cross(ah);
-            if !d.is_finite() || d.abs() < 1e-12 {
-                return None;
-            }
-            let centre = *a + Vec2::new(ah.y * ab.len2() - ab.y * ah.len2(), ab.x * ah.len2() - ah.x * ab.len2()) / d;
+            let centre = preview_circumcentre(*a, *b, hover)?;
             if t.cmd == "sketch.circle.three_point" {
                 sk.add_circle(centre, centre.dist(*a), None, None).ok()?;
             } else {
@@ -627,6 +783,56 @@ pub(crate) fn preview_curve(t: &Tool, hover: Vec2, sweep: Option<f64>, rho: Opti
             if let Some(curve) = sk.curves.first_mut() {
                 curve.reversed = sweep < 0.0;
             }
+        }
+        ("sketch.slot.center_to_center" | "sketch.slot.overall" | "sketch.slot.center_point", [a, b]) => {
+            let dir = (*b - *a).normalized()?;
+            // Typed widths can be smaller than the final click's pointer minimum.
+            let width = slot_width.unwrap_or_else(|| (2.0 * dir.cross(hover - *a).abs()).max(1e-3));
+            if !width.is_finite() || width <= 1e-9 {
+                return None;
+            }
+            let radius = width * 0.5;
+            let (c0, c1) = match t.cmd {
+                "sketch.slot.overall" if a.dist(*b) > width => (*a + dir * radius, *b - dir * radius),
+                "sketch.slot.overall" => return None,
+                "sketch.slot.center_point" => (*a * 2.0 - *b, *b),
+                _ => (*a, *b),
+            };
+            let n = dir.perp() * radius;
+            sk.add_line(c0 - n, c1 - n, None, None, None).ok()?;
+            sk.add_arc(c1, c1 - n, c1 + n, [None; 3], None).ok()?;
+            sk.add_line(c1 + n, c0 + n, None, None, None).ok()?;
+            sk.add_arc(c0, c0 + n, c0 - n, [None; 3], None).ok()?;
+        }
+        ("sketch.slot.arc_center" | "sketch.slot.arc_three_point", [a, b, c]) => {
+            let (centre, start, end, radius, width) = if t.cmd == "sketch.slot.arc_center" {
+                (*a, *b, *c, a.dist(*b), (2.0 * (hover.dist(*a) - a.dist(*b)).abs()).max(1e-3))
+            } else {
+                let centre = preview_circumcentre(*a, *c, *b)?;
+                let span = |p: Vec2| ((p - centre).angle() - (*a - centre).angle()).rem_euclid(std::f64::consts::TAU);
+                let (start, end) = if span(*b) < span(*c) { (*a, *c) } else { (*c, *a) };
+                (centre, start, end, centre.dist(*a), (2.0 * hover.dist(*c)).max(1e-3))
+            };
+            let width = slot_width.unwrap_or(width);
+            let t0 = (start - centre).angle();
+            let sweep = ((end - centre).angle() - t0).rem_euclid(std::f64::consts::TAU);
+            let half = width * 0.5;
+            if !radius.is_finite()
+                || !half.is_finite()
+                || half >= radius
+                || end.dist(centre) < 1e-9
+                || !(sweep > 1e-6 && sweep < std::f64::consts::TAU - 1e-6)
+            {
+                return None;
+            }
+            let at = |angle: f64, r: f64| centre + Vec2::from_angle(angle) * r;
+            let t1 = t0 + sweep;
+            sk.add_arc(centre, at(t0, radius + half), at(t1, radius + half), [None; 3], None).ok()?;
+            sk.add_arc(centre, at(t0, radius - half), at(t1, radius - half), [None; 3], None).ok()?;
+            sk.add_arc(at(t1, radius), at(t1, radius + half), at(t1, radius - half), [None; 3], None).ok()?;
+            sk.add_arc(at(t0, radius), at(t0, radius - half), at(t0, radius + half), [None; 3], None).ok()?;
+            let guide = sk.add_arc(centre, at(t0, radius), at(t1, radius), [None; 3], None).ok()?;
+            sk.curves.get_mut(guide)?.construction = true;
         }
         ("sketch.ellipse", [c, m]) => {
             let u = (*m - *c).normalized()?;
@@ -676,6 +882,17 @@ pub(crate) fn preview_curve(t: &Tool, hover: Vec2, sweep: Option<f64>, rho: Opti
     Some(sk)
 }
 
+fn preview_circumcentre(a: Vec2, b: Vec2, c: Vec2) -> Option<Vec2> {
+    let ab = b - a;
+    let ac = c - a;
+    let d = 2.0 * ab.cross(ac);
+    if !d.is_finite() || d.abs() < 1e-12 {
+        return None;
+    }
+    let centre = a + Vec2::new(ac.y * ab.len2() - ab.y * ac.len2(), ab.x * ac.len2() - ac.x * ab.len2()) / d;
+    centre.is_finite().then_some(centre)
+}
+
 /// The polygon's actual straight edges, in the same orientation as the eventual command.
 /// Keep preview work bounded even while a side-count expression is being edited.
 pub(crate) fn polygon_outline(t: &Tool, hover: Vec2, sides: f64) -> Option<Vec<Vec2>> {
@@ -719,18 +936,37 @@ pub fn preview(app: &SolveApp, t: &Tool, painter: &egui::Painter, proj: &Proj) {
     let Some(ss) = st.sketch(sid) else { return };
     let to = |p: Vec2| proj.to_screen(ss.plane.to_world(p));
     let tk = crate::theme::Tokens::get();
-    let stroke = Stroke::new(1.5, tk.rubber_band);
+    let stroke = Stroke::new(1.5, tk.sketch_accent);
     if let Some((hp, snap)) = &t.hover
         && let Some(sp) = to(*hp)
     {
         painter.circle_stroke(sp, if snap.is_some() { 6.0 } else { 3.0 }, stroke);
+        if snap.as_deref() == Some("Midpoint") && t.kind == Kind::HorizontalVertical {
+            painter.circle_stroke(sp, 8.0, Stroke::new(2.0, tk.accent));
+        }
         painter.text(
             sp + egui::vec2(10.0, 10.0),
             egui::Align2::LEFT_TOP,
             format!("{}, {}", crate::prefs::show_mm(app, hp.x, 1), crate::prefs::show_mm(app, hp.y, 1)),
-            egui::FontId::proportional(11.0),
+            egui::FontId::proportional(crate::theme::Tokens::get().font_small),
             tk.text_dim,
         );
+    }
+    if matches!(t.kind, Kind::HorizontalVertical | Kind::Dimension) {
+        for target in &t.point_picks {
+            let midpoint = target.get("midpoint").and_then(Value::as_str).or_else(|| target.as_str().and_then(|id| id.strip_prefix("mid:")));
+            let point = if let Some(id) = midpoint {
+                ss.sketch.curve_index(id).and_then(|l| match ss.sketch.shape(l)? {
+                    solidcraft_engine::sketch::Shape::Line { a, b } => Some((a + b) * 0.5),
+                    _ => None,
+                })
+            } else {
+                target.as_str().and_then(|id| ss.sketch.resolve_point(id)).and_then(|p| ss.sketch.point(p))
+            };
+            if let Some(sp) = point.and_then(to) {
+                painter.circle_stroke(sp, 6.0, Stroke::new(2.0, tk.accent));
+            }
+        }
     }
     let Some(hover) = t.hover.as_ref() else { return };
     let h = crate::sketch_dims::shown(app, t, hover);
@@ -743,7 +979,13 @@ pub fn preview(app: &SolveApp, t: &Tool, painter: &egui::Painter, proj: &Proj) {
         }
     }
 
-    if let Some(curve) = preview_curve(t, h, crate::sketch_dims::locked_value(app, t, "Sweep"), crate::sketch_dims::locked_value(app, t, "Rho")) {
+    if let Some(curve) = preview_curve(
+        t,
+        h,
+        crate::sketch_dims::locked_value(app, t, "Sweep"),
+        crate::sketch_dims::locked_value(app, t, "Rho"),
+        crate::sketch_dims::locked_value(app, t, "Width"),
+    ) {
         paint_preview_curve(curve, &ss.plane, painter, proj, stroke, crate::sketch_palette::mode(app));
         return;
     }
@@ -763,7 +1005,7 @@ pub fn preview(app: &SolveApp, t: &Tool, painter: &egui::Painter, proj: &Proj) {
                     m + g,
                     egui::Align2::CENTER_CENTER,
                     if horizontal { "H" } else { "V" },
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(crate::theme::Tokens::get().font_micro),
                     tk.sketch_accent,
                 );
             }

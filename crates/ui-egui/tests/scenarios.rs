@@ -44,9 +44,10 @@ fn angle_dimension_both_interactive_workflows() {
             {"call":"ui.view","params":{"view":"top"}}
         ]))
         .unwrap();
+        // Pick the lines away from MID snaps so this remains an angular workflow.
         let picks = json!([
-            {"click":{"sketch":[20,0]}},
-            {"click":{"sketch":[15,15]},"shift":true}
+            {"click":{"sketch":[10,0]}},
+            {"click":{"sketch":[10,10]},"shift":true}
         ]);
         if preselect {
             h.run(&picks).unwrap();
@@ -190,15 +191,12 @@ fn narrow_toolbar_reaches_collapsed_commands() {
     use serde_json::json;
     let mut h = Harness::new();
     h.run(&json!([
-        // Too narrow for every button: the last panels collapse into their drop-down.
+        // The compact ribbon still fits every button at 640 wide.
         {"call":"ui.resize","params":{"width":640,"height":800}},
-        {"expect":{"shown_handles":["collapsed:SOLID:CONSTRUCT"],"hidden_handles":["button:construct.plane.offset"]}},
-        {"click":{"handle":"collapsed:SOLID:CONSTRUCT"}},
-        {"expect":{"shown_handles":["dropdown:construct.plane.offset"]}},
-        {"key":"Escape"},
-        // Narrower: they go into the » menu.
-        {"call":"ui.resize","params":{"width":480,"height":800}},
-        {"expect":{"shown_handles":["toolbar:overflow"],"hidden_handles":["collapsed:SOLID:CONSTRUCT"]}},
+        {"expect":{"shown_handles":["button:construct.plane.offset"],"hidden_handles":["toolbar:overflow"]}},
+        // Too narrow for every button: the panels go into the » menu.
+        {"call":"ui.resize","params":{"width":440,"height":800}},
+        {"expect":{"shown_handles":["toolbar:overflow"],"hidden_handles":["button:construct.plane.offset"]}},
         {"click":{"handle":"toolbar:overflow"}},
         {"widget":"CONSTRUCT"},
         {"expect":{"shown_handles":["toolbar:construct.plane.offset"]}},

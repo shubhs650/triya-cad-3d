@@ -76,6 +76,9 @@ impl FeatureKind {
             ExprRole::Placement => placement.push(e.as_str()),
         });
         inputs.extend(placement);
+        if let FeatureKind::Sketch { sketch, .. } = self {
+            inputs.extend(sketch.patterns.iter().filter_map(|p| p.count_expression.as_deref()));
+        }
         inputs
     }
 }
@@ -463,14 +466,92 @@ impl Document {
         if rows.len() > 10_000 {
             return Err(DocError::Invalid("too many parameters".into()));
         }
+        // Each row is checked and applied as `change_param` would, but the parameters are
+        // evaluated once for all of them, not once per row (thousands of rows took minutes).
         let mut next = self.clone();
-        let mut names = Vec::new();
-        for (n, e, u, c) in rows {
-            next.change_param(&n, &e, u.as_deref(), c.as_deref())?;
-            names.push(n);
+        let (mut vals, _) = next.param_values();
+        for (n, e, u, c) in &rows {
+            next.import_row(n, e, u.as_deref(), c.as_deref(), &mut vals)?;
+        }
+        let (_, errors) = next.param_values();
+        if let Some(e) = rows.iter().find_map(|(n, ..)| errors.get(n)) {
+            return Err(DocError::Expr(e.clone()));
         }
         *self = next;
-        Ok(names)
+        Ok(rows.into_iter().map(|(n, ..)| n).collect())
+    }
+
+    /// One imported row: the checks and change of `change_param` (a feature's parameter) or
+    /// `set_param` (a user parameter, a new one taking the unit of its value) without evaluating
+    /// every parameter. `vals` are the values so far, for the units of the rows after it.
+    fn import_row(&mut self, name: &str, expr_s: &str, unit: Option<&str>, comment: Option<&str>, vals: &mut BTreeMap<String, Value>) -> Result<()> {
+        if expr_s.len() > 4096 {
+            return Err(DocError::Expr("expression too long".into()));
+        }
+        let hit = self.features.iter().enumerate().find_map(|(i, f)| f.param_names.iter().position(|n| n == name).map(|k| (i, k)));
+        if let Some((i, k)) = hit {
+            let kind = self.features.get(i).and_then(|f| f.kind.inputs().get(k).map(|x| x.2)).unwrap_or(Kind::Unitless);
+            let expr_s = self.with_design_unit(expr_s, kind);
+            if let Some(f) = self.features.get_mut(i)
+                && let Some((_, e, _)) = f.kind.inputs_mut().into_iter().nth(k)
+            {
+                *e = expr_s.into();
+            }
+            if let Some(c) = comment {
+                self.param_comments.insert(name.to_string(), c.to_string());
+            }
+            return Ok(());
+        }
+        if let Some(p) = Self::param_name_problem(name) {
+            return Err(DocError::Invalid(p));
+        }
+        if expr_s.trim().is_empty() {
+            return Err(DocError::Expr("empty expression".into()));
+        }
+        if let Some(u) = unit
+            && expr::unit_info(u).is_none()
+        {
+            return Err(DocError::Expr(format!("unknown unit `{u}` (mm, cm, m, in, ft, deg, rad or none)")));
+        }
+        if comment.is_some_and(|c| c.len() > 4096) {
+            return Err(DocError::Invalid("comment too long".into()));
+        }
+        match self.params.iter_mut().find(|p| p.name == name) {
+            Some(p) => {
+                p.expr = expr_s.trim().to_string();
+                if let Some(u) = unit {
+                    p.unit = u.trim().to_string();
+                }
+                if let Some(c) = comment {
+                    p.comment = c.to_string();
+                }
+            }
+            None => {
+                if self.params.len() >= MAX_PARAMS {
+                    return Err(DocError::Invalid("too many parameters".into()));
+                }
+                let unit = match unit {
+                    Some(u) => u.trim().to_string(),
+                    None => Self::infer_unit_in(vals, expr_s),
+                };
+                self.params.push(crate::Param {
+                    name: name.into(),
+                    expr: expr_s.trim().into(),
+                    unit,
+                    comment: comment.unwrap_or_default().into(),
+                    model: false,
+                });
+            }
+        }
+        let def = self.params.iter().find(|p| p.name == name).map(|p| ParamDef { name: p.name.clone(), expr: p.expr.clone(), unit: p.unit.clone() });
+        let value = def.and_then(|d| {
+            expr::eval_def(&d, &|n| vals.get(n).copied().ok_or_else(|| DocError::Expr(format!("unknown parameter `{n}`"))), doc_len(&self.units)).ok()
+        });
+        match value {
+            Some(v) => vals.insert(name.to_string(), v),
+            None => vals.remove(name),
+        };
+        Ok(())
     }
 }
 
@@ -486,6 +567,13 @@ pub enum ParamUser {
     Dimension { feature: u64, name: String, constraint: String },
     /// A configured column or an expression saved in a configuration row.
     Configuration { row: Option<String>, column: String },
+    /// A joint's offset, angle or value, or a motion link's gear, rack or screw length (`input`
+    /// says which; a link is named by the joint it drives).
+    Joint { joint: u64, name: String, input: String },
+    /// A sheet metal or plastic rule's value (`kind` says which, `field` which value).
+    Rule { kind: String, name: String, field: String },
+    /// The plane a canvas lies on (`input` is its label, e.g. `Offset`).
+    Canvas { canvas: u64, name: String, input: String },
 }
 
 impl ParamUser {
@@ -498,6 +586,9 @@ impl ParamUser {
                 Some(row) => format!("configuration `{row}` ({column})"),
                 None => format!("configuration column {column}"),
             },
+            ParamUser::Joint { name, input, .. } => format!("joint {name} ({input})"),
+            ParamUser::Rule { kind, name, field } => format!("{kind} rule {name} ({field})"),
+            ParamUser::Canvas { name, input, .. } => format!("canvas {name} ({input})"),
         }
     }
 }
@@ -554,7 +645,11 @@ impl Document {
     /// The unit for a new parameter with this expression: that of its value; a bare number is
     /// a length (mm).
     pub(crate) fn infer_unit(&self, e: &str) -> String {
-        let (vals, _) = self.param_values();
+        Self::infer_unit_in(&self.param_values().0, e)
+    }
+
+    /// [`Document::infer_unit`] against parameter values already worked out.
+    fn infer_unit_in(vals: &BTreeMap<String, Value>, e: &str) -> String {
         let v = expr::eval_with(e, &|n| vals.get(n).copied().ok_or_else(|| DocError::Expr(format!("unknown parameter `{n}`"))));
         match v.ok().and_then(|v| v.kind()) {
             Some(Kind::Unitless) if !expr::references(e).is_empty() => String::new(),
@@ -608,12 +703,41 @@ impl Document {
                         out.push(ParamUser::Dimension { feature: f.id, name: f.name.clone(), constraint: c.id.clone() });
                     }
                 }
+                for pattern in &sketch.patterns {
+                    if pattern.count_expression.as_ref().is_some_and(|e| expr::references(e).iter().any(|r| r == name)) {
+                        out.push(ParamUser::Feature { feature: f.id, name: f.name.clone(), input: format!("{} Quantity", pattern.id) });
+                    }
+                }
                 for (what, e) in sketch.text_exprs() {
                     if expr::references(e).iter().any(|r| r == name) {
                         out.push(ParamUser::Feature { feature: f.id, name: f.name.clone(), input: what.to_string() });
                     }
                 }
             }
+        }
+        for (joint, input, e) in self.assembly.exprs() {
+            if expr::references(e).iter().any(|r| r == name) {
+                let jname = self.assembly.joints.iter().find(|j| j.id == joint).map(|j| j.name.clone()).unwrap_or_else(|| joint.to_string());
+                out.push(ParamUser::Joint { joint, name: jname, input });
+            }
+        }
+        let uses = |e: &str| expr::references(e).iter().any(|r| r == name);
+        for r in &self.sheet.rules {
+            for (field, _, _) in r.fields().into_iter().filter(|(_, e, _)| uses(e)) {
+                out.push(ParamUser::Rule { kind: "sheet metal".into(), name: r.name.clone(), field: field.into() });
+            }
+        }
+        for r in &self.plastic.rules {
+            for (field, _, _) in r.fields().into_iter().filter(|(_, e, _)| uses(e)) {
+                out.push(ParamUser::Rule { kind: "plastic".into(), name: r.name.clone(), field: field.into() });
+            }
+        }
+        for c in &self.canvases {
+            c.plane.walk_exprs(&mut |(label, e, _, _)| {
+                if uses(e) {
+                    out.push(ParamUser::Canvas { canvas: c.id, name: c.name.clone(), input: label.into() });
+                }
+            });
         }
         out
     }
@@ -691,6 +815,13 @@ impl Document {
                         n += 1;
                     }
                 }
+                for e in sketch.patterns.iter_mut().filter_map(|p| p.count_expression.as_mut()) {
+                    let r = expr::rename_reference(e, old, new);
+                    if r != *e {
+                        *e = r;
+                        n += 1;
+                    }
+                }
                 for e in sketch.text_exprs_mut() {
                     let r = expr::rename_reference(e, old, new);
                     if r != *e {
@@ -718,6 +849,31 @@ impl Document {
                     *cell = expr::rename_reference(cell, old, new);
                 }
             }
+        }
+        for e in self.assembly.exprs_mut() {
+            let r = expr::rename_reference(e, old, new);
+            if r != *e {
+                *e = r;
+                n += 1;
+            }
+        }
+        // Sheet metal and plastic rules and canvas planes hold expressions too (#4420).
+        let rules = self.sheet.rules.iter_mut().flat_map(|r| r.fields_mut()).chain(self.plastic.rules.iter_mut().flat_map(|r| r.fields_mut()));
+        for (_, e) in rules {
+            let r = expr::rename_reference(e, old, new);
+            if r != *e {
+                *e = r;
+                n += 1;
+            }
+        }
+        for c in &mut self.canvases {
+            c.plane.walk_exprs_mut(&mut |(_, e, _, _)| {
+                let r = expr::rename_reference(e, old, new);
+                if r != *e {
+                    *e = r.into();
+                    n += 1;
+                }
+            });
         }
         if let Some(c) = self.param_comments.remove(old) {
             self.param_comments.insert(new.to_string(), c);
@@ -754,6 +910,14 @@ impl Document {
             if let FeatureKind::Sketch { sketch, .. } = &f.kind {
                 names.extend(sketch.constraints.iter().filter_map(|c| c.param.clone()));
                 names.extend(sketch.text_exprs().into_iter().flat_map(|(_, e)| expr::references(e)));
+                names.extend(sketch.patterns.iter().filter_map(|p| p.count_expression.as_deref()).flat_map(expr::references));
+            }
+            // Sheet metal and plastic features rebuild when their rules' parameters change (#4420).
+            if f.kind.is_sheet() {
+                names.extend(self.sheet.rules.iter().flat_map(|r| r.fields()).flat_map(|(_, e, _)| expr::references(e)));
+            }
+            if f.kind.is_plastic() {
+                names.extend(self.plastic.rules.iter().flat_map(|r| r.fields()).flat_map(|(_, e, _)| expr::references(e)));
             }
             out.extend(names.into_iter().map(|n| (format!("Feature:{}", f.name), n)));
         }
@@ -775,9 +939,15 @@ impl Document {
                 break;
             }
         }
+        // A rule that uses it changes every sheet metal (or plastic) feature: the evaluation
+        // hashes the rules into their fingerprint.
+        let uses = |e: &String| expr::references(e).iter().any(|r| affected.contains(r));
+        let sheet = self.sheet.rules.iter().any(|r| r.fields().iter().any(|(_, e, _)| uses(e)));
+        let plastic = self.plastic.rules.iter().any(|r| r.fields().iter().any(|(_, e, _)| uses(e)));
         let mut out = Vec::new();
         for f in &self.features {
             let mut hit = f.param_names.iter().any(|n| affected.contains(n));
+            hit |= (sheet && f.kind.is_sheet()) || (plastic && f.kind.is_plastic());
             hit |= f.kind.expressions().iter().any(|e| expr::references(e).iter().any(|r| affected.contains(r)));
             if let FeatureKind::Sketch { sketch, .. } = &f.kind {
                 hit |= sketch.constraints.iter().any(|c| c.param.as_ref().is_some_and(|p| affected.contains(p)));

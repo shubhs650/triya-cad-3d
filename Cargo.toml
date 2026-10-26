@@ -5,7 +5,7 @@ members = ["crates/*", "apps/*", "xtask", "triya/crates/*", "triya/apps/*"] # Mo
 exclude = ["vendor"]
 
 [workspace.package]
-version = "0.14.0"
+version = "0.22.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -13,6 +13,7 @@ authors = ["SolidCraft contributors"]
 repository = "https://github.com/bherbruck/solidcraft"
 
 [workspace.dependencies]
+robust = "1.2"
 # internal
 solidcraft-geom = { path = "crates/geom" }
 solidcraft-sketch = { path = "crates/sketch" }
@@ -23,8 +24,10 @@ solidcraft-doc = { path = "crates/doc" }
 solidcraft-io = { path = "crates/io" }
 solidcraft-engine = { path = "crates/engine" }
 solidcraft-ui-egui = { path = "crates/ui-egui" }
+solidcraft-space-mouse = { path = "crates/space-mouse" }
 solidcraft-mcp = { path = "crates/mcp" }
 solidcraft-derive = { path = "crates/derive" }
+solidcraft-3dx-client = { path = "crates/threedx-client" }
 # Modified by Triya CAD 3D: the overlay crates (triya/README.md)
 triya-brand = { path = "triya/crates/triya-brand" }
 triya-stdlib = { path = "triya/crates/triya-stdlib" }
@@ -40,6 +43,9 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# command parameter and result schemas
+schemars = "1.2"
+serde_path_to_error = "0.1"
 log = "0.4"
 sha2 = "0.10"
 moxcms = { version = "0.8.1", default-features = false, features = ["extended_range"] }
@@ -57,26 +63,40 @@ spade = { version = "2.15", default-features = false, features = ["std"] }
 rayon = "1.12"
 
 # packages (3MF)
-zip = { version = "3", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 quick-xml = "0.41"
+# STEP text in a legacy encoding (GBK, Shift_JIS, …) instead of Part 21 escapes (#2344): detect
+# and decode it. Both MIT OR Apache-2.0 (encoding_rs adds BSD-3-Clause data); encoding_rs is
+# already in the tree through cadmpeg-codec-step.
+chardetng = "0.1"
+encoding_rs = "0.8"
 # glTF 2.0 import (MIT OR Apache-2.0): the document model and GLB container only; buffers are
 # read by crates/io itself, so no image decoding or file access comes with it.
 gltf = { version = "1.4", default-features = false, features = ["names"] }
 
-# FreeCAD and Rhino import (Apache-2.0, pure Rust apart from zstd; native builds only).
+# FreeCAD and Rhino import (Apache-2.0, pure Rust; native and browser builds).
 # Pinned: its IR and codec APIs change between minor versions. Open formats only: no default
 # features, so cadmpeg's codecs for commercial formats (f3d, sldprt, inventor, catia, creo, nx)
 # and its ShapeManager/ACIS `sat` codec are not compiled in. `step` is the writer we restate through.
-cadmpeg-core = "=0.6.1"
-cadmpeg-ir = "=0.6.1"
-cadmpeg-registry = { version = "=0.6.1", default-features = false, features = ["fcstd", "rhino", "step"] }
+cadmpeg-core = "=0.6.3"
+cadmpeg-ir = "=0.6.3"
+cadmpeg-registry = { version = "=0.6.3", default-features = false, features = ["fcstd", "rhino", "step"] }
 
 # fonts (sketch text outlines; MIT OR Apache-2.0, pure Rust)
 ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
 
+# Ends a process group with the system call (MIT; already in the tree through zip).
+nix = { version = "0.31", default-features = false, features = ["signal"] }
+
 # images
 image = { version = "0.25", default-features = false, features = ["png", "hdr"] }
 png = "0.18.1"
+# LZW for GIF animations (MIT OR Apache-2.0, pure Rust; already in the tree through image's tiff).
+weezl = "0.1.12"
+# rasterises the UI icon SVGs (BSD-3-Clause, pure Rust, builds for wasm)
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
+# build scripts: reads the icon palette (MIT OR Apache-2.0)
+toml = "1"
 
 # ui
 egui = "0.36"
@@ -121,6 +141,9 @@ incremental = false
 
 [profile.ci.package."*"]
 opt-level = 2
+# No line tables for dependencies: they were over a third of the test archive every CI shard
+# downloads. Our own crates keep theirs, so a backtrace still names file:line in them.
+debug = false
 
 [profile.release]
 opt-level = 3
@@ -140,3 +163,9 @@ matext4cgmath = { path = "vendor/matext4cgmath" }
 
 # Keep OpenGL pipelines, resolve textures and CAD callbacks at the same safe sample count.
 egui-wgpu = { path = "vendor/egui-wgpu" }
+
+# Mutation testing (cargo-mutants, docs/mutation-testing.md): the ci profile with incremental
+# builds, since every mutant rebuilds the crates above the one it changes.
+[profile.mutants]
+inherits = "ci"
+incremental = true

@@ -17,6 +17,7 @@
 //!
 //! The control channel's `ui.selectOther` opens, describes and picks from the list.
 
+use crate::ui_kit::{Container, Surface};
 use egui::{Align2, FontId, Pos2, Rect, Sense, pos2, vec2};
 use serde_json::{Value, json};
 use solidcraft_engine::Sel;
@@ -148,7 +149,7 @@ fn shown_as(hit: &Hit, sel: &Sel) -> Sel {
 /// Sort key: in a sketch its own points and curves come first; then by kind.
 fn rank(s: &Sel, sketching: bool) -> (u8, u8) {
     let kind = match s {
-        Sel::SketchPoint { .. } | Sel::ExternalSketchPoint { .. } => 0,
+        Sel::SketchPoint { .. } | Sel::SketchMidpoint { .. } | Sel::ExternalSketchPoint { .. } => 0,
         Sel::SketchCurve { .. } | Sel::ExternalSketchCurve { .. } => 1,
         Sel::SketchConstraint { .. } => 2,
         Sel::Vertex { .. } => 3,
@@ -159,7 +160,7 @@ fn rank(s: &Sel, sketching: bool) -> (u8, u8) {
         Sel::Plane { .. } => 8,
         Sel::Axis { .. } => 9,
     };
-    let own = matches!(s, Sel::SketchPoint { .. } | Sel::SketchCurve { .. });
+    let own = matches!(s, Sel::SketchPoint { .. } | Sel::SketchMidpoint { .. } | Sel::SketchCurve { .. });
     (if sketching && !own { 1 } else { 0 }, kind)
 }
 
@@ -234,6 +235,9 @@ pub fn label(app: &SolveApp, sel: &Sel) -> String {
     let in_sketch =
         |sketch: u64, f: &dyn Fn(&solidcraft_engine::sketch::Sketch) -> String| st.sketch(sketch).map(|ss| f(&ss.sketch)).unwrap_or_default();
     match sel {
+        Sel::SketchMidpoint { id } => {
+            format!("MID · {}", app.session.active_sketch.map(|s| in_sketch(s, &|sk| curve_label(sk, id))).unwrap_or_else(|| id.clone()))
+        }
         Sel::SketchPoint { id } => app.session.active_sketch.map(|s| in_sketch(s, &|sk| point_label(sk, id))).unwrap_or_else(|| id.clone()),
         Sel::SketchCurve { id } => app.session.active_sketch.map(|s| in_sketch(s, &|sk| curve_label(sk, id))).unwrap_or_else(|| id.clone()),
         Sel::ExternalSketchPoint { sketch, id } => format!("{} · {}", in_sketch(*sketch, &|sk| point_label(sk, id)), sketch_name(app, *sketch)),
@@ -266,7 +270,7 @@ fn icon(app: &SolveApp, sel: &Sel) -> &'static str {
         }
     };
     match sel {
-        Sel::SketchPoint { .. } | Sel::ExternalSketchPoint { .. } | Sel::Vertex { .. } => "point",
+        Sel::SketchPoint { .. } | Sel::SketchMidpoint { .. } | Sel::ExternalSketchPoint { .. } | Sel::Vertex { .. } => "point",
         Sel::SketchCurve { id } => curve(app.session.active_sketch, id),
         Sel::ExternalSketchCurve { sketch, id } => curve(Some(*sketch), id),
         Sel::SketchConstraint { .. } => "dimension",
@@ -297,7 +301,7 @@ pub fn open(app: &mut SolveApp, at: Pos2) -> bool {
 fn open_with(app: &mut SolveApp, proj: &Proj, at: Pos2) -> bool {
     let (rows, total) = rows_capped(app, proj, at);
     if rows.is_empty() {
-        app.status = Some(("Nothing to select here".into(), crate::now_ms(), false));
+        app.set_status("Nothing to select here", false);
         return false;
     }
     close(app);
@@ -318,23 +322,26 @@ pub fn is_open(app: &SolveApp) -> bool {
     app.viewport.select_other.popup.is_some()
 }
 
-/// Pick row `i` of the open list (`add`: Shift/Ctrl, add to the selection) and close it.
-pub fn choose(app: &mut SolveApp, i: usize, add: bool) -> Result<Row, String> {
+/// Pick row `i` of the open list and close it.
+///
+/// `add` / `toggle` match viewport selection (Shift pure-add, Primary toggle when
+/// `selection_shift_add_only` is on).
+pub fn choose(app: &mut SolveApp, i: usize, add: bool, toggle: bool) -> Result<Row, String> {
     let Some(p) = app.viewport.select_other.popup.as_ref() else { return Err("Select Other is not open".into()) };
     let at = p.at;
     let row = p.rows.get(i).cloned().ok_or_else(|| format!("no row {i} (the list has {})", p.rows.len()))?;
     close(app);
-    apply(app, &row, add);
+    apply(app, &row, add, toggle);
     remember(app, at, if add { None } else { Some(row.sel.clone()) });
     Ok(row)
 }
 
 /// Select a row's entity: into the dialog's active input, or as a click does.
-fn apply(app: &mut SolveApp, row: &Row, add: bool) {
+fn apply(app: &mut SolveApp, row: &Row, add: bool, toggle: bool) {
     if app.dialog.as_ref().is_some_and(|d| d.wants_picks()) {
         crate::viewport::dialog_pick(app, &row.hit, row.sel.clone());
     } else {
-        crate::viewport::select(app, Some(row.sel.clone()), add);
+        crate::viewport::select(app, Some(row.sel.clone()), add, toggle);
     }
 }
 
@@ -376,7 +383,9 @@ pub fn control(app: &mut SolveApp, p: &Value) -> Result<Value, String> {
         return Ok(describe(app));
     }
     if let Some(i) = p.get("pick").and_then(Value::as_u64) {
-        let row = choose(app, i as usize, p.get("add").and_then(Value::as_bool).unwrap_or(false))?;
+        // Control channel: `add` enables both add and toggle (legacy API).
+        let add = p.get("add").and_then(Value::as_bool).unwrap_or(false);
+        let row = choose(app, i as usize, add, add)?;
         return Ok(json!({ "picked": row.label, "sel": row.sel, "selection": app.session.selection }));
     }
     Ok(describe(app))
@@ -487,8 +496,8 @@ pub fn cycle_click(app: &mut SolveApp, proj: &Proj, at: Pos2) -> bool {
     }
     let next = rows.iter().position(|r| crate::selection::same_item(&r.sel, &c.chosen)).map_or(0, |k| (k + 1) % rows.len());
     let Some(row) = rows.get(next).cloned() else { return false };
-    apply(app, &row, false);
-    app.status = Some((format!("{} ({} of {})", row.label, next + 1, rows.len()), crate::now_ms(), false));
+    apply(app, &row, false, false);
+    app.set_status(format!("{} ({} of {})", row.label, next + 1, rows.len()), false);
     remember(app, c.at, Some(row.sel));
     true
 }
@@ -510,7 +519,8 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
     let w = crate::context_menu::LIST_W - 10.0;
     // Title, rows up to the scroll height, margins and border.
     let size = vec2(w + 10.0, 30.0 + (p.rows.len() as f32 * 24.0).min(360.0));
-    let resp = crate::frame::area(egui::Id::new("sc_select_other"))
+    let resp = Container::new(ctx, Surface::Popup)
+        .area(egui::Id::new("sc_select_other"))
         .fixed_pos(crate::context_menu::place(p.at, vec2(12.0, 12.0), size, ctx.content_rect()))
         .constrain(true)
         .order(egui::Order::Foreground)
@@ -519,24 +529,40 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                 let (r, _) = ui.allocate_exact_size(vec2(w, 20.0), Sense::hover());
                 let title = crate::i18n::tr_label("Select Other").to_uppercase();
                 let title = if p.total > p.rows.len() { format!("{title} · {} / {}", p.rows.len(), p.total) } else { title };
-                ui.painter().text(pos2(r.left() + 8.0, r.center().y), Align2::LEFT_CENTER, title, FontId::proportional(10.5), t.text_dim);
+                ui.painter().text(
+                    pos2(r.left() + 8.0, r.center().y),
+                    Align2::LEFT_CENTER,
+                    title,
+                    FontId::proportional(crate::theme::Tokens::get().font_panel),
+                    t.text_dim,
+                );
                 egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
                     for (i, row) in p.rows.iter().enumerate() {
                         let (r, resp) = ui.allocate_exact_size(vec2(w, 24.0), Sense::click());
                         crate::scenario::publish_handle(&format!("select_other:{i}"), r.center());
                         if resp.hovered() {
                             hovered = Some(i);
-                            ui.painter().rect_filled(r.shrink2(vec2(2.0, 1.0)), 4.0, t.hover);
+                            ui.painter().rect_filled(r.shrink2(vec2(2.0, 1.0)), t.radius_sm, t.hover);
                         }
-                        crate::icons::paint(
+                        crate::icons::paint_icon(
                             ui.painter(),
                             Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), vec2(16.0, 16.0)),
                             row.icon,
-                            t.icon,
-                            t.icon_fill,
-                            t.accent,
+                            f32::from(t.icon.a()) / 255.0,
                         );
-                        ui.painter().text(pos2(r.left() + 32.0, r.center().y), Align2::LEFT_CENTER, &row.label, FontId::proportional(13.0), t.text);
+                        // Names can be wider than the list. Keep one line inside the row and
+                        // expose the full name on hover, as the browser tree does.
+                        let text_rect = Rect::from_min_max(pos2(r.left() + 32.0, r.top()), pos2(r.right() - 8.0, r.bottom()));
+                        let mut job =
+                            egui::text::LayoutJob::simple(row.label.clone(), FontId::proportional(t.font_button), t.text, text_rect.width());
+                        job.wrap.max_rows = 1;
+                        job.wrap.break_anywhere = true;
+                        job.wrap.overflow_character = Some('\u{2026}');
+                        let galley = ui.painter().layout_job(job);
+                        let elided = galley.elided;
+                        let at = pos2(text_rect.left(), r.center().y - galley.size().y / 2.0);
+                        ui.painter().with_clip_rect(ui.clip_rect().intersect(text_rect)).galley(at, galley, t.text);
+                        let resp = if elided { resp.on_hover_text(&row.label) } else { resp };
                         if resp.clicked() {
                             picked = Some(i);
                         }
@@ -552,7 +578,9 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
     }
     let (pressed, pointer, mods) = ctx.input(|i| (i.pointer.any_pressed(), i.pointer.interact_pos(), i.modifiers));
     if let Some(i) = picked {
-        let _ = choose(app, i, mods.shift || mods.ctrl || mods.command);
+        let held = crate::tool_modifiers::Held::from_modifiers(mods);
+        let (add, toggle) = crate::tool_modifiers::selection_click(held, app.preferences.selection_shift_add_only);
+        let _ = choose(app, i, add, toggle);
     } else if pressed && !pointer.is_some_and(|q| resp.response.rect.contains(q)) {
         // A press elsewhere only closes the list.
         close(app);

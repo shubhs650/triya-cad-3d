@@ -5,12 +5,12 @@
 # Cargo.lock) and 0002-cargo-lock.patch from `git diff <baseline>`, or with --check fail when the
 # committed patches differ from what the tree would produce.
 #
-# Usage: triya/ci/refresh-seam-patches.sh [--check] [<baseline-ref>]     default baseline v0.14.0
+# Usage: triya/ci/refresh-seam-patches.sh [--check] [<baseline-ref>]     default baseline v0.22.0
 set -euo pipefail
 
 CHECK=0
 if [ "${1:-}" = "--check" ]; then CHECK=1; shift; fi
-BASE="${1:-v0.14.0}"
+BASE="${1:-v0.22.0}"
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 

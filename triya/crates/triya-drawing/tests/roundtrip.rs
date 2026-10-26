@@ -4,7 +4,7 @@
 //! native features only (sketches, revolves) plus two metadata entries, so opening it needs no
 //! vessel command: the geometry, the vessel JSON and the sheet options come back, and the sheet
 //! exports to the same SVG. The browser saves the same bytes to OPFS through upstream's VFS. The
-//! check against an unmodified upstream v0.14.0 build is `triya/ci/upstream-roundtrip.sh`.
+//! check against an unmodified upstream v0.22.0 build is `triya/ci/upstream-roundtrip.sh`.
 
 use serde_json::{Value, json};
 use solidcraft_engine::Session;

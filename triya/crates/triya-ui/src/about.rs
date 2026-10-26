@@ -72,60 +72,55 @@ impl About {
                 ctx.load_texture("triya_mark", image, egui::TextureOptions::LINEAR)
             })
             .clone();
-        let mut open = true;
         let mut copy = false;
-        solidcraft_ui_egui::frame::window(ctx, TITLE, solidcraft_ui_egui::frame::Width::Normal)
-            .id(egui::Id::new("triya_about"))
-            .open(&mut open)
-            .default_size(vec2(460.0, 560.0))
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add(egui::Image::new(&mark).fit_to_exact_size(vec2(56.0, 56.0)));
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new(triya_brand::APP_NAME).size(22.0).strong());
-                        ui.label(format!("Version {} · build {}", triya_brand::VERSION, solidcraft_ui_egui::help::COMMIT));
-                        ui.label(RichText::new(format!("{} · {}", triya_brand::ORG, triya_brand::LICENSE)).color(t.text_dim));
-                    });
+        let closed = solidcraft_ui_egui::ui_kit::Window::new(egui::Id::new("triya_about"), "help", TITLE).show_body(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.add(egui::Image::new(&mark).fit_to_exact_size(vec2(56.0, 56.0)));
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(triya_brand::APP_NAME).size(22.0).strong());
+                    ui.label(format!("Version {} · build {}", triya_brand::VERSION, solidcraft_ui_egui::help::COMMIT));
+                    ui.label(RichText::new(format!("{} · {}", triya_brand::ORG, triya_brand::LICENSE)).color(t.text_dim));
                 });
-                ui.add_space(6.0);
-                ui.label(triya_brand::about_text());
-                ui.add_space(4.0);
-                ui.horizontal_wrapped(|ui| {
-                    ui.hyperlink_to("Home page", triya_brand::HOMEPAGE);
-                    ui.hyperlink_to("Source", triya_brand::REPO);
-                    ui.hyperlink_to("Upstream", triya_brand::UPSTREAM_REPO);
-                    if ui.button("Copy diagnostic information").clicked() {
-                        copy = true;
-                    }
+            });
+            ui.add_space(6.0);
+            ui.label(triya_brand::about_text());
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.hyperlink_to("Home page", triya_brand::HOMEPAGE);
+                ui.hyperlink_to("Source", triya_brand::REPO);
+                ui.hyperlink_to("Upstream", triya_brand::UPSTREAM_REPO);
+                if ui.button("Copy diagnostic information").clicked() {
+                    copy = true;
+                }
+            });
+            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                egui::CollapsingHeader::new("Attributions (ATTRIBUTION.md)").show(ui, |ui| {
+                    ui.label(RichText::new(ATTRIBUTION).monospace().size(11.0));
                 });
-                ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    egui::CollapsingHeader::new("Attributions (ATTRIBUTION.md)").show(ui, |ui| {
-                        ui.label(RichText::new(ATTRIBUTION).monospace().size(11.0));
-                    });
-                    egui::CollapsingHeader::new("Fonts").show(ui, |ui| {
-                        ui.label(solidcraft_ui_egui::help::FONTS);
-                    });
-                    egui::CollapsingHeader::new("Licences").show(ui, |ui| {
-                        use solidcraft_engine::licences::{LICENSE_APACHE, LICENSE_MIT, NOTICE, THIRD_PARTY};
-                        for (title, text) in [("NOTICE", NOTICE), ("MIT licence", LICENSE_MIT), ("Apache licence 2.0", LICENSE_APACHE)] {
-                            egui::CollapsingHeader::new(title).show(ui, |ui| {
-                                ui.label(RichText::new(text).monospace().size(11.0));
-                            });
-                        }
-                        egui::CollapsingHeader::new("Third-party licences").show(ui, |ui| {
-                            if ui.button("Copy all licences").clicked() {
-                                ui.ctx().copy_text(solidcraft_engine::licences::all());
-                            }
-                            ui.label(RichText::new(THIRD_PARTY).monospace().size(11.0));
+                egui::CollapsingHeader::new("Fonts").show(ui, |ui| {
+                    ui.label(solidcraft_ui_egui::i18n::tr("help.font_details"));
+                });
+                egui::CollapsingHeader::new("Licences").show(ui, |ui| {
+                    use solidcraft_engine::licences::{LICENSE_APACHE, LICENSE_MIT, NOTICE, THIRD_PARTY};
+                    for (title, text) in [("NOTICE", NOTICE), ("MIT licence", LICENSE_MIT), ("Apache licence 2.0", LICENSE_APACHE)] {
+                        egui::CollapsingHeader::new(title).show(ui, |ui| {
+                            ui.label(RichText::new(text).monospace().size(11.0));
                         });
+                    }
+                    egui::CollapsingHeader::new("Third-party licences").show(ui, |ui| {
+                        if ui.button("Copy all licences").clicked() {
+                            ui.ctx().copy_text(solidcraft_engine::licences::all());
+                        }
+                        ui.label(RichText::new(THIRD_PARTY).monospace().size(11.0));
                     });
                 });
             });
+        });
         if copy {
             ctx.copy_text(Self::diagnostics(app));
         }
-        if !open {
+        if closed {
             self.open = false;
         }
     }

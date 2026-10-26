@@ -32,7 +32,7 @@ fn probe(os: &str, release: bool, env: &[(&str, &str)], exe: &str, files: &[&str
     let files: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
     let get = |k: &str| env.get(k).cloned();
     let exists = |p: &Path| files.iter().any(|f| f == p);
-    detect(&Probe { os, release_build: release, env: &get, exe: Some(PathBuf::from(exe)), exists: &exists })
+    detect(&Probe { os, release_build: release, env: &get, exe: Some(PathBuf::from(exe)), exists: &exists, msi_dir: None })
 }
 
 #[test]
@@ -92,7 +92,34 @@ fn portable_windows_layout_is_recognised() {
     let exe = PathBuf::from("/portable/solidcraft.exe");
     let get = |k: &str| (k == "ProgramFiles").then(|| "C:\\Program Files".to_string());
     let exists = |p: &Path| p == Path::new("/portable/solidcraft-cli.exe");
-    assert_eq!(detect(&Probe { os: "windows", release_build: true, env: &get, exe: Some(exe), exists: &exists }), InstallKind::WindowsPortable);
+    assert_eq!(
+        detect(&Probe { os: "windows", release_build: true, env: &get, exe: Some(exe), exists: &exists, msi_dir: None }),
+        InstallKind::WindowsPortable
+    );
+}
+
+/// #1870: the installer's wizard can put SolidCraft anywhere, and it puts solidcraft-cli.exe
+/// beside it as the portable zip does. The folder it recorded is what tells its copy apart.
+#[test]
+fn an_msi_install_outside_program_files_is_recognised() {
+    let exe = PathBuf::from(r"D:\Program Files\SolidCraft\solidcraft.exe");
+    let get = |k: &str| match k {
+        "ProgramFiles" | "ProgramW6432" => Some(r"C:\Program Files".to_string()),
+        "ProgramFiles(x86)" => Some(r"C:\Program Files (x86)".to_string()),
+        _ => None,
+    };
+    // solidcraft-cli.exe is beside it.
+    let exists = |_: &Path| true;
+    let kind = |msi_dir: Option<&str>| {
+        detect(&Probe { os: "windows", release_build: true, env: &get, exe: Some(exe.clone()), exists: &exists, msi_dir: msi_dir.map(PathBuf::from) })
+    };
+    // The installer records [INSTALLFOLDER], which ends in a backslash; Windows paths ignore case.
+    assert_eq!(kind(Some(r"D:\Program Files\SolidCraft\")), InstallKind::WindowsMsi);
+    assert_eq!(kind(Some(r"d:\program files\solidcraft")), InstallKind::WindowsMsi);
+    // No installer copy here: the portable zip, as before.
+    assert_eq!(kind(None), InstallKind::WindowsPortable);
+    assert_eq!(kind(Some("")), InstallKind::WindowsPortable);
+    assert_eq!(kind(Some(r"D:\Program Files\SolidCraft2\")), InstallKind::WindowsPortable, "a folder whose name only starts the same");
 }
 
 /// The assets of v0.10.0, as published.
@@ -342,12 +369,13 @@ fn the_title_bar_offers_the_new_version_and_opens_the_update_window() {
     h.frame();
     wait_for_check(&mut h);
     h.frames(2);
-    // An accent pill reading "Update to <version>", just left of Report a bug, on the bar.
+    // An accent pill reading "Update to <version>", left of the Settings/Help/Report cluster.
     let label = format!("Update to {version}");
     let at = h.widget(&label).unwrap_or_else(|| panic!("no `{label}` in the title bar"));
     let pill = crate::scenario::rect_of("titlebar:update").unwrap();
     assert!(pill.contains(egui::pos2(at[0] as f32, at[1] as f32)));
-    assert!(pill.right() <= report.left() && report.left() - pill.right() < 12.0, "beside Report a bug: {pill:?} {report:?}");
+    let assistant = crate::scenario::rect_of("titlebar:assistant").unwrap();
+    assert!(pill.right() < assistant.left() && assistant.left() - pill.right() < 12.0, "beside Assistant: {pill:?} {assistant:?}");
     assert!((pill.center().y - report.center().y).abs() < 1.0 && pill.height() <= report.height());
     assert_eq!(crate::scenario::rect_of("titlebar:report"), Some(report), "Report a bug stays where it was");
     assert!(!h.app.updater.open, "no window pops up by itself");
@@ -392,7 +420,7 @@ fn the_pill_shortens_in_a_narrow_title_bar() {
             last = p.width();
         }
         shortened |= pill.is_none_or(|p| p.width() < wide.width());
-        if width == 800.0 {
+        if width == 1000.0 {
             assert!(h.widget("Update").is_some() && h.widget(&label).is_none(), "the short label keeps room for the tabs");
         }
     }
@@ -427,17 +455,65 @@ fn release_notes_read_as_markdown() {
                 Span::Text(" Revolve and ".into()),
                 Span::Code("solidcraft-cli mcp".into()),
                 Span::Text(" continued (".into()),
-                Span::Link("#925".into()),
+                Span::Link { text: "#925".into(), url: Some("https://x/925".into()) },
                 Span::Text(").".into()),
             ]
         ))
     );
     assert_eq!(b.get(3), Some(&Block::Item(1, vec![Span::Text("nested".into())])));
-    assert_eq!(b.get(4), Some(&Block::Item(0, vec![Span::Text("Fix by @a in ".into()), Span::Link("#1064".into())])));
+    assert_eq!(
+        b.get(4),
+        Some(&Block::Item(
+            0,
+            vec![
+                Span::Text("Fix by @a in ".into()),
+                Span::Link { text: "#1064".into(), url: Some("https://github.com/bherbruck/solidcraft/pull/1064".into()) }
+            ]
+        ))
+    );
     assert_eq!(b.get(5), Some(&Block::Paragraph(vec![Span::Text("See https://example.com/x.".into())])));
     // Unclosed markers and odd input show as written, without panicking.
     for s in ["**open", "`tick", "[a](b", "[a]", "#", "- ", "é**", "https://github.com/", "**[x](y)**"] {
         let _ = parse_markdown(s);
     }
     assert_eq!(inline("**[x](y)**"), vec![Span::Strong("x".into())]);
+}
+
+/// #2943: a release note's links keep where they go, so the window can open them; only web
+/// addresses are kept (a relative or other link shows as text that opens nothing).
+#[test]
+fn release_note_links_keep_their_web_targets() {
+    let spans = inline("[guide](https://docs.solidcraft.io/guide) and [file](file:///etc/passwd) and [rel](../x)");
+    let links: Vec<(String, Option<String>)> =
+        spans.into_iter().filter_map(|s| if let Span::Link { text, url } = s { Some((text, url)) } else { None }).collect();
+    assert_eq!(links, vec![("guide".into(), Some("https://docs.solidcraft.io/guide".into())), ("file".into(), None), ("rel".into(), None)]);
+}
+
+#[test]
+fn releases_under_either_owner_are_accepted() {
+    let parse = |owner: &str| {
+        let base = format!("https://github.com/{owner}/releases");
+        Release::parse(
+            json!({"tag_name": "v1.0.0", "html_url": format!("{base}/tag/v1.0.0"), "assets": [
+                {"name": "solidcraft-windows-x64.msi", "browser_download_url": format!("{base}/download/v1.0.0/solidcraft-windows-x64.msi")},
+            ]})
+            .to_string()
+            .as_bytes(),
+        )
+        .unwrap()
+    };
+    for owner in ["bherbruck/solidcraft", "tangency-labs/solidcraft"] {
+        let r = parse(owner);
+        assert_eq!(r.page, format!("https://github.com/{owner}/releases/tag/v1.0.0"));
+        assert_eq!(r.assets.len(), 1, "{owner}");
+    }
+    // Any other owner, repository, host or scheme is dropped.
+    for owner in ["evil/solidcraft", "tangency-labs/solidcraft-evil", "tangency-labs.evil/solidcraft", "bherbruck/other"] {
+        let r = parse(owner);
+        assert_eq!(r.page, RELEASES_PAGE, "{owner}");
+        assert!(r.assets.is_empty(), "{owner}");
+    }
+    assert!(!is_release_url("http://github.com/tangency-labs/solidcraft/releases/x"));
+    assert!(!is_release_url("https://github.com.evil.example/tangency-labs/solidcraft/releases/x"));
+    assert!(!is_release_url("https://github.com/tangency-labs/solidcraft/issues/1"));
 }

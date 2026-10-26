@@ -25,6 +25,18 @@ pub fn preview_face<S: RobustMeshableSurface>(surface: &S, loops: &[Vec<Point3>]
     triangulation::preview_face(surface, loops, steps)
 }
 
+/// Periods of a surface, including smooth geometric closure of bounded splines.
+/// Meshing wraps inferred periods into the original knot domain before evaluation.
+pub fn surface_periods<S: PreMeshableSurface>(surface: &S) -> [Option<f64>; 2] {
+    closed::Closed::new(surface).periods()
+}
+
+/// Project a trim point with the same bounded, tolerance-aware search used by the mesher.
+/// A preceding parameter is a hint, never proof that the search converged correctly.
+pub fn project_trim_point<S: RobustMeshableSurface>(surface: &S, point: Point3, hint: Option<(f64, f64)>, tolerance: f64) -> Option<(f64, f64)> {
+    triangulation::nearest_projection(surface, point, hint, tolerance, 100)
+}
+
 /// SolidCraft: an edge's polyline as the meshers divide it (at most 20 000 points). Exposed for
 /// the kernel's regressions in the workspace CI.
 #[doc(hidden)]
@@ -110,10 +122,13 @@ pub struct Deflection {
     pub angle: f64,
     /// Sag below which `angle` no longer splits a facet.
     pub floor: f64,
-    /// SolidCraft: grid lines through the vertices that split a face's ruling edges (see
-    /// `with_ruling_vertices`). Meshes for display and export ask for them; the meshes Boolean
-    /// operations intersect do not, so a Boolean's result does not depend on them.
-    pub rulings: bool,
+    /// SolidCraft: a mesh to display or export, which must lie on its faces, rather than one a
+    /// Boolean operation intersects (whose results must not depend on what follows). Such a
+    /// mesh gets grid lines through the vertices that split a face's ruling edges (see
+    /// `with_ruling_vertices`), triangulates a trimmed face in speed-scaled parameters
+    /// (`UvScale`), keeps every boundary segment as a constraint (`PolyBoundary::insert_to`),
+    /// and puts its boundary points on the face's edges (`onto_edges`).
+    pub display: bool,
 }
 
 impl Deflection {
@@ -133,7 +148,7 @@ impl Deflection {
             chord: tol,
             angle: f64::INFINITY,
             floor: 0.0,
-            rulings: false,
+            display: false,
         }
     }
 
@@ -146,7 +161,7 @@ impl Deflection {
         let angle = self.angle * f64::from(1u32 << level.min(Self::MAX_RELAX));
         match level == 0 || (level < Self::MAX_RELAX && angle < std::f64::consts::PI) {
             true => Self { angle, ..*self },
-            false => Self { rulings: self.rulings, ..Self::chord(self.chord) },
+            false => Self { display: self.display, ..Self::chord(self.chord) },
         }
     }
 
@@ -508,7 +523,8 @@ impl<C: PolylineableCurve, S: RobustMeshableSurface> RobustMeshableShape
     }
 }
 
+mod closed;
 mod triangulation;
 #[cfg(feature = "test-hooks")]
 #[doc(hidden)]
-pub use triangulation::include_test_hooks;
+pub use triangulation::{include_test_hooks, loop_fill_test_hooks};

@@ -45,10 +45,15 @@ to the same user installation:
 
 ```sh
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak remote-add --user --if-not-exists solidcraft https://bherbruck.github.io/solidcraft/flatpak/solidcraft.flatpakrepo
+flatpak remote-add --user --if-not-exists solidcraft https://docs.solidcraft.io/flatpak/solidcraft.flatpakrepo
 flatpak install --user solidcraft ai.storyteller.solidcraft
 flatpak run ai.storyteller.solidcraft
 ```
+
+A SolidCraft remote added before the project moved to `docs.solidcraft.io` (from
+`bherbruck.github.io`) no longer finds updates. Point it at the new address, then update:
+`flatpak remote-modify --user --url=https://docs.solidcraft.io/flatpak/repo/ solidcraft` and
+`flatpak update --user`.
 
 Releases up to 0.7 used the application ID `ai.storyteller.solvecraft`. If you installed one
 of those from the SolidCraft remote, `flatpak update --user` reports it as end-of-life and offers
@@ -111,6 +116,32 @@ cd apps/solidcraft-web && trunk serve --release --no-autoreload
 Offline use needs `--no-autoreload`: Trunk's live reload changes the page as it serves it, so it
 no longer matches the build the browser would keep. Debug builds (`trunk serve`) never keep a copy.
 
+### Self-hosting with Docker
+
+The web app is also a container image, `ghcr.io/tangency-labs/solidcraft-web`, for Linux on x86_64
+and ARM64: `latest` is the latest release, `0.14.0` or `0.14` a release, `edge` the newest `main`.
+It serves the app with nginx on port 8080 and keeps nothing on the server: designs stay in each
+visitor's browser.
+
+```sh
+docker run -d --name solidcraft -p 8080:8080 --restart unless-stopped ghcr.io/tangency-labs/solidcraft-web:latest
+```
+
+Or with Docker Compose, using
+[`packaging/docker/compose.yaml`](https://github.com/tangency-labs/solidcraft/blob/main/packaging/docker/compose.yaml)
+(`SOLIDCRAFT_PORT` picks another port):
+
+```sh
+docker compose -f packaging/docker/compose.yaml up -d      # start
+docker compose -f packaging/docker/compose.yaml pull && docker compose -f packaging/docker/compose.yaml up -d   # update
+docker compose -f packaging/docker/compose.yaml up -d --build   # build the image from your checkout instead
+```
+
+Then open `http://localhost:8080/`. On another machine the browser only saves designs over HTTPS,
+so put a reverse proxy with a certificate in front (Caddy, Traefik, nginx); the app works under
+any URL path, such as `https://example.com/cad/`. To build the image without Compose, from the
+repository root: `docker build -f packaging/docker/Dockerfile -t solidcraft-web .`
+
 ### 3D mouse in the browser
 
 The web app reads a 3Dconnexion SpaceMouse or SpaceNavigator through the browser's Gamepad API,
@@ -171,6 +202,7 @@ cargo run --release -p solidcraft-cli -- run examples/bracket.json --out bracket
 cargo run --release -p solidcraft-cli -- eval examples/bracket.json     # volume, area, faces…
 cargo run --release -p solidcraft-cli -- snapshot examples/bracket.json --out bracket.png
 cargo run --release -p solidcraft-cli -- exec solid.box '{"length": 20, "width": 10, "height": 5}'
+cargo run --release -p solidcraft-cli -- run mechanism.json --in arm.solidcraft  # with a motion.export_animation step: a GIF
 ```
 
 A script is a list of commands:
@@ -194,6 +226,35 @@ solidcraft-cli snapshot part.solidcraft --out photo.png --view Photo
 solidcraft-cli snapshot part.solidcraft --out close-up.png --no-grid --no-axes --camera '{"target": [30, -20, 0], "yaw": 0.6, "pitch": 0.25, "distance": 60}'
 ```
 
+### Seeing what a cut or a join is about to do
+
+A picture answers in a glance what a volume cannot: does the tool body reach through the
+material, and is it where you meant it to be? `--body NAME:opacity=0.3` draws that body
+see-through, so whatever is inside it shows; `--body NAME:color=#cc3333` gives it a colour.
+Either key on its own keeps what the design says about the other, and the option is a shortcut
+for `appearance.assign`, the command the Appearance dialog runs — the picture is the one the
+window would show with the same appearance assigned.
+
+`--tool NAME` is the common case in one option: that body solid in the tool colour, every
+other body see-through around it. `--section z=27` cuts the model at a plane so the inside
+shows, as `inspect.section` does: an axis and the world coordinate to cut at, `,flip` to keep
+the other side, `XY`, `XZ` or `YZ` for a plane through the origin, or the command's own JSON.
+
+![A pin inside a translucent plate, cut by a section plane](../generated/tool-preview.png)
+
+```sh
+# The pin the cut would remove, inside the plate it stops 6 mm short of.
+solidcraft-cli snapshot plate.solidcraft --out preview.png --tool Pin
+solidcraft-cli snapshot plate.solidcraft --out cut.png --tool Pin --section z=12
+solidcraft-cli snapshot plate.solidcraft --out glass.png --body "Plate:opacity=0.25" --body "Pin:color=#1a7f4b"
+```
+
+A body drawn see-through is drawn see-through everywhere a picture is drawn, not only here:
+an appearance with an opacity below 1 (`Glass - Clear` in the library, or any `opacity` you
+assign) now reads as glass in `snapshot`, in MCP screenshots and in a design's thumbnail, as it
+always has in the window. A face painted with a see-through look of its own still draws at its
+body's opacity.
+
 Windows PowerShell 5.1 drops the double quotes inside an argument it passes to a program: write them as `\"` there.
 
 A command that fails stops the script. A feature can also fail later, when a parameter change
@@ -210,6 +271,17 @@ depending on its settings, and strict JSON readers such as Python's `json.load` 
 ```sh
 cargo run --release -p solidcraft-cli -- run examples/bracket.json --results --json-out results.json
 cargo run --release -p solidcraft-cli -- eval examples/bracket.json --json-out measures.json
+```
+
+To find the slow steps of a script, `--timings` prints how long each command took instead of
+the measurement: `{"timings": [{"index", "command", "ms"}], "total_ms"}`, with `index` counted
+from 0. `--profile` adds each command's `profile: {"boolean_ms", "tessellate_ms", "other_ms"}`,
+its wall time in the kernel's booleans, in tessellation and in everything else. With
+`--results` as well, the results go in the same object as `results`; `--results` alone still
+prints a plain array.
+
+```sh
+cargo run --release -p solidcraft-cli -- run examples/bracket.json --profile
 ```
 
 A design's history turns into a script that rebuilds it, which makes a bug that only shows

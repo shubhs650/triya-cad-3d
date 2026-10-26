@@ -1,11 +1,11 @@
 diff --git a/ATTRIBUTION.md b/ATTRIBUTION.md
-index 97dca7e5d1b46d6d178b3db013e8a75597af335c..cf4504773534bb6fdac1b0524b977c177ebcd0b5 100644
+index 04775a608c420dc8cd9568e96b33fbd71cd38a61..37be6af6dda2c8eed7f53deb00af1dcb18d17deb 100644
 --- a/ATTRIBUTION.md
 +++ b/ATTRIBUTION.md
-@@ -190,3 +190,33 @@ and shares that effective count with the surface attachments and CAD callbacks.
- Vulkan, DirectX 12, Metal and WebGPU retain their requested multisampling.
- A frame whose meshes the GPU refuses to stage (device lost or out of memory) is
- skipped with a warning instead of panicking (#1469).
+@@ -1039,3 +1039,33 @@ The original adapters in `crates/engine/src/cmd/render/library.rs`, the generate
+ 
+ | distribution/SolidCraft-Render-Showcase.zip | SolidCraft contributors and the explicitly credited original model/UI/resource authors | byte-verified selected collaborator package of reviewed native media, editable sample, recipes and public provenance; contained attribution and existing SELENE lettering notices retained; no fonts or executable binaries | MIT OR Apache-2.0 for new contributions; referenced original notices retained |
+ | distribution/SolidCraft-Render-Showcase.json | SolidCraft contributors | original verified delivery archive manifest with exact SHA-256, member count and bounded scope | MIT OR Apache-2.0 |
 +
 +<!-- Modified by Triya CAD 3D: rows for the fork's own assets (triya/patches/PATCHES.md row 14). -->
 +## Triya CAD 3D files
@@ -37,7 +37,7 @@ index 97dca7e5d1b46d6d178b3db013e8a75597af335c..cf4504773534bb6fdac1b0524b977c17
 +| triya/docs/img/vessel-a-app.png | Triya CAD 3D contributors | Screenshot of the Triya CAD 3D desktop app (reference vessel A and its GA sheet preview), taken under Xvfb through the control channel; README illustration | MIT OR Apache-2.0 |
 +| triya/docs/img/vessel-a-ga.png | Triya CAD 3D contributors | The GA sheet Triya CAD 3D generates for reference vessel A (`drawing.export`), rasterised and reduced; README illustration | MIT OR Apache-2.0 |
 diff --git a/Cargo.toml b/Cargo.toml
-index d48e8a619e249f85182d0cfca8069b2a37a1fc30..70ddb61c2eb3d6b4bc96d88c8dea47ee7f817577 100644
+index 88a2d0acccdd9061d21937a656c5c79cdb49c1df..bef00918ef715bbd7df61dd885c5b683b74bbc1d 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
 @@ -1,6 +1,6 @@
@@ -48,10 +48,10 @@ index d48e8a619e249f85182d0cfca8069b2a37a1fc30..70ddb61c2eb3d6b4bc96d88c8dea47ee
  # Third-party code kept with local fixes (see vendor/README.md); not linted as ours.
  exclude = ["vendor"]
  
-@@ -25,6 +25,12 @@ solidcraft-engine = { path = "crates/engine" }
- solidcraft-ui-egui = { path = "crates/ui-egui" }
+@@ -28,6 +28,12 @@ solidcraft-space-mouse = { path = "crates/space-mouse" }
  solidcraft-mcp = { path = "crates/mcp" }
  solidcraft-derive = { path = "crates/derive" }
+ solidcraft-3dx-client = { path = "crates/threedx-client" }
 +# Modified by Triya CAD 3D: the overlay crates (triya/README.md)
 +triya-brand = { path = "triya/crates/triya-brand" }
 +triya-stdlib = { path = "triya/crates/triya-stdlib" }
@@ -62,10 +62,10 @@ index d48e8a619e249f85182d0cfca8069b2a37a1fc30..70ddb61c2eb3d6b4bc96d88c8dea47ee
  # foundation
  thiserror = "2"
 diff --git a/assets/locales/en.json b/assets/locales/en.json
-index ffbe52a36c94dbc49b8ae5a0bb32199ae5586d9a..08d37c098b5f4adb2e8c4ed63f659fb4adf72bdc 100644
+index 8f016107bedc5027c8de3e540c2fc860de100621..e60c582688855d4a3f4ae3d04a2042751feb9e94 100644
 --- a/assets/locales/en.json
 +++ b/assets/locales/en.json
-@@ -1160,6 +1160,7 @@
+@@ -2698,6 +2698,7 @@
    "ui.heading_torus": "TORUS",
    "ui.heading_utilities": "UTILITIES",
    "ui.heading_utility": "UTILITY",
@@ -74,10 +74,10 @@ index ffbe52a36c94dbc49b8ae5a0bb32199ae5586d9a..08d37c098b5f4adb2e8c4ed63f659fb4
    "ui.hide": "Hide",
    "ui.hideAxes": "Hide Axes",
 diff --git a/assets/locales/ja.json b/assets/locales/ja.json
-index 4bb4502fe9974a30f73b2e9a9025e1d64337dd2c..33807a9169ea32b7907a25bfe0fcf174b09919f4 100644
+index 77df0d50314cd0780723ef55894dab3edd095cb9..4fb415cdeebb2585a96073dbaecdf5bf2d4bc32a 100644
 --- a/assets/locales/ja.json
 +++ b/assets/locales/ja.json
-@@ -1160,6 +1160,7 @@
+@@ -2698,6 +2698,7 @@
    "ui.heading_torus": "トーラス",
    "ui.heading_utilities": "ユーティリティ",
    "ui.heading_utility": "ユーティリティ",
@@ -86,10 +86,10 @@ index 4bb4502fe9974a30f73b2e9a9025e1d64337dd2c..33807a9169ea32b7907a25bfe0fcf174
    "ui.hide": "非表示",
    "ui.hideAxes": "軸を非表示",
 diff --git a/assets/locales/zh.json b/assets/locales/zh.json
-index b310f839a4c1fba0bdd071f79b811c2d4240158b..c7eaf9a7b9f51f32a266bece0307ad75b51be5cb 100644
+index 444b7d754bd566f93cc5d01cf06a4c2e888fcbc8..876f1237e962168b0fd93244acc1ab3164b32116 100644
 --- a/assets/locales/zh.json
 +++ b/assets/locales/zh.json
-@@ -1160,6 +1160,7 @@
+@@ -2698,6 +2698,7 @@
    "ui.heading_torus": "圆环体",
    "ui.heading_utilities": "工具",
    "ui.heading_utility": "实用工具",
@@ -98,18 +98,18 @@ index b310f839a4c1fba0bdd071f79b811c2d4240158b..c7eaf9a7b9f51f32a266bece0307ad75
    "ui.hide": "隐藏",
    "ui.hideAxes": "隐藏轴",
 diff --git a/crates/engine/src/cmd/mod.rs b/crates/engine/src/cmd/mod.rs
-index a37f226a785c5805a7779fb7dc2ffd4b41b528fc..7ad991f582ab6941e8a121ecfaaa12a7a910cca6 100644
+index 9f1013456f2100a1b75e08ab9ef170165f8771a0..b0e28829d3ccc2698d18ebaeeb4ea732c0c62ed0 100644
 --- a/crates/engine/src/cmd/mod.rs
 +++ b/crates/engine/src/cmd/mod.rs
-@@ -75,6 +75,7 @@ mod sketch_project;
- mod surface;
+@@ -88,6 +88,7 @@ mod surface;
  mod surface_analysis;
+ mod surface_boundary;
  mod surface_match;
 +pub mod triya_extra; // Modified by Triya CAD 3D: extension slot for command slices registered by overlay crates above the engine
  mod view_dxf;
  mod view_navigation;
  
-@@ -271,6 +272,7 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
+@@ -308,6 +309,7 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
      v.extend(view_dxf::COMMANDS.iter());
      v.extend(diagnostics::COMMANDS.iter());
      v.extend(render::COMMANDS.iter());
@@ -177,76 +177,129 @@ index 0000000000000000000000000000000000000000..5adbb55f41773a97d2140a45bbf37d0e
 +    }
 +}
 diff --git a/crates/ui-egui/src/help.rs b/crates/ui-egui/src/help.rs
-index 2d66e603efd5ee9a61af603569c0e79b93e3f673..afe74d67defc2300001570a0846502c7e1832eee 100644
+index 3e832fb02101579f4adad4b6744f5e848e76cd3e..4664bb4d43d9952754e8fb9140d5cd3b18d9f41e 100644
 --- a/crates/ui-egui/src/help.rs
 +++ b/crates/ui-egui/src/help.rs
 @@ -72,7 +72,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context, anchor: egui::Pos2) {
                  crate::context_menu::menu_frame(ui, |ui| {
-                     for (id, label) in [
-                         ("docs", "Documentation"),
--                        ("about", "About SolidCraft"),
-+                        ("about", crate::toolbar::app_name().1), // Modified by Triya CAD 3D: product name from the shell
-                         ("shortcuts", "Keyboard Shortcuts"),
-                         ("report", "Report an Issue…"),
-                         ("crashes", "Crash Reports…"),
+                     for (id, label, icon) in [
+                         ("docs", "Documentation", "library"),
+-                        ("about", "About SolidCraft", "help"),
++                        ("about", crate::toolbar::app_name().1, "help"), // Modified by Triya CAD 3D: product name from the shell
+                         ("shortcuts", "Keyboard Shortcuts", "list"),
+                         ("messages", "Messages…", "list"),
+                         ("report", "Report an Issue…", "bug_report"),
 diff --git a/crates/ui-egui/src/home.rs b/crates/ui-egui/src/home.rs
-index 6a9c72c616773c464aedc81221ff26fa81ed5448..99cfc04f201068d74e63e1c6d0a53640c063cab8 100644
+index a1c13f434802ba642055164c2f175d690937a299..a0778086aa06178614a99ec9d8cbc7542e012cc1 100644
 --- a/crates/ui-egui/src/home.rs
 +++ b/crates/ui-egui/src/home.rs
-@@ -356,7 +356,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
-     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(36, 24))).show(ui, |ui| {
-         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-             ui.horizontal(|ui| {
--                ui.label(RichText::new("SolidCraft").size(26.0).strong().color(t.text));
-+                ui.label(RichText::new(crate::toolbar::app_name().0).size(26.0).strong().color(t.text)); // Modified by Triya CAD 3D: product name from the shell
-                 ui.add_space(12.0);
-                 ui.label(RichText::new(crate::i18n::tr_label("Start")).size(16.0).color(t.text_dim));
-             });
+@@ -663,7 +663,14 @@ fn navigation(app: &SolveApp, ui: &mut egui::Ui, action: &mut Option<FileAction>
+         ("home:settings", app.tr("home.settings"), format!("{primary},"), None, true, FileAction::Settings),
+         ("home:shortcuts", app.tr("home.shortcuts"), String::new(), None, true, FileAction::Shortcuts),
+         ("home:crashes", app.tr("home.crashes"), String::new(), None, true, FileAction::Crashes),
+-        ("home:about", app.tr_label("About SolidCraft"), String::new(), None, true, FileAction::About),
++        (
++            "home:about",
++            app.tr_label(crate::toolbar::app_name().1), // Modified by Triya CAD 3D: product name from the shell
++            String::new(),
++            None,
++            true,
++            FileAction::About,
++        ),
+     ];
+     for (index, (id, label, key, section, enabled, picked)) in nav.into_iter().enumerate() {
+         if index == 4 || index == 8 {
 diff --git a/crates/ui-egui/src/toolbar.rs b/crates/ui-egui/src/toolbar.rs
-index 56cf0166cead00eed35c91abfad914ec30465c01..9602bb0b463bf68827db70739580d49024905641 100644
+index 70b0c5fbaabf27976f65b35b3401656492854c53..5ce2283dcb4f3cc5f2a2539bf5cd7127c9660519 100644
 --- a/crates/ui-egui/src/toolbar.rs
 +++ b/crates/ui-egui/src/toolbar.rs
-@@ -8,7 +8,13 @@ use serde_json::json;
- use crate::theme::Tokens;
+@@ -10,6 +10,12 @@ use crate::theme::Tokens;
  use crate::{SolveApp, icons};
  
--pub const TABS: &[&str] = &["SOLID", "SURFACE", "MESH", "SHEET METAL", "PLASTIC", "UTILITIES"];
+ pub use crate::workspace::TABS;
 +// Modified by Triya CAD 3D: a fork's shell names the product in the app bar, start page and Help menu.
 +pub static APP_NAME: std::sync::OnceLock<(&'static str, &'static str)> = std::sync::OnceLock::new();
 +pub fn app_name() -> (&'static str, &'static str) {
 +    APP_NAME.get().copied().unwrap_or(("SolidCraft", "About SolidCraft"))
 +}
 +pub static BRAND_MARK: std::sync::OnceLock<fn(&egui::Painter, egui::Pos2)> = std::sync::OnceLock::new(); // Modified by Triya CAD 3D: the shell's own app bar mark
-+pub const TABS: &[&str] = &["SOLID", "SURFACE", "MESH", "SHEET METAL", "PLASTIC", "UTILITIES", "VESSEL"]; // Modified by Triya CAD 3D: the pressure-vessel tab (triya-vessel commands)
  
- /// The accent stroke colour for a panel's icons: constraint commands use the same red as the
- /// constraint glyphs they draw in the sketch (`glyph_text`), sketch tools otherwise keep
-@@ -58,6 +64,7 @@ pub fn panels(tab: &str) -> &'static [&'static str] {
-         "SHEET METAL" => &["CREATE", "MODIFY", "ASSEMBLE", "CONSTRUCT", "INSPECT", "INSERT", "SELECT"],
-         "PLASTIC" => &["CREATE", "MODIFY", "ASSEMBLE", "CONSTRUCT", "INSPECT", "INSERT", "SELECT"],
-         "RENDER" => &["SCENE"],
-+        "VESSEL" => &["CREATE", "INSERT", "MODIFY", "INSPECT"], // Modified by Triya CAD 3D: the vessel tab's panels (triya-vessel commands::PANELS)
-         _ => &["MAKE", "ADD-INS", "UTILITY", "INSPECT", "SELECT"],
-     }
- }
-@@ -241,10 +248,10 @@ pub fn app_bar(app: &mut SolveApp, ui: &mut egui::Ui) {
+ /// Legacy paint arguments and non-SVG affordances follow the same semantic palette as the icon.
+ /// The requested icon id determines its meaning on ribbons, menus and drag previews alike.
+@@ -294,18 +300,22 @@ pub fn app_bar(app: &mut SolveApp, ui: &mut egui::Ui) {
          // (viewBox 357 x 412). Same 20 px height and centre as the old block.
          {
              let c = pos2(left + 20.0, r.center().y);
 -            crate::icons::glyphs::brand_mark(ui.painter(), c);
 +            BRAND_MARK.get().map_or_else(|| crate::icons::glyphs::brand_mark(ui.painter(), c), |f| f(ui.painter(), c)); // Modified by Triya CAD 3D: the shell's mark
          }
++        let mut name_end = 0.0_f32; // Modified by Triya CAD 3D: a longer product name pushes the Home button right
          if !compact_actions {
--            ui.painter().text(pos2(left + 36.0, r.center().y), Align2::LEFT_CENTER, "SolidCraft", FontId::proportional(14.0), t.app_bar_text);
-+            ui.painter().text(pos2(left + 36.0, r.center().y), Align2::LEFT_CENTER, app_name().0, FontId::proportional(14.0), t.app_bar_text); // Modified by Triya CAD 3D: product name from the shell
+-            ui.painter().text(
+-                pos2(left + 36.0, r.center().y),
+-                Align2::LEFT_CENTER,
+-                "SolidCraft",
+-                crate::fonts::semibold(t.font_heading),
+-                t.app_bar_text,
+-            );
++            name_end = ui
++                .painter()
++                .text(
++                    pos2(left + 36.0, r.center().y),
++                    Align2::LEFT_CENTER,
++                    app_name().0, // Modified by Triya CAD 3D: product name from the shell
++                    crate::fonts::semibold(t.font_heading),
++                    t.app_bar_text,
++                )
++                .right();
          }
-         let mut x = left + if compact_actions { 60.0 } else { 128.0 };
-         // While a file loads the design waits: no menus or commands from the bar.
+-        let mut x = left + if compact_actions { 56.0 } else { 128.0 };
++        let mut x = if compact_actions { left + 56.0 } else { (left + 128.0).max(name_end + 30.0) }; // Modified by Triya CAD 3D: see name_end
+         let home = Rect::from_center_size(pos2(x - 4.0, r.center().y), vec2(32.0, 32.0));
+         let idle = !app.file_load.busy();
+         let home_response = ui.interact(home, ui.id().with("appbar_home"), if idle { Sense::click() } else { Sense::hover() });
+diff --git a/crates/ui-egui/src/workspace.rs b/crates/ui-egui/src/workspace.rs
+index 1ffc892f10a4c912f98a34a9f671b35d4b25d77f..293a2134374a974740b16b455c92fc4b16cf5336 100644
+--- a/crates/ui-egui/src/workspace.rs
++++ b/crates/ui-egui/src/workspace.rs
+@@ -4,7 +4,7 @@
+ use solidcraft_engine::CommandSpec;
+ use solidcraft_engine::doc::FeatureKind;
+ 
+-pub const TABS: &[&str] = &["MODEL", "SURFACE", "ASSEMBLE", "INSERT", "INSPECT", "MANAGE", "VIEW"];
++pub const TABS: &[&str] = &["MODEL", "SURFACE", "ASSEMBLE", "INSERT", "INSPECT", "MANAGE", "VIEW", "VESSEL"]; // Modified by Triya CAD 3D: the pressure-vessel tab (triya-vessel commands)
+ 
+ /// Reading order of the compact, three-column constraint gallery. Icons come from each spec.
+ pub const CONSTRAINT_GALLERY: &[&str] = &[
+@@ -320,6 +320,11 @@ pub const SECTIONS: &[Section] = &[
+             "render.backends",
+         ],
+     },
++    // Modified by Triya CAD 3D: the VESSEL tab's sections; commands join them through their own `.at("VESSEL", …)` (PLACEMENTS).
++    Section { tab: "VESSEL", panel: "CREATE", promoted: 2, ids: &[] },
++    Section { tab: "VESSEL", panel: "INSERT", promoted: 2, ids: &[] },
++    Section { tab: "VESSEL", panel: "MODIFY", promoted: 2, ids: &[] },
++    Section { tab: "VESSEL", panel: "INSPECT", promoted: 2, ids: &[] },
+ ];
+ 
+ /// Compact source labels for painted big buttons only. Menus, search and tooltips
+@@ -400,6 +405,11 @@ pub fn ribbon_button_label(command: &CommandSpec) -> &str {
+ 
+ /// Registry placement → default ribbon destination, after explicit id overrides.
+ pub const PLACEMENTS: &[(&str, &str, &str, &str)] = &[
++    // Modified by Triya CAD 3D: vessel commands keep their own tab.
++    ("VESSEL", "CREATE", "VESSEL", "CREATE"),
++    ("VESSEL", "INSERT", "VESSEL", "INSERT"),
++    ("VESSEL", "MODIFY", "VESSEL", "MODIFY"),
++    ("VESSEL", "INSPECT", "VESSEL", "INSPECT"),
+     ("SOLID", "CREATE", "MODEL", "CREATE"),
+     ("SOLID", "MODIFY", "MODEL", "MODIFY"),
+     ("SOLID", "CONSTRUCT", "MODEL", "CONSTRUCT"),
 diff --git a/xtask/src/layers.rs b/xtask/src/layers.rs
-index 2118c8e0dd8a5f291adc08a7c61f35e17379a5e7..93ca0aa1b27265532492725004e66d8877ea5731 100644
+index 78a832237b46088c198779193b7d3fa630b5d4d9..5abe308807c3f6014ab69811e0bd348cd87c58bd 100644
 --- a/xtask/src/layers.rs
 +++ b/xtask/src/layers.rs
-@@ -53,12 +53,28 @@ pub const TABLE: &[(&str, Class)] = &[
+@@ -57,12 +57,28 @@ pub const TABLE: &[(&str, Class)] = &[
      ("cli", Class::Exempt),
      ("web", Class::Exempt),
      ("xtask", Class::Exempt),
