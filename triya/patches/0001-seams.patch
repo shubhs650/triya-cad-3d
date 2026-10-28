@@ -296,7 +296,7 @@ index 03be99fafca5e71df353fdbe23e9e130a886f10e..7befb7d34bd349f7a9e9fbc3d5ea7c74
          let idle = !app.file_load.busy();
          let home_response = ui.interact(home, ui.id().with("appbar_home"), if idle { Sense::click() } else { Sense::hover() });
 diff --git a/crates/ui-egui/src/workspace.rs b/crates/ui-egui/src/workspace.rs
-index d253662e21871ed58a266aa5ef919d90d9fe459b..7a4fbc1a0404f90da44c2f437f583e40b8ad5bda 100644
+index d253662e21871ed58a266aa5ef919d90d9fe459b..d4079733c1a6c51cd6eed658224bdbf118434f1b 100644
 --- a/crates/ui-egui/src/workspace.rs
 +++ b/crates/ui-egui/src/workspace.rs
 @@ -13,7 +13,7 @@ pub fn tab_label(tab: &str) -> &str {
@@ -308,10 +308,10 @@ index d253662e21871ed58a266aa5ef919d90d9fe459b..7a4fbc1a0404f90da44c2f437f583e40
  
  /// Reading order of the compact, three-column constraint gallery. Icons come from each spec.
  pub const CONSTRAINT_GALLERY: &[&str] = &[
-@@ -344,6 +344,11 @@ const LEGACY_RENDER_SECTIONS: &[Section] = &[
-         ids: &["render.export", "render.result.regrade", "render.compare", "render.status", "render.backends"],
-     },
-     Section { tab: "RENDER", panel: "BATCH", promoted: 1, ids: &["render.batch"] },
+@@ -287,6 +287,11 @@ pub const SECTIONS: &[Section] = &[
+     Section { tab: "WELDMENTS", panel: "SKETCH", promoted: 1, ids: &["sketch.create"] },
+     Section { tab: "WELDMENTS", panel: "CREATE", promoted: 1, ids: &["frame.member"] },
+     Section { tab: "WELDMENTS", panel: "CONFIGURE", promoted: 2, ids: CONFIGURE },
 +    // Modified by Triya CAD 3D: the VESSEL tab's sections; commands join them through their own `.at("VESSEL", …)` (PLACEMENTS).
 +    Section { tab: "VESSEL", panel: "CREATE", promoted: 2, ids: &[] },
 +    Section { tab: "VESSEL", panel: "INSERT", promoted: 2, ids: &[] },
@@ -319,7 +319,7 @@ index d253662e21871ed58a266aa5ef919d90d9fe459b..7a4fbc1a0404f90da44c2f437f583e40
 +    Section { tab: "VESSEL", panel: "INSPECT", promoted: 2, ids: &[] },
  ];
  
- /// Compact source labels for painted big buttons only. Menus, search and tooltips
+ // Migration data only: Render commands remain registered, but have no live ribbon sections.
 @@ -436,6 +441,11 @@ pub fn ribbon_button_label(command: &CommandSpec) -> &str {
  
  /// Registry placement → default ribbon destination, after explicit id overrides.

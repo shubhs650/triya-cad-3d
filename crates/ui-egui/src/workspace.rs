@@ -287,6 +287,11 @@ pub const SECTIONS: &[Section] = &[
     Section { tab: "WELDMENTS", panel: "SKETCH", promoted: 1, ids: &["sketch.create"] },
     Section { tab: "WELDMENTS", panel: "CREATE", promoted: 1, ids: &["frame.member"] },
     Section { tab: "WELDMENTS", panel: "CONFIGURE", promoted: 2, ids: CONFIGURE },
+    // Modified by Triya CAD 3D: the VESSEL tab's sections; commands join them through their own `.at("VESSEL", …)` (PLACEMENTS).
+    Section { tab: "VESSEL", panel: "CREATE", promoted: 2, ids: &[] },
+    Section { tab: "VESSEL", panel: "INSERT", promoted: 2, ids: &[] },
+    Section { tab: "VESSEL", panel: "MODIFY", promoted: 2, ids: &[] },
+    Section { tab: "VESSEL", panel: "INSPECT", promoted: 2, ids: &[] },
 ];
 
 // Migration data only: Render commands remain registered, but have no live ribbon sections.
@@ -344,11 +349,6 @@ const LEGACY_RENDER_SECTIONS: &[Section] = &[
         ids: &["render.export", "render.result.regrade", "render.compare", "render.status", "render.backends"],
     },
     Section { tab: "RENDER", panel: "BATCH", promoted: 1, ids: &["render.batch"] },
-    // Modified by Triya CAD 3D: the VESSEL tab's sections; commands join them through their own `.at("VESSEL", …)` (PLACEMENTS).
-    Section { tab: "VESSEL", panel: "CREATE", promoted: 2, ids: &[] },
-    Section { tab: "VESSEL", panel: "INSERT", promoted: 2, ids: &[] },
-    Section { tab: "VESSEL", panel: "MODIFY", promoted: 2, ids: &[] },
-    Section { tab: "VESSEL", panel: "INSPECT", promoted: 2, ids: &[] },
 ];
 
 /// Compact source labels for painted big buttons only. Menus, search and tooltips
