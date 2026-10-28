@@ -37,7 +37,8 @@ Display name **Triya CAD 3D**; organisation **Open Engineering Tools**; constant
 `triya-brand` (`APP_NAME`, `APP_ID = "in.openengtools.triya"`, URLs, `about_text()`). Rename
 **only** what users see: window title, About, PWA manifest, icons, og tags, web `data-bin`,
 binary names under `triya/apps/`, data folders, MCP `serverInfo.name`.
-**Keep unchanged**: the `.solidcraft` extension, the `"solidcraft/N"` format tag, `solid.*` /
+**Keep unchanged**: upstream's design extensions (new designs save as `.sc` since v0.25; `.solidcraft`
+still opens; ADR-0006 amendment), the `"solidcraft/N"` format tag, `solid.*` /
 `sketch.*` command ids, `solidcraft-*` crate names, `SOLIDCRAFT_*` env vars. Triya files must
 open in unmodified upstream and vice versa (ADR-0006). Never put "SolidCraft" in Triya UI chrome
 except the attribution sentence; never put "Triya" into upstream crates (the `triya_extra.rs`
@@ -89,7 +90,7 @@ extension slot is the one exception and is named for greppability).
 - Tests first per task: the acceptance test named in PLAN.md exists and fails before the
   implementation lands.
 - `cargo xtask ci` green; `cargo test -p triya-stdlib -p triya-vessel -p triya-drawing -p triya-ui`
-  green; `bash triya/ci/check-patch-whitelist.sh v0.22.0` green; wasm builds
+  green; `bash triya/ci/check-patch-whitelist.sh v0.25.1` green; wasm builds
   (`cargo xtask wasm`); the web app serves (`trunk serve` in `triya/apps/triya-web`) and the
   vessel regenerates in the browser for UI tasks (take a screenshot via `solidcraft-cli snapshot`
   or the control channel and look at it).
@@ -108,7 +109,7 @@ extension slot is the one exception and is named for greppability).
   `gh pr merge --squash --delete-branch`. Never push to `main` directly; never force-push `main`.
 - Commit messages: `triya(<crate>): <what>` for overlay code, `seam: <file> — <why>` for the
   rare upstream touch, `plan: …` / `docs: …` for documents. Reference PLAN task ids (`T2.3`).
-- **Upstream base: v0.22.0** (merged 2026-10-25, ADR-0002 amendment). Until the tag
+- **Upstream base: v0.25.1** (merged 2026-10-28, ADR-0002 amendment 2; v0.22.0 before, 2026-10-25). Until the tag
   `triya-v0.1.0-beta` exists, merge an upstream release tag only when the owner asks; never
   `upstream/main` between releases. The `upstream-sync` workflow is manual-only until then.
   Recipe: `docs/sync-playbook.md` (incl. §5, re-merging the copied web shell).
@@ -123,7 +124,11 @@ extension slot is the one exception and is named for greppability).
   (the Triya CLI wrapper registers `vessel.*` then delegates to upstream's CLI; plain
   `solidcraft-cli` does not know the vessel commands); MCP: `cargo run -p triya-cli -- mcp`.
 
-## 8a. Upstream facts you will trip over (verified in v0.22.0; details in `docs/upstream-map.md`, v0.22.0 delta first)
+## 8a. Upstream facts you will trip over (verified in v0.22.0, re-checked in v0.25.1; details in `docs/upstream-map.md`, newest delta first)
+- v0.25.1: `Metadata::set` takes an `Owner` (`Owner::Design` for Triya's keys); `write_dxf_drawing`
+  returns `Result`; `ar`, `he`, `vi` joined the complete catalogs (`i18n::COMPLETE`), so every Triya
+  catalog key goes into all five; the preference default theme is still `dark`, and the Triya shells
+  start a new install on Clay through `triya_ui::load_prefs_or_defaults` (no seam).
 - `command_specs()` builds a `Vec` from static per-module arrays; Triya commands enter through
   the extension slot `crates/engine/src/cmd/triya_extra.rs` (`register(&'static [CommandSpec])`,
   idempotent, refuses duplicate ids; `extend()` is called at the end of `command_specs()`). The

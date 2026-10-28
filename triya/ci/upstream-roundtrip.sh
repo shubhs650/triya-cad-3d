@@ -4,7 +4,7 @@
 #
 # T7.3 / ADR-0006: a design Triya saves opens in UNMODIFIED upstream SolidCraft with its geometry.
 # Builds Triya's CLI from this tree and upstream's `solidcraft-cli` from a clean worktree of the
-# upstream base tag, regenerates a vessel with Triya, saves it as `.solidcraft`, and compares the body
+# upstream base tag, regenerates a vessel with Triya, saves it as `.sc`, and compares the body
 # volumes both CLIs measure after opening it (upstream rebuilds every feature from the file).
 #
 #   bash triya/ci/upstream-roundtrip.sh [script.json] [tag]
@@ -33,7 +33,7 @@ fi
 CARGO_TARGET_DIR="$ROOT/target-upstream" cargo build -q --manifest-path "$WORK/upstream/Cargo.toml" -p solidcraft-cli
 UPSTREAM="$ROOT/target-upstream/debug/solidcraft-cli"
 
-DESIGN="$WORK/vessel.solidcraft"
+DESIGN="$WORK/vessel.sc"
 "$TRIYA" run "$SCRIPT" --save "$DESIGN" --quiet
 "$TRIYA" eval "$DESIGN" --json-out "$WORK/triya.json"
 "$UPSTREAM" eval "$DESIGN" --json-out "$WORK/upstream.json"

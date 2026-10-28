@@ -1,6 +1,31 @@
 # Upstream map: SolidCraft for the Triya CAD 3D fork
 
-## v0.22.0 delta (base since 2026-10-25)
+## v0.25.1 delta (base since 2026-10-28)
+
+Upstream `37a586d`, 571 commits after v0.22.0; design format 35 → 41.
+
+- **Ribbon** (`ui-egui/src/workspace.rs`): new `RENDER_TABS`/`render_tab`/`tab_label` and the
+  Render workspace's sections (`RENDER`, `RENDER SCENE`, `RENDER CAMERA`); a WELDMENTS heading.
+  `TABS` is otherwise the same list, VESSEL still appended last (seam 6); the VESSEL sections sit
+  after the render sections (seam 15).
+- **Registry**: `command_specs()` ends with `render_ui::COMMANDS`; `triya_extra::extend` stays last.
+- **Metadata**: `Metadata::set(owner, key, value)`: `Owner::{Design, Component}` names whose
+  properties a refusal talks about. Triya passes `Owner::Design`.
+- **DXF**: `solidcraft_io::write_dxf_drawing` returns `Result<String, IoError>`.
+- **Catalogs**: complete set is `ar, he, ja, vi, zh` (`i18n.rs` `COMPLETE`); seams 20–22.
+- **Design extension**: `solidcraft_io::DESIGN_EXT = "sc"`, `DESIGN_EXTS` lists the older ones;
+  the web shell's `disk::save_type` keeps an opened file's extension.
+- **Themes**: 27 built-in theme files (`theme_files::builtin()`, ids = file stems: `clay`, `akari`,
+  …). `Prefs::theme` defaults to `"dark"`; `prefs::apply` resolves a built-in id every frame, and
+  `viewport_theme: Theme` makes the 3D view follow it. Triya's default lives in
+  `triya_ui::load_prefs_or_defaults`.
+- **Web shell**: `Launch` (`?embed`, `?open=<url>`), `linked.rs` (bounded design downloads),
+  `easyprint.rs`, `disk::open_route`/`input_accept`; new deps `url`, `percent-encoding`.
+- **Desktop shell** (`apps/solidcraft`): startup settings checks, `nav_bridge.rs`, macOS native
+  crash capture. Triya's desktop shell is thin and compiles `control_server.rs` unchanged; the
+  rest is not copied (unchanged policy).
+
+## v0.22.0 delta (base 2026-10-25 to 2026-10-28)
 
 The fork merged upstream `v0.22.0` (commit `0537623`, 873 commits after v0.14.0). The v0.14.0
 map below is still the reference for everything not listed here; where they disagree, this
