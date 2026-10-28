@@ -1,8 +1,8 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index 8ba11163f81f7b9aa9680fe75326da9407ea289a..98b449a5736794685cf305fb0f8078c4e4fbea4f 100644
+index 8ba11163f81f7b9aa9680fe75326da9407ea289a..f021251d8fcddb7c33f011890d80a49f4680e7fa 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -4757,6 +4757,110 @@ dependencies = [
+@@ -4757,6 +4757,112 @@ dependencies = [
   "once_cell",
  ]
  
@@ -100,11 +100,13 @@ index 8ba11163f81f7b9aa9680fe75326da9407ea289a..98b449a5736794685cf305fb0f8078c4
 + "egui",
 + "js-sys",
 + "log",
++ "percent-encoding",
 + "serde_json",
 + "solidcraft-engine",
 + "solidcraft-ui-egui",
 + "triya-brand",
 + "triya-ui",
++ "url",
 + "wasm-bindgen",
 + "wasm-bindgen-futures",
 + "web-sys",
