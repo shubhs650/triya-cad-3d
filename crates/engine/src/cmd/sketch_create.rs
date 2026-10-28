@@ -30,7 +30,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         .at("SKETCH", "CREATE")
         .icon("line_mid")
         .enabled(in_sketch)
-        .params(concat!("mid: [x,y] or point ref, end: [x,y]; construction?", created_doc!())),
+        .params(concat!("mid: [x,y], point ref or snap (\"mid:<line>\", \"on:<curve>:x,y\", model vertex/edge); end: [x,y]; construction?", created_doc!())),
     CommandSpec::new("sketch.arc.tangent", "Tangent Arc", arc_tangent).at("SKETCH", "CREATE").icon("arc_tangent").enabled(in_sketch).params(concat!(
         "start: end point of a line or arc (\"l1.end\"), end: [x,y]; curve?: the curve to be tangent to (default: the one ending at start)",
         created_doc!()
@@ -79,6 +79,10 @@ pub static COMMANDS: &[CommandSpec] = &[
         .icon("spline_cv")
         .enabled(in_sketch)
         .params(concat!("points: control points (2…500), degree 5", created_doc!())),
+    CommandSpec::new("sketch.spline.insert_point", "Add Spline Point", spline_insert_point)
+        .icon("spline")
+        .enabled(in_sketch)
+        .params("curve: fit point spline id, at: [x,y]: a fit point is inserted where the curve passes nearest to it, between its neighbours (the curve still runs through it and all its old points; constraints on them stay); end?: start|end: `at` becomes the spline's new first or last point instead, and the curve runs on to it (refused when that end is joined to other geometry). Control point splines take no new points yet. Returns point: the new point's id"),
     CommandSpec::new("sketch.conic", "Conic Curve", conic)
         .at("SKETCH", "CREATE")
         .icon("conic")
@@ -101,7 +105,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         .enabled(in_sketch)
         .params("curves: [line ids], value?: bool (default toggles): infinite line type (#1359): construction geometry drawn across the whole view through the line's two points; off, a normal line"),
     CommandSpec::new("sketch.text", "Text", text).at("SKETCH", "CREATE").icon("sketch_text").enabled(in_sketch).params(concat!(
-        "text: string (\\n breaks lines), at: baseline start [x,y], height?: capital height mm (default 5), angle?: deg; at's x and y, height and angle each take a number or an expression over the design's parameters as a string (\"plate_width / 2\", \"label_size\"): the text keeps the expression, follows the parameters, and returns it in `exprs`; an expression naming no parameter is the number it comes to, a bare number in one is in the design's units, \
+        "text: string (\\n breaks lines), or text_expression: the words built from text parameters (parameters.add with unit text) and quoted texts joined by + (\"Label + '-L'\"): the text keeps it, its words follow the parameters (a parameter edit or a configuration row relabels it) and `exprs` returns it as `text`; at: baseline start [x,y], height?: capital height mm (default 5), angle?: deg; at's x and y, height and angle each take a number or an expression over the design's parameters as a string (\"plate_width / 2\", \"label_size\"): the text keeps the expression, follows the parameters, and returns it in `exprs`; an expression naming no parameter is the number it comes to, a bare number in one is in the design's units, \
          font?: an installed font's family or full name, or a .ttf/.otf file path (~ and %VAR% expand; default: the built-in Liberation Sans), ",
         text_style_doc!(),
         created_doc!()
@@ -110,7 +114,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         .enabled(in_sketch)
         .live(edit_text_live)
         .params(concat!(
-            "link: the text's link id (or entity: one of its curves), text?, at?, height?, angle?: deg (numbers or expressions as in sketch.text; a number replaces an expression, and so does moving the text), font?: family or file path (empty: the built-in font), ",
+            "link: the text's link id (or entity: one of its curves), text? or text_expression? (as in sketch.text; typed words replace the expression), at?, height?, angle?: deg (numbers or expressions as in sketch.text; a number replaces an expression, and so does moving the text), font?: family or file path (empty: the built-in font), ",
             text_style_doc!(),
             " (each kept when left out); or edits: [{link or entity, text?, at?, …}]: several texts changed together, the design rebuilt once \
              (all or nothing; returns edits: each one's result); live?: bool: one frame of an interactive change (the sketch is solved, the features after it stay as they were until `sketch.drag_end`)",
@@ -199,10 +203,20 @@ type TextValues = (String, Vec2, f64, f64, Option<String>, TextStyle, TextExprs)
 fn text_source(doc: &solidcraft_doc::Document, p: &Value, cmd: &str, old: Option<TextValues>) -> Result<LinkSource> {
     let (t0, mut at, mut height, mut angle, f0, s0, mut exprs) =
         old.unwrap_or((String::new(), Vec2::ZERO, 5.0, 0.0, None, TextStyle::default(), TextExprs::default()));
-    let text = match p.get("text") {
-        None | Some(Value::Null) => t0,
-        Some(Value::String(t)) => t.clone(),
-        Some(_) => return Err(bad(cmd, "`text` must be a string")),
+    let text = match (p.get("text").filter(|v| !v.is_null()), p.get("text_expression").filter(|v| !v.is_null())) {
+        (Some(_), Some(_)) => return Err(bad(cmd, "give `text` or `text_expression`, not both")),
+        (None, None) => t0,
+        (Some(Value::String(t)), None) => {
+            exprs.text = None;
+            t.clone()
+        }
+        (None, Some(Value::String(e))) => {
+            let words = doc.eval_words(e.trim()).map_err(|error| bad(cmd, format!("`text_expression`: {error}")))?;
+            exprs.text = Some(e.trim().to_string());
+            words
+        }
+        (Some(_), None) => return Err(bad(cmd, "`text` must be a string")),
+        (None, Some(_)) => return Err(bad(cmd, "`text_expression` must be a string")),
     };
     if text.trim().is_empty() {
         return Err(bad(cmd, "`text` must not be empty"));
@@ -248,7 +262,7 @@ fn text_source(doc: &solidcraft_doc::Document, p: &Value, cmd: &str, old: Option
 fn text_exprs_json(src: &LinkSource) -> Option<Value> {
     let LinkSource::Text { exprs, .. } = src else { return None };
     let mut out = serde_json::Map::new();
-    for (key, e) in [("x", &exprs.x), ("y", &exprs.y), ("height", &exprs.height), ("angle", &exprs.angle)] {
+    for (key, e) in [("x", &exprs.x), ("y", &exprs.y), ("height", &exprs.height), ("angle", &exprs.angle), ("text", &exprs.text)] {
         if let Some(e) = e {
             out.insert(key.into(), json!(e));
         }
@@ -668,6 +682,28 @@ fn spline_cv5(s: &mut Session, p: &Value) -> Result<Value> {
     spline(s, p, "sketch.spline.control_point_5", true, 5)
 }
 
+fn spline_insert_point(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "sketch.spline.insert_point";
+    let at = req_vec2(cmd, p, "at")?;
+    let end = match p.get("end") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(e)) if e == "start" => Some(true),
+        Some(Value::String(e)) if e == "end" => Some(false),
+        Some(_) => return Err(bad(cmd, "`end` must be start or end")),
+    };
+    let (point, info) = edit(s, p, cmd, false, |sk, _| {
+        let id = str_(p, "curve").ok_or_else(|| bad(cmd, "`curve` must be a spline id"))?;
+        let c = sk.curve_index(id).ok_or_else(|| bad(cmd, format!("unknown curve `{id}`")))?;
+        let new = match end {
+            None => sk.insert_spline_point(c, at),
+            Some(at_start) => sk.extend_spline(c, at, at_start),
+        }
+        .map_err(|e| bad(cmd, e.to_string()))?;
+        sk.points.get(new).map(|q| q.id.clone()).ok_or_else(|| bad(cmd, "the new point is missing"))
+    })?;
+    Ok(json!({"point": point, "curve": p.get("curve"), "sketch": info}))
+}
+
 fn conic(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "sketch.conic";
     let rho = num(p, "rho").unwrap_or(0.5);
@@ -698,6 +734,7 @@ fn conic(s: &mut Session, p: &Value) -> Result<Value> {
 fn midpoint_line(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "sketch.line.midpoint";
     let end = req_vec2(cmd, p, "end")?;
+    let p = &super::sketch_project::snap_points(s, p, cmd)?;
     let (out, info) = edit(s, p, cmd, false, |sk, doc| {
         let m = req_parg(sk, doc, p, "mid", cmd)?;
         let start = m.pos() * 2.0 - end;

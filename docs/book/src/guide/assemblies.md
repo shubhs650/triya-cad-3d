@@ -44,7 +44,7 @@ records are reported. Unsupported destructive links refuse the entire copy. See
 
 **Extract to File** (`component.extract`, in a component's right-click menu) moves a component
 into a design of its own: its sketches, features, bodies, subcomponents and the joints among them
-go to the new `.solidcraft` file at its origin, with the parameters they use, and the component
+go to the new `.sc` file at its origin, with the parameters they use, and the component
 becomes linked to that file, as **Insert Design** makes it. Its placements and the joints to the
 rest of the assembly stay. Components whose own history builds the same bodies are offered to
 become placements of the new link too (`component.copies`, `component.replace_with_link`).
@@ -56,11 +56,18 @@ joined to the rest of the design.
 circles and vertices: rigid, revolute, slider, cylindrical, pin-slot, planar and ball, with
 offsets, flip and limits. **As-built Joint** keeps the current position, **Rigid Group** locks
 components together, **Drive Joints** moves a joint through its values, and **Motion Link**
-couples two joints. Links can be chained (one joint drives a second, which drives a
+couples two joints. A rigid joint holds its parts still, so Drive Joints has nothing to drive on
+it: it says so and offers **Edit Joint**, where the joint's type changes to Revolute (rotate),
+Slider (slide) or Cylindrical (both). Links can be chained (one joint drives a second, which drives a
 third), and a value is carried through a chain of up to 64 links in whatever order they were
 made. Contact sets stop motion where bodies would pass through each other,
 **Motion Study** keys joint values along a timeline, and **Interference** shows overlapping
 volumes in red, lists the pairs closer than its **Clearance** and each body's nearest neighbour.
+
+In the Joint and Joint Origin dialogs, picking a straight edge puts the origin at its midpoint
+with the motion axis along that edge. A revolute joint turns about the picked edge; a slider
+moves along it. Round edges use their circle's centre and normal. Existing saved joint origins
+keep their axes.
 
 A joint origin on a face or a hole keeps the turn it had when it was picked: when the face tilts
 (a bend angle or a rotation changing with a parameter) the part on it tilts with the face but
@@ -347,13 +354,15 @@ Mesh** would. The part's solid bodies come
 in as they sit in that design, and they are kept in the assembly, so it opens even without the
 part file. The link is stored relative to the assembly's folder once the assembly is saved.
 After the part file changes, **Update Links** (`component.update_links`) reads it again.
+To edit the source, right-click a linked component or occurrence in the Browser and choose
+**Open Linked Design**. It opens the part in another tab and reports if its file is missing.
 **Break Link** (`component.break_link`) keeps the bodies and forgets the file, and
 `component.links` lists the links and whether their files are found. A linked component holds
 the part's bodies only: its timeline, parameters and sheet-metal data (flat pattern, bend
 table) stay in the part's own design.
 
 If a source file moves or is renamed, right-click its linked component or occurrence in the
-Browser and choose **Relink Source (All Instances)…**. Choose the saved `.solidcraft` design
+Browser and choose **Relink Source (All Instances)…**. Choose the saved `.sc` design
 to use. Relinking updates that component's stored path and solid bodies for **all its
 instances**, keeping their identities and placements. Cancelling or choosing a missing,
 invalid, empty or self-referencing design leaves the assembly unchanged. The operation is

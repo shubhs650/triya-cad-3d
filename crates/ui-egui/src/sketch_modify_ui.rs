@@ -48,6 +48,7 @@ pub const MODIFIERS: &[ToolModifiers] = &[
     ToolModifiers { tool: "sketch.mirror", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
     // Sketch Move: dialog/manipulator inherit only - no invented Alt-copy.
     ToolModifiers { tool: "sketch.move", scopes: SELECT_MANIP, bindings: &[], audit: Audit::VerifiedNoOp },
+    ToolModifiers { tool: "sketch.transform", scopes: SELECT_MANIP, bindings: &[], audit: Audit::VerifiedNoOp },
     // Pattern spacing/count live in the dialog - no viewport modifier chords.
     ToolModifiers { tool: "sketch.pattern.rectangular", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
     ToolModifiers { tool: "sketch.pattern.circular", scopes: SELECT_ONLY, bindings: &[], audit: Audit::VerifiedNoOp },
@@ -78,6 +79,11 @@ pub(crate) fn offset_symmetric(mode: usize) -> bool {
     mode == SYMMETRIC
 }
 
+/// Whether an offset mode index is Two Sides (Distance and an independent Distance 2).
+pub(crate) fn offset_two_sides(mode: usize) -> bool {
+    mode == TWO_SIDES
+}
+
 /// A sketch modify tool window's values.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Mod {
@@ -98,6 +104,11 @@ pub enum Mod {
     /// turn about the centre, and whether the originals stay behind. The command already
     /// carries the copy flag, so the Create Copy row needs no engine change.
     Move { x: String, y: String, angle: String, copy: bool },
+    /// `sketch.transform`: the picked entities scaled, turned and moved as one, about the middle
+    /// of their box. `x` and `y` move that middle, `factor` scales and `angle` turns about it.
+    /// `frame` is the box (middle and size in the sketch, kept up to date from the picks by
+    /// `sketch_transform_ui`) the window's size rows and the handles work on.
+    Transform { x: String, y: String, factor: String, angle: String, frame: Option<([f64; 2], [f64; 2])> },
     /// `sketch.pattern.rectangular`: how many instances along the picked direction and how far
     /// apart, then the same along a second picked direction (perpendicular by default).
     PatternRect {
@@ -133,6 +144,7 @@ impl Mod {
             Mod::Offset { .. } => "OFFSET",
             Mod::Mirror => "MIRROR",
             Mod::Move { .. } => "MOVE/COPY",
+            Mod::Transform { .. } => "TRANSFORM",
             Mod::PatternRect { .. } => "RECTANGULAR PATTERN",
             Mod::PatternCirc { .. } => "CIRCULAR PATTERN",
             Mod::Corner { chamfer: false, .. } => "FILLET",
@@ -146,6 +158,8 @@ impl Mod {
             Mod::Scale { factor } => Some(("Factor", ValueKind::Unitless, factor)),
             Mod::Offset { distance, .. } => Some(("Distance", ValueKind::Length, distance)),
             Mod::Move { x, .. } => Some(("X Distance", ValueKind::Length, x)),
+            // The handles in the viewport are its manipulator; the window has the numbers.
+            Mod::Transform { .. } => None,
             Mod::Mirror => None,
             Mod::PatternRect { spacing, .. } => Some(("Spacing", ValueKind::Length, spacing)),
             Mod::PatternCirc { angle, .. } => Some(("Angle", ValueKind::Angle, angle)),
@@ -162,6 +176,7 @@ fn inputs(k: &Mod) -> Vec<SelInput> {
         // AXES is the mask that takes a straight sketch curve (`selection::SelInput::accepts`).
         Mod::Mirror => vec![SelInput::new("Entities", CURVES | SKETCH_POINTS, true), SelInput::new("Mirror line", AXES, false)],
         Mod::Move { .. } => vec![SelInput::new("Entities", CURVES | SKETCH_POINTS, true), SelInput::new("Center", SKETCH_POINTS, false)],
+        Mod::Transform { .. } => vec![SelInput::new("Entities", CURVES | SKETCH_POINTS, true)],
         // The direction is optional: `sketch.pattern.rectangular` documents sketch x as its
         // default, the way the engine reads it.
         Mod::PatternRect { .. } => vec![
@@ -191,14 +206,32 @@ pub fn start(app: &SolveApp, id: &str) -> Option<(Kind, Vec<SelInput>)> {
     };
     let k = match id {
         "sketch.scale" => Mod::Scale { factor: "2".into() },
-        "sketch.offset" => Mod::Offset { distance: "2 mm".into(), distance2: "2 mm".into(), mode: 0, chain: true, flip: false },
+        "sketch.offset" => Mod::Offset {
+            distance: crate::dialogs::length_default(&app.session, "2"),
+            distance2: crate::dialogs::length_default(&app.session, "2"),
+            mode: 0,
+            chain: true,
+            flip: false,
+        },
         "sketch.mirror" => Mod::Mirror,
-        "sketch.move" => Mod::Move { x: "0 mm".into(), y: "0 mm".into(), angle: "0 deg".into(), copy: false },
+        "sketch.transform" => Mod::Transform {
+            x: crate::dialogs::length_default(&app.session, "0"),
+            y: crate::dialogs::length_default(&app.session, "0"),
+            factor: "1".into(),
+            angle: "0 deg".into(),
+            frame: None,
+        },
+        "sketch.move" => Mod::Move {
+            x: crate::dialogs::length_default(&app.session, "0"),
+            y: crate::dialogs::length_default(&app.session, "0"),
+            angle: "0 deg".into(),
+            copy: false,
+        },
         "sketch.pattern.rectangular" => Mod::PatternRect {
             count: "3".into(),
-            spacing: "20 mm".into(),
+            spacing: crate::dialogs::length_default(&app.session, "20"),
             count2: "1".into(),
-            spacing2: "20 mm".into(),
+            spacing2: crate::dialogs::length_default(&app.session, "20"),
             alignment: PatternAlignment::Right,
             alignment2: PatternAlignment::Right,
             reversed: false,
@@ -223,7 +256,7 @@ pub fn candidate(d: &Dialog, session: &solidcraft_engine::Session, hit: &Hit) ->
     let active = session.active_sketch?;
     match hit {
         Hit::SketchCurve { sketch, .. } | Hit::SketchPoint { sketch, .. } if *sketch != active => None,
-        _ => d.active_input()?.accepts(hit, |_, _| false),
+        _ => d.active_input()?.accepts(hit, Some(active), |_, _| false),
     }
 }
 
@@ -235,18 +268,19 @@ pub fn edit_pattern(app: &mut SolveApp, id: &str) -> bool {
     let state = app.session.world_state();
     let Some(sk) = state.sketch(sid).map(|s| &s.sketch) else { return false };
     let Some(pattern) = sk.patterns.iter().find(|p| p.id == id) else { return false };
+    let input = |key: &str, fallback: String| pattern.expressions.get(key).cloned().unwrap_or(fallback);
     let kind = match &pattern.kind {
         SketchPatternKind::Circular { count, angle, alignment, reversed, .. } => Mod::PatternCirc {
-            count: pattern.count_expression.clone().unwrap_or_else(|| count.to_string()),
-            angle: format!("{angle} deg"),
+            count: pattern.count_expression.clone().unwrap_or_else(|| input("count", count.to_string())),
+            angle: input("angle", format!("{angle} deg")),
             alignment: if *alignment == PatternAlignment::Left { PatternAlignment::Right } else { *alignment },
             reversed: *reversed ^ (*alignment == PatternAlignment::Left),
         },
         SketchPatternKind::Rectangular { count, spacing, count2, spacing2, alignment, alignment2, reversed, reversed2, .. } => Mod::PatternRect {
-            count: count.to_string(),
-            spacing: format!("{spacing} mm"),
-            count2: count2.to_string(),
-            spacing2: format!("{spacing2} mm"),
+            count: input("count", count.to_string()),
+            spacing: input("spacing", format!("{spacing} mm")),
+            count2: input("count2", count2.to_string()),
+            spacing2: input("spacing2", format!("{spacing2} mm")),
             alignment: if *alignment == PatternAlignment::Left { PatternAlignment::Right } else { *alignment },
             alignment2: if *alignment2 == PatternAlignment::Left { PatternAlignment::Right } else { *alignment2 },
             reversed: *reversed ^ (*alignment == PatternAlignment::Left),
@@ -255,11 +289,14 @@ pub fn edit_pattern(app: &mut SolveApp, id: &str) -> bool {
     };
     let mut dialog = Dialog::new(Kind::SketchModify(kind.clone()), inputs(&kind));
     if let Some(input) = dialog.inputs.first_mut() {
-        input.items = pattern
-            .entities
-            .iter()
-            .map(|id| if sk.curve_index(id).is_some() { Sel::SketchCurve { id: id.clone() } } else { Sel::SketchPoint { id: id.clone() } })
-            .collect();
+        input.items =
+            pattern
+                .entities
+                .iter()
+                .map(|id| {
+                    if sk.curve_index(id).is_some() { Sel::SketchCurve { id: id.clone(), sketch: None } } else { Sel::SketchPoint { id: id.clone() } }
+                })
+                .collect();
     }
     match &pattern.kind {
         SketchPatternKind::Circular { center, .. } => {
@@ -274,7 +311,7 @@ pub fn edit_pattern(app: &mut SolveApp, id: &str) -> bool {
                 if let Some(id) = id
                     && let Some(input) = dialog.inputs.get_mut(index)
                 {
-                    input.items = vec![Sel::SketchCurve { id: id.clone() }];
+                    input.items = vec![Sel::SketchCurve { id: id.clone(), sketch: None }];
                 }
             }
         }
@@ -312,6 +349,7 @@ pub(crate) fn command(k: &Mod) -> &'static str {
         Mod::Offset { .. } => "sketch.offset",
         Mod::Mirror => "sketch.mirror",
         Mod::Move { .. } => "sketch.move",
+        Mod::Transform { .. } => "sketch.transform",
         Mod::PatternRect { .. } => "sketch.pattern.rectangular",
         Mod::PatternCirc { .. } => "sketch.pattern.circular",
         Mod::Corner { chamfer: false, .. } => "sketch.fillet",
@@ -395,6 +433,25 @@ pub fn rows(ui: &mut egui::Ui, k: &mut Mod, doc: &Document) -> bool {
             enter |= ui_kit::value_pair(ui, "Position", [x, y], ["X", "Y"], Some(["X Distance", "Y Distance"]));
             enter |= number(ui, "Angle", angle);
             ui_kit::options(ui, "move_options", &mut [("Create Copy", copy)]);
+        }
+        Mod::Transform { x, y, factor, angle, frame } => {
+            enter |= ui_kit::value_pair(ui, "Position", [x, y], ["X", "Y"], Some(["X Distance", "Y Distance"]));
+            // The size in millimetres follows the factor and the other way round; the aspect is kept.
+            if let Some((_, size)) = frame {
+                for (label, natural) in [("Width", size[0]), ("Height", size[1])] {
+                    let k = crate::prefs::parse_number(factor.trim()).filter(|k| *k > 0.0).unwrap_or(1.0);
+                    let mut shown = format!("{} mm", crate::sketch_transform_ui::plain(natural * k));
+                    if number(ui, label, &mut shown)
+                        && let Some(mm) = crate::prefs::parse_number(shown.trim_end_matches("mm").trim())
+                        && mm > 0.0
+                        && natural > 1e-9
+                    {
+                        *factor = format!("{}", ((mm / natural) * 1e6).round() / 1e6);
+                    }
+                }
+            }
+            enter |= number(ui, "Scale", factor);
+            enter |= number(ui, "Angle", angle);
         }
         Mod::PatternRect { count, spacing, count2, spacing2, alignment: a, alignment2, reversed, reversed2 } => {
             let (left1, left2) = (copies_left(doc, count2), copies_left(doc, count));
@@ -540,7 +597,7 @@ fn entity_ids(session: &solidcraft_engine::Session, inputs: &[SelInput], i: usiz
     items(inputs, i)
         .iter()
         .filter_map(|x| match x {
-            Sel::SketchCurve { id } => Some(id.clone()),
+            Sel::SketchCurve { id, .. } => Some(id.clone()),
             _ => point_id(session, x).map(str::to_string),
         })
         .collect()
@@ -548,13 +605,13 @@ fn entity_ids(session: &solidcraft_engine::Session, inputs: &[SelInput], i: usiz
 
 /// Sketch curve ids picked in input `i`.
 fn curve_ids(inputs: &[SelInput], i: usize) -> Vec<String> {
-    items(inputs, i).iter().filter_map(|x| if let Sel::SketchCurve { id } = x { Some(id.clone()) } else { None }).collect()
+    items(inputs, i).iter().filter_map(|x| if let Sel::SketchCurve { id, .. } = x { Some(id.clone()) } else { None }).collect()
 }
 
 /// A typed scale factor as the command wants it: the field evaluated against the document's
 /// parameters, in the range the command accepts. Checking the range here lets the window say
 /// so in its own error line instead of the status bar.
-fn factor(app: &SolveApp, text: &str) -> Result<f64, String> {
+pub(crate) fn factor(app: &SolveApp, text: &str) -> Result<f64, String> {
     let v = app.session.doc.eval(text.trim(), ValueKind::Unitless).map_err(|e| format!("Factor: {e}"))?;
     if !(v.is_finite() && v > 1e-9 && v < 1e6) {
         return Err("Factor must be a positive number".into());
@@ -565,13 +622,13 @@ fn factor(app: &SolveApp, text: &str) -> Result<f64, String> {
 /// A typed field as the command wants it: evaluated against the document's parameters, so an
 /// expression works, with a bare number read in the design's own units. An empty field is zero,
 /// the way an untouched row should leave the geometry where it is.
-fn value(app: &SolveApp, text: &str, kind: ValueKind, label: &str) -> Result<f64, String> {
+pub(crate) fn value(app: &SolveApp, text: &str, kind: ValueKind, label: &str) -> Result<f64, String> {
     let text = text.trim();
     if text.is_empty() {
         return Ok(0.0);
     }
     let doc = &app.session.doc;
-    let v = doc.eval(&doc.with_design_unit(text, kind), kind).map_err(|e| format!("{label}: {e}"))?;
+    let v = crate::length_input::eval(doc, text, kind).map_err(|e| format!("{label}: {e}"))?;
     if !v.is_finite() {
         return Err(format!("{label} must be a number"));
     }
@@ -583,21 +640,14 @@ fn value(app: &SolveApp, text: &str, kind: ValueKind, label: &str) -> Result<f64
 /// as a typed sketch value does everywhere else.
 fn signed_length(app: &SolveApp, label: &str, text: &str, flip: bool) -> Result<f64, String> {
     let doc = &app.session.doc;
-    let v = doc.eval(&doc.with_design_unit(text.trim(), ValueKind::Length), ValueKind::Length).map_err(|e| format!("{label}: {e}"))?;
+    let v = crate::length_input::eval(doc, text.trim(), ValueKind::Length).map_err(|e| format!("{label}: {e}"))?;
     if !v.is_finite() || v.abs() <= 1e-9 {
         return Err(format!("{label} must be a non-zero number"));
     }
     Ok(if flip { -v } else { v })
 }
 
-/// A typed count as the command wants it: the field evaluated against the document's
-/// parameters, then a whole number the engine accepts.
-///
-/// The sketch patterns read `count` and `angle` with `num`, which takes a JSON number and
-/// nothing else. An expression string would be refused outright for `count`, and silently
-/// replaced by the 360 degree default for `angle`. That silent substitution is the defect
-/// upstream #218 reports for `solid.pattern.circular`'s axis origin. The window therefore
-/// evaluates every value here and sends numbers.
+/// Validate a typed count before sending its expression to the command.
 fn whole(app: &SolveApp, label: &str, text: &str) -> Result<u64, String> {
     let v = app.session.doc.eval(text.trim(), ValueKind::Unitless).map_err(|e| format!("{label}: {e}"))?;
     if !v.is_finite() || !(1.0..=MAX_COPIES).contains(&v) || (v - v.round()).abs() > 1e-9 {
@@ -611,7 +661,7 @@ fn whole(app: &SolveApp, label: &str, text: &str) -> Result<u64, String> {
 /// zero, which a Move window wants and a pattern spacing does not.
 fn length(app: &SolveApp, label: &str, text: &str) -> Result<f64, String> {
     let doc = &app.session.doc;
-    let v = doc.eval(&doc.with_design_unit(text.trim(), ValueKind::Length), ValueKind::Length).map_err(|e| format!("{label}: {e}"))?;
+    let v = crate::length_input::eval(doc, text.trim(), ValueKind::Length).map_err(|e| format!("{label}: {e}"))?;
     if !v.is_finite() {
         return Err(format!("{label} must be a number"));
     }
@@ -622,7 +672,7 @@ fn line_ids(inputs: &[SelInput], i: usize) -> Vec<String> {
     items(inputs, i)
         .iter()
         .filter_map(|x| match x {
-            Sel::SketchCurve { id } => Some(id.clone()),
+            Sel::SketchCurve { id, .. } => Some(id.clone()),
             _ => None,
         })
         .collect()
@@ -640,7 +690,7 @@ fn corner_ids(app: &SolveApp, inputs: &[SelInput], i: usize) -> Vec<String> {
 /// a radius or a chamfer leg, so this one is its own.
 fn corner_size(app: &SolveApp, label: &str, text: &str, kind: ValueKind) -> Result<f64, String> {
     let doc = &app.session.doc;
-    let v = doc.eval(&doc.with_design_unit(text.trim(), kind), kind).map_err(|e| format!("{label}: {e}"))?;
+    let v = crate::length_input::eval(doc, text.trim(), kind).map_err(|e| format!("{label}: {e}"))?;
     if !v.is_finite() || v <= 1e-9 {
         return Err(format!("{label} must be a positive number"));
     }
@@ -701,6 +751,17 @@ pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String
             }
             ("sketch.scale", p)
         }
+        Mod::Transform { x, y, factor: text, angle, frame } => {
+            let entities = entity_ids(&app.session, inputs, 0);
+            if entities.is_empty() {
+                return Err("Select the sketch curves or points to transform first".into());
+            }
+            let Some((middle, _)) = frame else { return Err("Select the sketch curves or points to transform first".into()) };
+            let f = factor(app, text)?;
+            let turn = value(app, angle, ValueKind::Angle, "Angle")?.to_degrees();
+            let (dx, dy) = (value(app, x, ValueKind::Length, "X")?, value(app, y, ValueKind::Length, "Y")?);
+            ("sketch.transform", json!({"entities": entities, "factor": f, "angle": turn, "center": middle, "translate": [dx, dy]}))
+        }
         Mod::Offset { distance, distance2, mode, chain, flip } => {
             let curves = curve_ids(inputs, 0);
             if curves.is_empty() {
@@ -728,7 +789,7 @@ pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String
             // The AXES mask also takes an origin axis, which is not a curve of this sketch and
             // cannot be a mirror line.
             let line = match items(inputs, 1).first() {
-                Some(Sel::SketchCurve { id }) => id.clone(),
+                Some(Sel::SketchCurve { id, .. }) => id.clone(),
                 Some(_) => return Err("The mirror line must be a straight curve of this sketch, not an origin axis".into()),
                 None => return Err("Select the mirror line".into()),
             };
@@ -772,7 +833,7 @@ pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String
             if n1.saturating_mul(n2) > MAX_COPIES as u64 {
                 return Err(format!("Quantity and Quantity 2 together must make at most {MAX_COPIES:.0} instances"));
             }
-            let mut p = json!({"entities": entities, "count": n1, "spacing": s1, "count2": n2, "spacing2": s2, "alignment": alignment, "alignment2": alignment2, "reversed": reversed, "reversed2": reversed2});
+            let mut p = json!({"entities": entities, "count": count, "spacing": spacing, "count2": count2, "spacing2": spacing2, "alignment": alignment, "alignment2": alignment2, "reversed": reversed, "reversed2": reversed2});
             // A picked direction that has no component in the sketch plane is reported rather
             // than quietly replaced by the default.
             for (index, vector_key, line_key) in [(1, "dir", "direction"), (2, "dir2", "direction2")] {
@@ -780,7 +841,7 @@ pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String
                     let d = sketch_dir(app, sel).ok_or("The direction must be an axis or a straight sketch curve that lies in the sketch plane")?;
                     p[vector_key] = json!([d.x, d.y]);
                     p[line_key] = match sel {
-                        Sel::SketchCurve { id } => json!(id),
+                        Sel::SketchCurve { id, .. } => json!(id),
                         _ => Value::Null,
                     };
                 } else {
@@ -807,10 +868,10 @@ pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String
             if n < 2 {
                 return Err("Quantity must be at least 2".into());
             }
-            let a = total_angle(app, "Total angle", angle)?;
+            total_angle(app, "Total angle", angle)?;
             (
                 "sketch.pattern.circular",
-                json!({"entities": entities, "center": center, "count": count.trim().parse::<u64>().map_or_else(|_| json!(count.trim()), |_| json!(n)), "angle": a, "alignment": alignment, "reversed": reversed}),
+                json!({"entities": entities, "center": center, "count": count, "angle": angle, "alignment": alignment, "reversed": reversed}),
             )
         }
         Mod::Corner { chamfer: false, size, .. } => {
@@ -818,7 +879,7 @@ pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String
             let lines = line_ids(inputs, 0);
             // The engine keeps its millimetre API; bare UI values use the design unit.
             // Keep expressions intact so the radius remains a driving dimension.
-            let radius = app.session.doc.with_design_unit(size.trim(), ValueKind::Length);
+            let radius = crate::length_input::expression(&app.session.doc, size, ValueKind::Length);
             match (corners.is_empty(), lines.as_slice()) {
                 (true, []) => return Err("select the corners to round first".into()),
                 (false, []) => ("sketch.fillet", json!({"points": corners, "radius": radius})),

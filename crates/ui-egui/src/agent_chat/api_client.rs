@@ -20,15 +20,20 @@ use super::agents::Protocol;
 use super::backend::{ChatBackend, Event, HttpFn, HttpRequest, PromptPart, StartContext, ToolStatus};
 use super::process::{AgentProcess, FromAgent, ProcessHandle};
 
-/// Model requests for one message, at most (each answer with tool calls is one).
-pub const MAX_REQUESTS_PER_TURN: usize = 24;
 /// Longest tool result handed back to the model.
 const MAX_TOOL_TEXT: usize = 20_000;
 /// Messages kept in the conversation (the system note stays).
 const MAX_HISTORY: usize = 240;
-/// How long one model request may take.
-const REQUEST_TIMEOUT_S: u64 = 300;
-/// How long one tool call may take (it may wait for the user's Allow).
+/// Pictures of the view kept in the conversation. The whole history goes with every request
+/// (up to `MAX_REQUESTS_PER_TURN` per message), so older views are swapped for a short note:
+/// otherwise each attached view makes every later request bigger, until the endpoint refuses it.
+const MAX_HISTORY_IMAGES: usize = 2;
+/// What an older view becomes in the history.
+const DROPPED_VIEW_NOTE: &str = "[an earlier picture of the view, removed to keep the request small]";
+/// How long one tool call may take (it may wait for the user's Allow, declined after four
+/// minutes). It does not depend on the endpoint's request timeout: a tool call is SolidCraft's own
+/// work and the user's answer, never a wait for the model, so a longer request timeout does not
+/// need a longer tool timeout.
 const TOOL_TIMEOUT: Duration = Duration::from_secs(330);
 /// How often a waiting request or tool call looks at the cancel flag.
 const CANCEL_POLL: Duration = Duration::from_millis(40);
@@ -51,12 +56,15 @@ pub struct ApiConfig {
     pub model: String,
     pub key: Option<String>,
     pub http: HttpFn,
+    /// How long one model request may take, in seconds (the endpoint's setting).
+    pub request_timeout_s: u64,
 }
 
 enum Cmd {
     Prompt(Vec<PromptPart>),
     NewChat,
     SetModel(String),
+    SetRequestTimeout(u64),
 }
 
 pub struct ApiBackend {
@@ -122,6 +130,11 @@ impl ChatBackend for ApiBackend {
             let _ = c.send(Cmd::SetModel(model.to_string()));
         }
     }
+    fn set_request_timeout(&mut self, secs: u64) {
+        if let Some(c) = &self.cmds {
+            let _ = c.send(Cmd::SetRequestTimeout(secs));
+        }
+    }
     fn new_session(&mut self) {
         // A running turn is cancelled; the worker resets the history once it has ended.
         self.cancel.store(true, Ordering::Relaxed);
@@ -176,6 +189,7 @@ impl Worker {
         if let Err(e) = self.start_mcp() {
             self.emit(Event::Error(e));
         }
+        self.emit(Event::ToolsAvailable(!self.tools.is_empty()));
         self.emit(Event::Ready { agent: format!("{} · {}", self.cfg.name, self.cfg.model), images: true });
         // The endpoint's models for the picker; an endpoint that does not list them shows none.
         if let Ok(list) = self.model_list() {
@@ -191,6 +205,7 @@ impl Worker {
             match cmd {
                 Cmd::Prompt(parts) => self.turn(parts),
                 Cmd::SetModel(m) => self.cfg.model = m,
+                Cmd::SetRequestTimeout(secs) => self.cfg.request_timeout_s = secs,
                 Cmd::NewChat => {
                     self.history.clear();
                     self.cancel.store(false, Ordering::Relaxed);
@@ -265,8 +280,10 @@ impl Worker {
 
     fn turn(&mut self, parts: Vec<PromptPart>) {
         self.history.push(user_message(self.cfg.protocol, &parts));
+        drop_old_views(&mut self.history, MAX_HISTORY_IMAGES);
         self.trim_history();
-        for _ in 0..MAX_REQUESTS_PER_TURN {
+        // No cap on requests: Stop sets `cancel`, checked at the top of every round.
+        loop {
             // The history as of here is complete (every tool call answered): a cancelled request
             // goes back to it, so no half-finished round is left to confuse the next message.
             let sound = self.history.len();
@@ -312,6 +329,7 @@ impl Worker {
                     title: Some(title),
                     kind: Some(String::new()),
                     status: Some(ToolStatus::InProgress),
+                    input: c.arguments.as_ref().ok().filter(|a| a.is_object()).cloned(),
                     output: None,
                 });
                 let (text, failed) = if self.cancel.load(Ordering::Relaxed) {
@@ -333,6 +351,7 @@ impl Worker {
                     title: None,
                     kind: None,
                     status: Some(if failed { ToolStatus::Failed } else { ToolStatus::Completed }),
+                    input: None,
                     output: Some(shown),
                 });
                 match self.cfg.protocol {
@@ -346,8 +365,6 @@ impl Worker {
                 self.history.push(json!({"role": "user", "content": results}));
             }
         }
-        self.emit(Event::Text { thought: false, text: format!("\n({})", crate::i18n::tr("ui.ai_request_limit")) });
-        self.emit(Event::TurnEnded { reason: "max_turn_requests".into() });
     }
 
     /// Keep the conversation bounded and starting at a user message, so neither protocol sees a
@@ -431,26 +448,49 @@ impl Worker {
                 Protocol::Anthropic => headers.push(("x-api-key".into(), k.clone())),
             }
         }
-        let req = HttpRequest { method: "POST", url, headers, body: Some(body.to_string().into_bytes()), timeout_s: REQUEST_TIMEOUT_S };
+        let req = HttpRequest { method: "POST", url, headers, body: Some(body.to_string().into_bytes()), timeout_s: self.limit_s() };
         // The request runs on a thread of its own so that Stop does not wait for the model: a
         // cancelled one is abandoned (the host's own timeout ends it) and its answer dropped.
         let (tx, rx) = channel();
         let http = self.cfg.http.clone();
+        let started = std::time::Instant::now();
         std::thread::spawn(move || {
             let _ = tx.send(http(&req));
         });
+        // The host ends the request at the limit; a few seconds more is the backstop for one
+        // that does not.
+        let backstop = Duration::from_secs(self.limit_s().saturating_add(5));
         let (status, bytes) = loop {
             if self.cancel.load(Ordering::Relaxed) {
                 return Err("cancelled by the user".into());
             }
             match rx.recv_timeout(CANCEL_POLL) {
-                Ok(r) => break r?,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Ok(r) => break r.map_err(|e| request_error(e, started.elapsed(), self.limit_s()))?,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) if started.elapsed() < backstop => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => return Err(timed_out(self.limit_s())),
                 Err(_) => return Err("the request ended without an answer".into()),
             }
         };
         Ok((status, serde_json::from_slice(&bytes).unwrap_or(Value::Null)))
     }
+}
+
+impl Worker {
+    /// The endpoint's request timeout, in range.
+    fn limit_s(&self) -> u64 {
+        self.cfg.request_timeout_s.clamp(super::agents::MIN_REQUEST_TIMEOUT_S, super::agents::MAX_REQUEST_TIMEOUT_S)
+    }
+}
+
+/// What the chat says when a request ran out of time: the limit, and where to raise it.
+pub fn timed_out(limit_s: u64) -> String {
+    crate::i18n::format("ui.ai_request_timed_out", &[("seconds", &limit_s.to_string())])
+}
+
+/// A failed request as people read it: one that ran into the endpoint's request timeout (the
+/// host says so, or it failed at the limit) says the limit and where to raise it.
+pub fn request_error(error: String, elapsed: Duration, limit_s: u64) -> String {
+    if error.starts_with("timeout: global") || elapsed >= Duration::from_secs(limit_s) { timed_out(limit_s) } else { error }
 }
 
 /// An endpoint's refusal as people read it.
@@ -461,6 +501,7 @@ pub fn http_error(status: u16, body: &Value) -> String {
         401 | 403 => crate::i18n::tr("ui.ai_http_key"),
         404 => crate::i18n::tr("ui.ai_http_not_found"),
         429 => crate::i18n::tr("ui.ai_http_busy"),
+        413 => crate::i18n::tr("ui.ai_http_too_large"),
         _ => "",
     };
     format!(
@@ -619,6 +660,25 @@ fn anthropic_reply(body: &Value) -> Reply {
         _ => json!({"role": "assistant", "content": content.clone()}),
     };
     Reply { text, calls, assistant }
+}
+
+/// Keeps the newest `keep` pictures of the view in the history and swaps every older one for a
+/// short note, so the model still knows a view was shown. Text is never touched. Pictures come
+/// as OpenAI `image_url` parts or Anthropic `image` blocks, depending on the endpoint.
+fn drop_old_views(history: &mut [Value], keep: usize) {
+    let mut seen = 0;
+    for msg in history.iter_mut().rev() {
+        let Some(content) = msg.get_mut("content").and_then(Value::as_array_mut) else { continue };
+        for part in content.iter_mut().rev() {
+            if !matches!(part.get("type").and_then(Value::as_str), Some("image_url" | "image")) {
+                continue;
+            }
+            seen += 1;
+            if seen > keep {
+                *part = json!({"type": "text", "text": DROPPED_VIEW_NOTE});
+            }
+        }
+    }
 }
 
 /// MCP `tools/list` as OpenAI function tools (the hidden ones left out).
@@ -873,6 +933,80 @@ mod tests {
         assert_eq!(a["content"][1]["source"]["data"], "AA==");
     }
 
+    fn view(n: u8) -> Value {
+        user_message(
+            Protocol::OpenAi,
+            &[PromptPart::Text(format!("look {n}")), PromptPart::Image { mime: "image/png".into(), base64: format!("V{n}") }],
+        )
+    }
+
+    fn pictures(history: &[Value]) -> Vec<String> {
+        history
+            .iter()
+            .filter_map(|m| m["content"].as_array())
+            .flatten()
+            .filter_map(|p| p.pointer("/image_url/url").and_then(Value::as_str).map(str::to_string))
+            .collect()
+    }
+
+    #[test]
+    fn only_the_newest_views_stay_in_the_history_and_older_ones_become_a_note() {
+        let mut h = vec![json!({"role": "system", "content": "note"}), view(1), json!({"role": "assistant", "content": "ok"}), view(2)];
+        drop_old_views(&mut h, 2);
+        assert_eq!(pictures(&h).len(), 2, "two views fit, nothing is dropped");
+
+        h.push(json!({"role": "user", "content": "plain text"}));
+        h.push(view(3));
+        drop_old_views(&mut h, 2);
+        assert_eq!(pictures(&h), vec!["data:image/png;base64,V2", "data:image/png;base64,V3"]);
+        // The oldest view is a note now; the words sent with it, and every other message, stay.
+        assert_eq!(h[1]["content"][0]["text"], "look 1");
+        assert_eq!(h[1]["content"][1], json!({"type": "text", "text": DROPPED_VIEW_NOTE}));
+        assert_eq!(h[0]["content"], "note");
+        assert_eq!(h[4]["content"], "plain text");
+    }
+
+    #[test]
+    fn a_long_chat_with_a_view_per_message_does_not_grow_without_end() {
+        let mut h = vec![json!({"role": "system", "content": "note"})];
+        let big = "A".repeat(200_000);
+        for _ in 0..40 {
+            h.push(user_message(
+                Protocol::OpenAi,
+                &[PromptPart::Text("again".into()), PromptPart::Image { mime: "image/png".into(), base64: big.clone() }],
+            ));
+            drop_old_views(&mut h, MAX_HISTORY_IMAGES);
+            h.push(json!({"role": "assistant", "content": "done"}));
+        }
+        let size = json!({"messages": h}).to_string().len();
+        assert_eq!(pictures(&h).len(), MAX_HISTORY_IMAGES);
+        assert!(size < (MAX_HISTORY_IMAGES + 1) * big.len(), "request body is {size} bytes");
+    }
+
+    #[test]
+    fn anthropic_views_are_dropped_the_same_way() {
+        let view = |n: u8| {
+            user_message(
+                Protocol::Anthropic,
+                &[PromptPart::Text(format!("look {n}")), PromptPart::Image { mime: "image/png".into(), base64: format!("V{n}") }],
+            )
+        };
+        let mut h = vec![view(1), json!({"role": "assistant", "content": "ok"}), view(2), view(3)];
+        drop_old_views(&mut h, 2);
+        let kept: Vec<&str> =
+            h.iter().filter_map(|m| m["content"].as_array()).flatten().filter_map(|p| p.pointer("/source/data").and_then(Value::as_str)).collect();
+        assert_eq!(kept, vec!["V2", "V3"]);
+        assert_eq!(h[0]["content"][0]["text"], "look 1");
+        assert_eq!(h[0]["content"][1], json!({"type": "text", "text": DROPPED_VIEW_NOTE}));
+    }
+
+    #[test]
+    fn a_too_large_request_says_so() {
+        let e = http_error(413, &json!({"error": {"message": "Request body is too large."}}));
+        assert!(e.starts_with("HTTP 413: "), "{e}");
+        assert!(e.ends_with("(Request body is too large.)"), "{e}");
+    }
+
     /// A scripted endpoint: one answer with a tool call, then a plain answer. The loop runs the
     /// tool (here without SolidCraft tools: an unknown tool fails) and reports the turn's end.
     #[test]
@@ -898,6 +1032,7 @@ mod tests {
             model: "m".into(),
             key: None,
             http,
+            request_timeout_s: 300,
         };
         let ctx = StartContext { cwd: std::env::temp_dir(), bridge: None, tools: None, wake: Box::new(|| {}) };
         let mut b = ApiBackend::start(cfg, ctx).unwrap();
@@ -908,7 +1043,8 @@ mod tests {
             events.extend(b.poll());
             std::thread::sleep(Duration::from_millis(10));
         }
-        assert!(matches!(events.first(), Some(Event::Ready { .. })), "{events:?}");
+        assert_eq!(events.first(), Some(&Event::ToolsAvailable(false)));
+        assert!(events.iter().any(|e| matches!(e, Event::Ready { .. })), "{events:?}");
         assert!(events.iter().any(|e| matches!(e, Event::Tool { status: Some(ToolStatus::Failed), .. })), "{events:?}");
         assert!(events.iter().any(|e| matches!(e, Event::Text { text, .. } if text == "Done.")), "{events:?}");
         assert!(matches!(events.last(), Some(Event::TurnEnded { reason }) if reason.is_empty()), "{events:?}");
@@ -951,6 +1087,7 @@ mod tests {
             model: "m".into(),
             key: None,
             http,
+            request_timeout_s: 300,
         };
         let ctx = StartContext { cwd: std::env::temp_dir(), bridge: None, tools: None, wake: Box::new(|| {}) };
         let mut b = ApiBackend::start(cfg, ctx).unwrap();
@@ -1005,6 +1142,7 @@ mod tests {
             model: "m".into(),
             key: None,
             http,
+            request_timeout_s: 300,
         };
         let ctx = StartContext { cwd: std::env::temp_dir(), bridge: None, tools: None, wake: Box::new(|| {}) };
         let mut b = ApiBackend::start(cfg, ctx).unwrap();
@@ -1050,6 +1188,7 @@ mod tests {
             model: "local".into(),
             key: None,
             http,
+            request_timeout_s: 300,
         };
         let ctx = StartContext { cwd: std::env::temp_dir(), bridge: None, tools: None, wake: Box::new(|| {}) };
         let mut b = ApiBackend::start(cfg, ctx).unwrap();
@@ -1106,6 +1245,7 @@ mod tests {
             model: "m".into(),
             key: None,
             http,
+            request_timeout_s: 300,
         };
         let ctx = StartContext { cwd: std::env::temp_dir(), bridge: None, tools: None, wake: Box::new(|| {}) };
         let mut b = ApiBackend::start(cfg, ctx).unwrap();
@@ -1139,6 +1279,7 @@ mod tests {
             model: "m".into(),
             key: Some("k".into()),
             http,
+            request_timeout_s: 300,
         };
         let ctx = StartContext { cwd: std::env::temp_dir(), bridge: None, tools: None, wake: Box::new(|| {}) };
         assert!(ApiBackend::start(cfg, ctx).is_err());
@@ -1162,6 +1303,7 @@ mod tests {
             model: "m".into(),
             key: Some("sk-secret".into()),
             http,
+            request_timeout_s: 300,
         };
         let (events, _rx) = channel();
         let w = Worker {
@@ -1288,6 +1430,7 @@ mod tests {
             model: "m".into(),
             key: Some("sk-secret".into()),
             http,
+            request_timeout_s: 300,
         };
         let ctx = StartContext { cwd: std::env::temp_dir(), bridge: None, tools: None, wake: Box::new(|| {}) };
         let mut b = ApiBackend::start(cfg, ctx).unwrap();
@@ -1298,7 +1441,8 @@ mod tests {
             events.extend(b.poll());
             std::thread::sleep(Duration::from_millis(10));
         }
-        assert!(matches!(events.first(), Some(Event::Ready { .. })), "{events:?}");
+        assert_eq!(events.first(), Some(&Event::ToolsAvailable(false)));
+        assert!(events.iter().any(|e| matches!(e, Event::Ready { .. })), "{events:?}");
         assert!(events.iter().any(|e| matches!(e, Event::Tool { status: Some(ToolStatus::Failed), .. })), "{events:?}");
         assert!(events.iter().any(|e| matches!(e, Event::Text { text, .. } if text == "Done.")), "{events:?}");
         assert!(matches!(events.last(), Some(Event::TurnEnded { reason }) if reason.is_empty()), "{events:?}");

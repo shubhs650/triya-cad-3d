@@ -168,6 +168,7 @@ pub(crate) fn searchable_dropdown(
     custom: Option<&str>,
     pending: Option<&str>,
 ) -> Option<String> {
+    crate::prefs_search::note_current(ui, current);
     let mut chosen = None;
     let row = label(ui).to_owned();
     let response = egui::ComboBox::from_id_salt(id)
@@ -236,6 +237,14 @@ fn editor_reserving(ui: &mut Ui, value: &mut String, hint: &str, completion: boo
         edit = edit.margin(egui::Margin { left: inset, right: inset.saturating_add(reserve.round() as i8), top: 0, bottom: 0 });
     }
     let response = ui.add_sized(vec2(width, row_height()), edit);
+    if completion && ui.is_enabled() {
+        ui.ctx().data_mut(|data| {
+            let id = egui::Id::new("sc_value_fields");
+            if data.get_temp::<Vec<(egui::Id, usize)>>(id).is_some() {
+                data.get_temp_mut_or_default::<Vec<(egui::Id, usize)>>(id).push((response.id, value.chars().count()));
+            }
+        });
+    }
     crate::theme::TabAccent::number_focus(ui, &response);
     t.input_bevel(ui, &response);
     let label = crate::i18n::tr_label(label(ui));
@@ -270,11 +279,32 @@ pub(crate) fn dropdown(ui: &mut Ui, id: &str, selected: &mut usize, options: &[&
 /// Dropdown with caller-supplied kit choices/actions, including disabled entries and stable
 /// application handles. Tokens: dropdown tokens. Use `dropdown` for a simple indexed list.
 pub(crate) fn dropdown_menu(ui: &mut Ui, id: impl egui::AsIdSalt, current: &str, add: impl FnOnce(&mut Ui)) -> Response {
+    dropdown_menu_with_close_behavior(ui, id, current, egui::PopupCloseBehavior::CloseOnClick, add)
+}
+
+/// Dropdown with explicit dismissal behavior. For editable content use `CloseOnClickOutside`
+/// and close the popup when a choice is accepted.
+pub(crate) fn dropdown_menu_with_close_behavior(
+    ui: &mut Ui,
+    id: impl egui::AsIdSalt,
+    current: &str,
+    close_behavior: egui::PopupCloseBehavior,
+    add: impl FnOnce(&mut Ui),
+) -> Response {
+    crate::prefs_search::note_current(ui, current);
+    // Only a search probe may skip the real control. A dialog's first frame is not visible yet,
+    // and a stand-in there makes the next frame too short to show OK.
+    if crate::prefs_search::querying(ui)
+        && (!ui.is_visible() || (crate::prefs_search::suppress_chrome(ui) && !crate::prefs_search::texts_hit(ui, &[current])))
+    {
+        return crate::prefs_search::hidden_response(ui);
+    }
     let response = egui::ComboBox::from_id_salt(id)
         .width(dimension(ui.available_width()))
         .height(Tokens::get().space_24 * 14.0)
         .selected_text(current)
         .icon(dropdown_arrow)
+        .close_behavior(close_behavior)
         .show_ui(ui, add)
         .response;
     publish(ui, &response, egui::WidgetType::ComboBox);
@@ -287,18 +317,34 @@ pub(crate) struct Selection {
     pub filled: bool,
 }
 
+/// Three looks: the active input in accent, a filled one in a quiet neutral tint, an empty one plain.
 pub(crate) fn selection_field(ui: &mut Ui, text: &str, options: Selection) -> Response {
     let Selection { active, filled } = options;
     let t = Tokens::get();
     let (rect, response) = ui.allocate_exact_size(vec2(dimension(ui.available_width()), row_height()), egui::Sense::CLICK);
-    if active && !filled {
+    // A separate action fill lets two-colour palettes reserve the focus accent for inverted ink.
+    let inverted = t.form_primary_fill != t.form_primary;
+    if active && !filled && !inverted {
         ui.painter().rect_filled(rect, t.control_radius, t.selected_bg);
     }
+    let (fill, border) = match (active, filled) {
+        (true, _) if inverted => (t.selected_bg, t.form_primary),
+        (false, _) if inverted => (t.control_fill, t.control_border),
+        (true, true) => (t.selected_bg, t.form_primary),
+        (true, false) => (t.control_fill, t.form_primary),
+        (false, true) => (t.control_fill.lerp_to_gamma(t.form_ink, 0.06), t.control_border.lerp_to_gamma(t.form_ink, 0.35)),
+        (false, false) => (t.control_fill, t.control_border),
+    };
     ui.painter().rect(
-        if active && !filled { rect.shrink(t.space_2) } else { rect },
+        if active && !filled && !inverted { rect.shrink(t.space_2) } else { rect },
         t.control_radius,
-        if filled { t.selected_bg } else { t.control_fill },
-        if active || filled { egui::Stroke::new(1.0, t.form_primary) } else { t.control_border_stroke(t.control_border) },
+        fill,
+        match (active, filled) {
+            (true, _) => egui::Stroke::new(1.0, border),
+            // A theme's control border can fix its own colour; a filled field keeps its tint.
+            (false, true) => egui::Stroke::new(t.control_border_stroke(border).width, border),
+            (false, false) => t.control_border_stroke(border),
+        },
         egui::StrokeKind::Inside,
     );
     let end = if filled { t.space_24 } else { t.space_8 };
@@ -306,7 +352,19 @@ pub(crate) fn selection_field(ui: &mut Ui, text: &str, options: Selection) -> Re
         rect.min + vec2(t.form_inset.min(rect.width()), 0.0),
         egui::pos2((rect.right() - end).max(rect.left() + t.form_inset.min(rect.width())), rect.bottom()),
     );
-    paint_text(ui, text_rect, text, crate::fonts::medium(t.font_label), if filled { t.selected_ink } else { t.form_dim }, false);
+    paint_text(
+        ui,
+        text_rect,
+        text,
+        crate::fonts::medium(t.font_label),
+        match (active, filled) {
+            (true, _) if inverted => t.selected_ink,
+            (true, true) => t.selected_ink,
+            (false, true) => t.form_ink,
+            _ => t.form_dim,
+        },
+        false,
+    );
     publish(ui, &response, egui::WidgetType::Button);
     scenario::publish_rect(&format!("dialog:field:{}", label(ui)), rect);
     scenario::publish_count(&format!("dialog:selection:{}:filled", label(ui)), f64::from(filled));
@@ -419,6 +477,9 @@ impl Default for Slider {
 /// Native input, keyboard routing, enabled state and accessibility; one token-painted track/thumb.
 /// Tokens: control_height, space_24/8/4/2, dialog_body/rule, control_fill, form_primary.
 pub(crate) fn slider<T: egui::emath::Numeric>(ui: &mut Ui, value: &mut T, range: std::ops::RangeInclusive<T>, options: Slider) -> Response {
+    if crate::prefs_search::suppress_chrome(ui) {
+        return crate::prefs_search::hidden_response(ui);
+    }
     // Own form styling even in callers such as the viewport menu which have no kit scope.
     super::scope(ui, |ui| {
         let t = Tokens::get();
@@ -449,10 +510,19 @@ pub(crate) fn slider<T: egui::emath::Numeric>(ui: &mut Ui, value: &mut T, range:
             widget = widget.integer();
         }
         let response = ui.add(widget);
+        if ui.ctx().memory(|memory| memory.focused()).is_some_and(|id| {
+            ui.ctx().read_response(id).is_some_and(|focused| response.rect.contains(focused.rect.center()))
+                || egui::TextEdit::load_state(ui.ctx(), id).is_some()
+        }) {
+            crate::prefs_search::note_key_sink(ui.ctx());
+        }
         let slider = egui::Rect::from_min_size(response.rect.min, vec2(ui.spacing().slider_width, response.rect.height()));
         let mut background = ui.painter().clone();
         background.set_opacity(if ui.is_visible() { 1.0 } else { 0.0 });
-        background.rect_filled(slider, 0.0, t.dialog_body);
+        // At the top of the range egui's own handle reaches `slider.right()` exactly, and a fill
+        // that stops there leaves its last column showing beside the editor (#5708). The gap
+        // before the editor is `item_spacing.x`, so a pixel past the edge covers nothing else.
+        background.rect_filled(slider.with_max_x(slider.right() + 1.0), 0.0, t.dialog_body);
         // Match egui's native input range (handle_radius = thickness / 2.5), so the
         // painted thumb stays under the pointer even at the two ends of the range.
         let input_radius = ui.text_style_height(&egui::TextStyle::Body).max(ui.spacing().interact_size.y) / 2.5;
@@ -487,6 +557,20 @@ pub(crate) fn scalar_field(ui: &mut Ui, value: &mut f64, range: std::ops::RangeI
 pub(crate) fn length_field(ui: &mut Ui, value: &mut f64, units: &str, decimals: u8) -> Response {
     let response = ui.add(length_drag(value, units, decimals));
     Tokens::get().input_bevel(ui, &response);
+    scenario::publish_target(&format!("dialog:length:{}", label(ui)), response.rect);
+    response
+}
+
+/// A model-space length with tool-specific bounds and drag step, shown in design units.
+pub(crate) fn bounded_length_field(
+    ui: &mut Ui,
+    value: &mut f64,
+    units: &str,
+    decimals: u8,
+    range: std::ops::RangeInclusive<f64>,
+    speed: f64,
+) -> Response {
+    let response = ui.add(length_drag(value, units, decimals).range(range).speed(speed));
     scenario::publish_target(&format!("dialog:length:{}", label(ui)), response.rect);
     response
 }
@@ -593,13 +677,25 @@ fn length_drag<'a>(value: &'a mut f64, units: &str, decimals: u8) -> egui::DragV
 /// keyboard to the next widget.
 pub(crate) fn canvas_value_field(ui: &mut Ui, id: egui::Id, value: &mut String, keep_tab: bool) -> Response {
     let t = Tokens::get();
-    let mut edit = egui::TextEdit::singleline(value).id(id).desired_width(t.space_24 * 3.0).background_color(t.input_fill());
+    let width = grown_width(ui, value, &egui::TextStyle::Body.resolve(ui.style()), t.space_24 * 3.0);
+    // At least that wide: in an area the space left is last frame's width, which can't grow.
+    let mut edit = egui::TextEdit::singleline(value).id(id).desired_width(width).min_size(vec2(width, 0.0)).background_color(t.input_fill());
     if keep_tab {
         edit = edit.event_filter(egui::EventFilter { tab: true, horizontal_arrows: true, ..Default::default() });
     }
     let response = ui.add(edit);
     t.input_bevel(ui, &response);
+    let field = (ui.ctx().cumulative_pass_nr(), response.id, value.chars().count());
+    ui.ctx().data_mut(|data| data.insert_temp(egui::Id::new("sc_canvas_value_focus"), field));
     response
+}
+
+/// How wide a value field on the canvas is: `base` for a number, as wide as an expression typed
+/// into it (parameter names, a formula), up to three times `base`.
+fn grown_width(ui: &Ui, value: &str, font: &egui::FontId, base: f32) -> f32 {
+    let text = ui.fonts_mut(|fonts| fonts.layout_no_wrap(value.to_owned(), font.clone(), egui::Color32::PLACEHOLDER).size().x);
+    // Room for the cursor after the last character.
+    (text + Tokens::get().space_6).clamp(base, base * 3.0)
 }
 
 /// Placement editor whose owner routes Enter and Tab (including rejected expressions).
@@ -610,11 +706,12 @@ pub(crate) fn placement_field(ui: &mut Ui, id: egui::Id, value: &mut String, hin
     // Canvas editors must retain their native hit target: enlarging it intercepts nearby
     // sketch picks. Keep the former line + space_2 above/below, with shared galley alignment.
     let height = ui.fonts_mut(|fonts| fonts.row_height(&font)) + ui.spacing().extra_text_line_spacing + t.space_4;
+    let width = grown_width(ui, value, &font, t.control_height * 3.0 - t.space_6);
     let response = ui.add(
         text_input(egui::TextEdit::singleline(value))
             .id(id)
-            .min_size(vec2(0.0, height))
-            .desired_width(t.control_height * 3.0 - t.space_6)
+            .min_size(vec2(width, height))
+            .desired_width(width)
             .return_key(None)
             .event_filter(egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
             .font(font)

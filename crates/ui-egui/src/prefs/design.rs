@@ -32,6 +32,9 @@ pub(super) fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
                 ui_kit::settings_precision_sample(ui, &format!("{:.*}°", usize::from(app.preferences.angle_decimals.min(6)), 45.0));
             });
         });
+        let tip = app.tr("ui.step_values_tip").to_string();
+        let step = setting::step_values(app, ui).on_hover_text(tip);
+        crate::scenario::publish_handle("prefs:step_values", step.rect.center());
     });
     ui_kit::settings_section(ui, "orientation", app.tr("prefs.orientation"), |ui| {
         ui.horizontal_wrapped(|ui| {
@@ -71,5 +74,25 @@ pub(super) fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
             ),
             ui_kit::Text::Hint("hole_moves"),
         );
+    });
+    ui_kit::settings_section(ui, "placement", app.tr("prefs.placement"), |ui| {
+        setting::placement_handles(app, ui);
+    });
+    // Where the files a design names may be: never a network location the user hasn't allowed.
+    ui_kit::settings_section(ui, "network_locations", app.tr("prefs.network_locations_section"), |ui| {
+        setting::network_locations(app, ui);
+        ui_kit::text(ui, app.tr("prefs.network_locations_note"), ui_kit::Text::Hint("network_locations"));
+        let mut remove = None;
+        for (i, host) in app.preferences.network_hosts.iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui_kit::text(ui, &format!("\\\\{host}"), ui_kit::Text::Hint("network_host"));
+                if ui_kit::button(ui, app.tr("prefs.network_host_remove"), ui_kit::Button::Small).clicked() {
+                    remove = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove.filter(|i| *i < app.preferences.network_hosts.len()) {
+            app.preferences.network_hosts.remove(i);
+        }
     });
 }
