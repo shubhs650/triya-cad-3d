@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Triya CAD 3D contributors
 //! Triya CAD 3D desktop app: a thin shell around SolidCraft's `SolveApp`.
 //!
-//! Usage: `triya [--control <port>] [--sample] [design.solidcraft | part.step]…`
+//! Usage: `triya [--control <port>] [--sample] [design.sc | part.step]…`
 //!
 //! What it adds to upstream's engine and UI: the `vessel.*` commands ([`triya_ui::register`]),
 //! the Triya title, window icon and app id, the Vessel panel and Triya's About window drawn around
@@ -154,7 +154,7 @@ fn main() -> eframe::Result {
                 return Ok(());
             }
             "--help" | "-h" => {
-                println!("usage: triya [--control PORT] [--sample] [design.solidcraft | part.step]…");
+                println!("usage: triya [--control PORT] [--sample] [design.sc | part.step]…");
                 return Ok(());
             }
             _ => files.push(a),
@@ -191,9 +191,8 @@ fn main() -> eframe::Result {
             app.apply_off_thread = Some(solidcraft_ui_egui::dialogs::APPLY_AT_ONCE);
             // The OS title bar shows "Triya CAD 3D"; upstream's custom bar is SolidCraft's chrome.
             app.custom_titlebar = false;
-            if let Some(p) = cc.storage.and_then(|s| solidcraft_ui_egui::prefs::stored(|k| s.get_string(k))) {
-                app.load_prefs(&p);
-            }
+            // A new install starts on Triya's light theme; saved preferences load unchanged.
+            triya_ui::load_prefs_or_defaults(&mut app, cc.storage.and_then(|s| solidcraft_ui_egui::prefs::stored(|k| s.get_string(k))));
             if let Some(rs) = &cc.wgpu_render_state {
                 app.set_wgpu(rs, DEPTH_BITS, STENCIL_BITS, rs.msaa_samples);
                 solidcraft_ui_egui::gpu::install_picture_renderer(rs);

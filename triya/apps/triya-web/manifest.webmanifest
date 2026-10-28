@@ -7,7 +7,7 @@
   "scope": "./",
   "display": "standalone",
   "background_color": "#e8ebf0",
-  "theme_color": "#343840",
+  "theme_color": "#e6dfd3",
   "categories": ["productivity", "utilities"],
   "icons": [
     { "src": "icons/32x32/in.openengtools.triya.png", "sizes": "32x32", "type": "image/png", "purpose": "any" },

@@ -12,6 +12,7 @@
 //! - [`VesselPanel`]: the side panel shown while the `VESSEL` tab is active ([`vessel`]): the
 //!   stack editor, the vessel JSON, Regenerate off the window thread with a progress bar. It reads
 //!   engine state and acts only through `app.run("vessel.*", params)`, like every upstream panel.
+//! - [`load_prefs_or_defaults`]: saved preferences, or the Clay theme on a new install.
 //! - [`about_text`]: the brand and attribution sentence for the app shell's About page.
 //! - [`about::About`]: the About window, which takes over upstream's Help ▸ About.
 //! - [`icons`]: the code-drawn Triya mark as egui images and the window icon.
@@ -35,6 +36,22 @@ pub fn register() -> Result<(), String> {
     let _ = solidcraft_ui_egui::toolbar::BRAND_MARK.set(icons::paint_app_bar_mark);
     solidcraft_engine::cmd::triya_extra::register(triya_vessel::COMMANDS)?;
     solidcraft_engine::cmd::triya_extra::register(triya_drawing::COMMANDS)
+}
+
+/// The theme a new install starts on: upstream's built-in Clay, a warm light theme (owner
+/// decision 2026-10-28). Upstream's own default is `dark`.
+pub const DEFAULT_THEME: &str = "clay";
+
+/// Restore the preferences the shell saved (`prefs::stored`), or, when there are none (a new
+/// install), start on [`DEFAULT_THEME`]. Saved preferences keep their theme, dark included.
+pub fn load_prefs_or_defaults(app: &mut solidcraft_ui_egui::SolveApp, stored: Option<String>) {
+    match stored {
+        Some(p) => app.load_prefs(&p),
+        None => {
+            app.preferences.theme = DEFAULT_THEME.into();
+            app.ui.dark = false;
+        }
+    }
 }
 
 /// The brand and attribution line (`triya_brand::about_text`).
