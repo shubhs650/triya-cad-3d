@@ -1,8 +1,8 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index 8ba11163f81f7b9aa9680fe75326da9407ea289a..f021251d8fcddb7c33f011890d80a49f4680e7fa 100644
+index 8ba11163f81f7b9aa9680fe75326da9407ea289a..79aa8f8520d1507155d630725b89dc255d25a50e 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -4757,6 +4757,112 @@ dependencies = [
+@@ -4757,6 +4757,113 @@ dependencies = [
   "once_cell",
  ]
  
@@ -15,6 +15,7 @@ index 8ba11163f81f7b9aa9680fe75326da9407ea289a..f021251d8fcddb7c33f011890d80a49f
 + "getrandom 0.3.4",
 + "log",
 + "rfd",
++ "serde",
 + "serde_json",
 + "solidcraft-engine",
 + "solidcraft-ui-egui",
