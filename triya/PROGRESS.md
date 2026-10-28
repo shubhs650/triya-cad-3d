@@ -3,7 +3,7 @@
 **Phase:** 7 — Beta hardening · **Day:** 4 of 29 (Tue 20 Oct 2026) · **Beta:** Sun 8 Nov
 **Next task:** T7.5 (tag `triya-v0.1.0-beta`, deploy Pages) — waits on the owner: Pages, and the beta-scope call on the browser regenerate target (Owner decisions, 2026-10-20). T7.1–T7.4 are done in one PR; Phases 0–6 are done (#2–#30).
 **Blockers:** GitHub Pages is not enabled for the repo (`configure-pages`: 404 "Get Pages site failed"), so T0.6/T7.5 can't deploy yet
-**Upstream base:** SolidCraft v0.22.0 @ 0537623 (merged 2026-10-25, PR #34; was v0.14.0 @ 2bb9c81)
+**Upstream base:** SolidCraft v0.25.1 @ 37a586d (merged 2026-10-28, PR #35; v0.22.0 @ 0537623 from 2026-10-25, PR #34; was v0.14.0 @ 2bb9c81)
 
 ## Done
 | id | task | PR | date | notes |
@@ -150,6 +150,8 @@
 - 2026-10-25 — Upstream v0.22.0 (owner's choice: merge, not rebase; the tag, not main; keep the VESSEL tab; save format 35; freeze lifted because nothing has shipped — ADR-0002 amendment). One PR, merged with a merge commit so git records upstream as merged. The VESSEL seam moved with the ribbon to `workspace.rs` (TABS + four SECTIONS rows + four PLACEMENTS rows). The desktop shell opens the control channel the way upstream now does (`control_auth::plan`, agent-control preference). Upstream's `CI` workflow runs on Blacksmith runners the fork doesn't have, so Triya CI's `upstream-gates` job runs its fmt, clippy (ci profile), xtask checks and the tests of the crates with seams (ui-egui modules workspace/i18n/home/help/toolbar; upstream's `render_workspace` renderer tests exhaust a standard runner's memory under the software GPU and our seams don't reach them).
 - 2026-10-25 — The torispherical arc kernel case is fixed in v0.22.0 (−0.019 %); the conic workaround stays until a separate task drops it, and the canary test is now a guard (`kernel_case_torispherical_arc_revolve_is_right_since_v0_22`).
 
+- 2026-10-28 — Upstream v0.25.1 (owner request; plan approved): merge commit, same seams + rows 20–22 (ar/he/vi headings). New installs start on the built-in **Clay** light theme (owner: "warmer" light theme; Clay over Akari), the 3D view follows the theme, saved preferences keep their theme (`triya_ui::load_prefs_or_defaults`, no seam). New designs save as `.sc` like upstream (plan D1, ADR-0006 amendment). Upstream's WELDMENTS tab is kept beside VESSEL (plan D2). Cloudflare's 25 MiB file limit is no longer a constraint: large files can go through R2 (owner, 2026-10-28).
+
 ## Owner decisions
 | opened | question | status | answer |
 |---|---|---|---|
@@ -223,6 +225,7 @@
 | `drawing.generate_ga` on a regenerated vessel A (desktop, dev profile) | 25 s (the BOM measures every body) | 20 Oct | before a regenerate it is milliseconds || Triya web wasm (release, `wasm-opt`) on v0.22.0 | 82,409,231 B (78.6 MiB) raw; gzip -9 26,033,883 B (24.8 MiB, 180 KB under Cloudflare's 25 MiB per-file limit); brotli -q 11 16,347,483 B | 25 Oct | upstream grew it 2×; the web-shell job prints both and warns when gzip passes the limit; Brotli in the Worker is the next step if it grows |
 | CI jobs on v0.22.0 | Phase 3 exit ≈ 10 min, Phase 4 exit ≈ 13.5 min | 25 Oct | PR #34 |
 
+| Vessel A regenerate in the desktop app on v0.25.1 (release, Xvfb, software GPU, separate nozzles, over the control channel) | ≈ 60 s for all 11 attachments; 48 bodies | 28 Oct | screenshots/upgrade-0.25 (Clay theme) |
 ## Log (append-only)
 - 2026-10-17 — Deep research completed; decision taken.
 - 2026-10-18 — Kickoff kit written; upstream cloned at v0.14.0; skeleton built and tested natively (see SKELETON-REPORT.md).
@@ -253,3 +256,4 @@
 - 2026-10-20 — Phase 7 started (thread "Phase 7 implementation"). T7.1–T7.4 in one PR: fuzz, product name seam, `join_nozzles`, browser timing, round trips (incl. unmodified upstream), README. T7.5 (tag, Pages) waits on the owner.
 - 2026-10-22 — Cloudflare Workers deploy added (owner asked to ship via Cloudflare); waits on the owner's Cloudflare secrets.
 - 2026-10-25 — Moved onto SolidCraft v0.22.0 (thread "Rebase Triya onto SolidCraft 0.22", PR #34): merge, seams re-placed, overlay fitted, all Triya CI green incl. roundtrip in unmodified v0.22.0.
+- 2026-10-28 — Moved onto SolidCraft v0.25.1 (thread "Upgrade Triya to SolidCraft 0.25", PR #35): 7 conflicts, 7 compile fixes (metadata owner, fallible DXF writer), web shell re-merged, Clay light theme by default, `.sc` designs.
