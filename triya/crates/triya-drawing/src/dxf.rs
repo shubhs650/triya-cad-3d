@@ -9,6 +9,7 @@
 use solidcraft_geom::Vec2;
 use solidcraft_io::{DxfEntity, DxfLayer, DxfLinetype, DxfShape, write_dxf_drawing};
 
+use crate::{DrawingError, Result};
 use crate::model::{Layer, LineStyle, P2};
 use crate::plot::{Align, Plotter, text_width};
 
@@ -58,9 +59,9 @@ impl DxfPlotter {
         }
     }
 
-    /// The DXF text.
-    pub fn finish(self) -> String {
-        write_dxf_drawing(&layers(), &self.entities)
+    /// The DXF text, or why the writer refused the entities.
+    pub fn finish(self) -> Result<String> {
+        write_dxf_drawing(&layers(), &self.entities).map_err(|e| DrawingError::Invalid(format!("cannot write the DXF: {e}")))
     }
 }
 
@@ -141,7 +142,7 @@ mod tests {
         p.ellipse(P2::new(0.0, 0.0), 2.0, 4.0, 0.0, 0.0, std::f64::consts::TAU);
         p.set_layer(Layer::Text);
         p.text(P2::new(0.0, 0.0), 3.5, 0.0, Align::Left, "90°");
-        let s = p.finish();
+        let s = p.finish().unwrap();
         for name in ["OUTLINE", "HIDDEN", "CENTER", "DIM", "HATCH", "TEXT", "TITLE"] {
             assert!(s.contains(&format!("\n{name}\n")), "{name}");
         }

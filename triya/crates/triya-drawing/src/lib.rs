@@ -45,7 +45,7 @@ pub fn to_svg(sheet: &Sheet) -> Result<String> {
 pub fn to_dxf(sheet: &Sheet) -> Result<String> {
     let mut p = dxf::DxfPlotter::new();
     plot_sheet(&mut p, sheet)?;
-    Ok(p.finish())
+    p.finish()
 }
 
 /// The sheet as a one-page vector PDF.

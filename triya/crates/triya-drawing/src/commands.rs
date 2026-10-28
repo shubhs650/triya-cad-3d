@@ -12,6 +12,7 @@
 
 use serde_json::{Value, json};
 use solidcraft_engine::params::{bad, str_};
+use solidcraft_engine::doc::metadata::Owner;
 use solidcraft_engine::{CommandSpec, EngineError, Session};
 use triya_vessel::commands::{METADATA_KEY, TAB, stored_doc};
 use triya_vessel::presets;
@@ -205,7 +206,7 @@ fn generate_ga(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value> {
     let (sheet, warnings) = sheet(s, &opts)?;
     let value = serde_json::to_value(&opts).map_err(|e| EngineError::Other(e.to_string()))?;
     let mut next = s.doc.metadata.clone();
-    next.set(SHEET_KEY, json!({"options": value})).map_err(|e| EngineError::Other(format!("cannot store the drawing options: {e}")))?;
+    next.set(Owner::Design, SHEET_KEY, json!({"options": value})).map_err(|e| EngineError::Other(format!("cannot store the drawing options: {e}")))?;
     if next != s.doc.metadata {
         s.doc_mut().metadata = next;
     }
