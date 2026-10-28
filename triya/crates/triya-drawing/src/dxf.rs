@@ -9,9 +9,9 @@
 use solidcraft_geom::Vec2;
 use solidcraft_io::{DxfEntity, DxfLayer, DxfLinetype, DxfShape, write_dxf_drawing};
 
-use crate::{DrawingError, Result};
 use crate::model::{Layer, LineStyle, P2};
 use crate::plot::{Align, Plotter, text_width};
+use crate::{DrawingError, Result};
 
 /// Most entities in one drawing (a hostile sheet cannot make the file unbounded).
 pub const MAX_ENTITIES: usize = 2_000_000;

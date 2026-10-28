@@ -16,7 +16,10 @@ fn a_new_install_starts_on_clay_with_a_light_view() {
     triya_ui::load_prefs_or_defaults(&mut a, None);
     assert_eq!(a.preferences.theme, triya_ui::DEFAULT_THEME);
     assert_eq!(triya_ui::DEFAULT_THEME, "clay");
-    assert!(solidcraft_ui_egui::theme_files::find("clay", &a.preferences.custom_themes).is_some_and(|t| !t.base.is_dark()), "Clay is a built-in light theme");
+    assert!(
+        solidcraft_ui_egui::theme_files::find("clay", &a.preferences.custom_themes).is_some_and(|t| !t.base.is_dark()),
+        "Clay is a built-in light theme"
+    );
     assert_eq!(a.preferences.viewport_theme, solidcraft_ui_egui::theme::ViewportTheme::Theme, "the 3D view follows the theme");
 }
 
