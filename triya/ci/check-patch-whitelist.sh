@@ -5,10 +5,10 @@
 # triya/patches/PATCHES.md (the seam whitelist) or is one of the root files the fork owns
 # outright (.gitattributes merge=ours set).
 #
-# Usage: triya/ci/check-patch-whitelist.sh <baseline-ref>     e.g. v0.22.0 or upstream/main
+# Usage: triya/ci/check-patch-whitelist.sh <baseline-ref>     e.g. v0.25.1 or upstream/main
 set -euo pipefail
 
-BASE="${1:-v0.22.0}"
+BASE="${1:-v0.25.1}"
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 

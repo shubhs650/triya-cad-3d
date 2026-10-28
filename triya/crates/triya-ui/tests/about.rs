@@ -58,5 +58,5 @@ fn help_about_opens_the_triya_window_with_the_attribution_sentence() {
 fn diagnostics_lead_with_triya() {
     let app = SolveApp::new(Session::default(), Services::default());
     let d = About::diagnostics(&app);
-    assert!(d.starts_with(&format!("Triya CAD 3D {} (upstream SolidCraft v0.22.0", triya_brand::VERSION)), "{d}");
+    assert!(d.starts_with(&format!("Triya CAD 3D {} (upstream SolidCraft v0.25.1", triya_brand::VERSION)), "{d}");
 }
