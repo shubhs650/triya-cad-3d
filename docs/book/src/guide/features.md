@@ -1,5 +1,8 @@
 # Solid features
 
+For prerequisites, a readable options table and a first example, open the
+[practical Extrude guide](../reference/commands.md#command-solid.extrude).
+
 Features live on the **timeline** and rebuild incrementally from the first one that changed.
 Each one can be edited (double-click), suppressed, renamed, reordered (if nothing it depends on
 moves after it), rolled back to, and deleted. Deleting asks first when other features depend on
@@ -9,7 +12,7 @@ it.
 |---|---|
 | Create | extrude (one side, two sides, symmetric, taper, start offset, to a distance or through all; new body, join, cut, intersect; thin walls along curves), revolve, sweep, loft, box, cylinder, sphere, torus, coil, pipe, rib, web, emboss, hole (simple, counterbore, countersink, tapped; on faces, at distances from edges, or at sketch points), thread, rectangular/circular/path patterns, mirror |
 | Modify | press pull, fillet, chamfer, shell, draft, scale, combine, split body, offset face, replace face, move/copy, align, remove |
-| Construct | offset plane, plane at angle, plane along path |
+| Construct | offset plane (at a distance or through a point), plane at angle, plane along path |
 | Inspect | measure, section analysis, interference, compare bodies, curvature comb and map, zebra, draft, minimum radius, isocurves, centre of mass |
 
 Extrude automatically selects **Join** for additions when the active component already has a
@@ -29,6 +32,12 @@ planes are not targets. The extent can still be chosen manually. For a new extru
 start or end offsets or a From Object input, the target also sets the stored distance and
 one-sided direction, so returning to **Distance** keeps that reach. Thin Extrude keeps its
 existing picks. With the setting off, picks only add profiles, as before.
+
+A positive extrude taper slopes the side walls outward, so the profile grows along the
+extrusion direction and the far end is larger; a negative taper slopes them inward, making
+the far end smaller. For example, a 10 × 10 mm square extruded 10 mm with `taper: "5 deg"`
+has an approximately 11.75 × 11.75 mm far face; with `taper: "-5 deg"`, it is approximately
+8.25 × 8.25 mm.
 
 A taper slopes the sides of any profile, sketch text included: lines, arcs and spline or conic
 curves move in or out together, and a flat tip shorter than the taper closes to a point. On
@@ -56,7 +65,7 @@ radius of a curve it follows on the inside is refused. Spline walls follow the e
 within 0.0001 mm.
 
 Editing an extrusion retains its signed distances, From/To Object inputs, taper expressions
-and explicit body targets. Revolve edits retain world, sketch and explicit-line axes, both
+and explicit body targets. Revolve edits retain world, sketch, explicit-line and model-edge or face axes, both
 angle expressions and To Object targets. An unchanged **All profiles** selection continues
 to include profiles added later. Cancel restores the complete timeline; a successful edit is
 one undo step, including downstream parameter changes. Editing a placed component previews the
@@ -105,6 +114,13 @@ measured in the face's plane. Moving the hole measures the distances again. The 
 distances when the part changes: it follows its edges, and the distances are parameters like its
 diameter.
 
+A **Cylinder** placed on a planar face takes reference edges the same way. Select the face, then
+start **Cylinder**: it stands where you clicked, and the window has **Reference 1** and
+**Reference 2**. Pick one or two straight edges of that face; each gets a **Distance**, measured
+from where you clicked, which you can also type in the window or in its box on the canvas. The
+cylinder's base centre then follows the edges when the part changes, and the distances are
+parameters like its radius. Edit Feature picks the edges again.
+
 A **Hole** with **Single** placement drills where you pick a planar face. A pick on or near a
 point of a shown sketch that lies on that face, such as a circle's centre, places the hole
 exactly at that point, as **Multiple** placement picks it; **Select Other** (press and hold) also
@@ -128,6 +144,14 @@ a Single hole is placed:
 The Hole dialog draws a section through the hole as its options make it (type, extents, drill
 point, tapped) and puts each size in a field beside the dimension it sets; hovering a field, or
 typing in it, lights its dimension.
+
+Tapped holes and **Thread** features have a **Thread direction** choice: **Right-hand**
+(the default) or **Left-hand**. Editing and reopening keep the chosen direction. Tapped
+holes carry a cosmetic thread; the separate Thread feature can also cut a **Modeled**
+left-hand helix. Cosmetic direction is recorded with the thread annotation and does not
+change the body. Scripts use `handedness: "left"` or `"right"` on `solid.hole` (with `thread`)
+and `solid.thread`. Existing designs and omitted values remain right-handed. Changing the
+direction keeps the pitch, thread length and axis; it does not change a hole's drill size.
 
 Fillets and chamfers handle straight edges between planar faces, whole smooth loops, runs of
 neighbouring edges with mitred or spherical corners, and closed chains of curved edges (a rolling
@@ -199,11 +223,33 @@ samples them finer, at the cost of time.
 
 ## Editing a feature from a script
 
-For `solid.pattern.circular`, `axis` accepts `X`, `Y`, `Z`, or `{origin, dir}`.
+For `solid.pattern.circular`, `axis` accepts `X`, `Y`, `Z`, `{origin, dir}`, or an edge or
+round face of the model, `{edge: [x, y, z]}` or `{face: [x, y, z]}` (a point on it).
 An explicit origin must contain three finite numeric coordinates in millimetres
 (`[x, y, z]` or `{x, y, z}`); omitting it uses the world origin. Expressions and
 construction-axis references are not supported. Invalid origins are rejected rather than
 silently replaced with zero.
+
+## Axes and points on round edges and faces
+
+Wherever a 3D command takes an axis (Revolve, Surface Revolve, Circular Pattern, Plane at
+Angle, and Move's Rotate) you can pick a circular edge, which gives the axis through its centre
+along its normal, or a cylinder, cone or torus face, which gives that surface's axis. Hovering
+one in an axis input draws the axis as a dashed construction line, and the line stays drawn once
+the axis is picked. Flat faces and edges that are neither straight nor circular can't be picked
+there.
+
+Revolve, Surface Revolve, Circular Pattern and Plane at Angle keep the picked edge or face as a
+reference (`{edge: [x, y, z]}` or `{face: [x, y, z]}` from a script), found again by its
+persistent name every time the design is evaluated. If a parameter moves the cylinder, the
+feature turns about it where it is now. The axis always points the same way, with its largest
+component positive, so a rebuild that reverses the edge doesn't flip the turn. Straight edges
+picked as axes keep working as before, as a fixed line.
+
+Where a 3D command takes a point (the construction points, axes and planes built from points,
+Revolve and Extrude's To Object, a surface patch's pass-through points, and Move's pivot and
+points), a circular edge stands for its centre. A hovered circle shows a small star at its centre.
+A construction point keeps the edge, so it follows the circle's centre as the model changes.
 
 `timeline.inspect {feature}` returns a feature's `definition`: the fields `timeline.edit` changes,
 with their current values. `timeline.edit {feature, set}` merges `set` into that definition
@@ -232,7 +278,7 @@ still be added through `set`. The fields of the common features:
 | Fillet | `radius`, `edges` (a point on each edge), `body`, `style` |
 | Chamfer | `distance`, `distance2` or `angle`, `flip`, `edges`, `body` |
 | Box | `length`, `width`, `height`, `corner`, `operation` |
-| Cylinder | `radius`, `height`, `base`, `axis`, `operation` |
+| Cylinder | `radius`, `height`, `base`, `axis`, `operation`, `references` (an `edge` point and a `distance` each, as a hole's) |
 | Hole | `diameter`, `depth`, `position`, `direction`, `hole` (simple, drilled, counterbore, countersink), `thread`, `to`, `references` (an `edge` point and a `distance` each) |
 | Shell | `thickness`, `faces`, `direction`, `body`, `tangent_chain` |
 | Draft | `angle`, `faces`, `neutral`, `pull`, `body` |

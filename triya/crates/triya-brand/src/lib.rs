@@ -27,9 +27,9 @@ pub const MCP_SERVER_NAME: &str = "triya-cad-3d";
 /// The upstream project Triya CAD 3D is a downstream fork of.
 pub const UPSTREAM_NAME: &str = "SolidCraft";
 /// The upstream release this overlay was built against.
-pub const UPSTREAM_VERSION: &str = "0.22.0";
-/// The upstream commit (`v0.22.0`) this overlay was built against.
-pub const UPSTREAM_SHA: &str = "0537623";
+pub const UPSTREAM_VERSION: &str = "0.25.1";
+/// The upstream commit (`v0.25.1`) this overlay was built against.
+pub const UPSTREAM_SHA: &str = "37a586d";
 /// The upstream project's repository.
 pub const UPSTREAM_REPO: &str = "https://github.com/tangency-labs/solidcraft";
 /// The licence both the upstream code and the overlay carry.
@@ -57,7 +57,7 @@ mod tests {
     #[test]
     fn about_text_names_both_products_and_the_licence() {
         let t = about_text();
-        assert!(t.starts_with("Triya CAD 3D is based on SolidCraft v0.22.0"));
+        assert!(t.starts_with("Triya CAD 3D is based on SolidCraft v0.25.1"));
         assert!(t.contains("© SolidCraft contributors, MIT OR Apache-2.0."));
         assert!(t.contains("Not affiliated with the SolidCraft project."));
         assert!(t.contains(UPSTREAM_SHA));

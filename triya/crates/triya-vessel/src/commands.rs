@@ -14,6 +14,7 @@
 use std::f64::consts::PI;
 
 use serde_json::{Value, json};
+use solidcraft_engine::doc::metadata::Owner;
 use solidcraft_engine::params::{bad, num, str_};
 use solidcraft_engine::{CommandSpec, EngineError, Session};
 
@@ -182,11 +183,11 @@ pub(crate) fn store(s: &mut Session, doc: &VesselDoc, generated: &Generated) -> 
             )));
         }
         for (i, piece) in pieces.iter().enumerate() {
-            next.set(&chunk_key(i + 1), json!({"text": piece})).map_err(fail)?;
+            next.set(Owner::Design, &chunk_key(i + 1), json!({"text": piece})).map_err(fail)?;
         }
         json!({"schema": crate::model::SCHEMA, "chunks": pieces.len(), "generated": gen_})
     };
-    next.set(METADATA_KEY, head).map_err(fail)?;
+    next.set(Owner::Design, METADATA_KEY, head).map_err(fail)?;
     if next != s.doc.metadata {
         s.doc_mut().metadata = next;
     }
@@ -538,7 +539,7 @@ fn import_tables(s: &mut Session, p: &Value) -> solidcraft_engine::Result<Value>
     if next.as_object().is_some_and(serde_json::Map::is_empty) {
         meta.remove(presets::TABLES_KEY);
     } else {
-        meta.set(presets::TABLES_KEY, next).map_err(|e| bad(cmd, format!("cannot keep the tables: {e}")))?;
+        meta.set(Owner::Design, presets::TABLES_KEY, next).map_err(|e| bad(cmd, format!("cannot keep the tables: {e}")))?;
     }
     if meta != s.doc.metadata {
         s.doc_mut().metadata = meta;

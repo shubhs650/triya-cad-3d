@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Triya CAD 3D contributors
-// Copied from SolidCraft v0.22.0 apps/solidcraft-web (MIT OR Apache-2.0, © SolidCraft contributors). Brand strings in error messages and the file-type label changed to Triya CAD 3D.
+// Copied from SolidCraft v0.25.1 apps/solidcraft-web (MIT OR Apache-2.0, © SolidCraft contributors). Brand strings in error messages and the file-type label changed to Triya CAD 3D.
 //! Promise-based access to the running app's existing control channel.
 
 use std::cell::RefCell;

@@ -146,6 +146,8 @@ pub struct Harness {
     /// The last frame's platform output (with its accessibility tree: dialog widgets are found
     /// by their text there).
     pub output: egui::PlatformOutput,
+    /// The last frame's painted shapes.
+    pub shapes: Vec<egui::epaint::ClippedShape>,
     /// Files the scenario saves and opens live here; file pickers answer from it.
     pub dir: PathBuf,
     /// The file the next Open picker returns (a `choose_file` step).
@@ -183,6 +185,7 @@ impl Harness {
                 ctx
             },
             output: Default::default(),
+            shapes: Vec::new(),
             dir: scratch_dir(),
             next_file: Rc::new(RefCell::new(None)),
             queue: None,
@@ -237,6 +240,7 @@ impl Harness {
         // Nothing is painted: drop the frame's texture changes.
         out.textures_delta.clear();
         self.output = out.platform_output;
+        self.shapes = out.shapes;
     }
 
     pub fn frames(&mut self, n: usize) {
@@ -841,7 +845,12 @@ pub fn check(h: &mut Harness, e: &Value) -> Result<(), String> {
                         .filter_map(|l| m.area_rect(l.id).map(|r| (l.id, r)))
                         .collect()
                 });
+                // Workspace panels (docks and strips) are laid out against the viewport, not sized like dialogs.
+                let panels: Vec<egui::Rect> = h.app.shell.workspace_panels.values().map(|(rect, _)| *rect).collect();
                 for (id, r) in rects {
+                    if panels.iter().any(|p| (p.min - r.min).abs().max_elem() < 1.0 && (p.max - r.max).abs().max_elem() < 1.0) {
+                        continue;
+                    }
                     if r.width() > max_w || !screen.expand(1.0).contains_rect(r) {
                         return Err(format!("window {id:?} at {r:?} (width {:.0}) does not fit {screen:?} at ≤{max_w}", r.width()));
                     }

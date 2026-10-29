@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Triya CAD 3D contributors
-// Copied from SolidCraft v0.22.0 apps/solidcraft-web (MIT OR Apache-2.0, © SolidCraft contributors).
+// Copied from SolidCraft v0.25.1 apps/solidcraft-web (MIT OR Apache-2.0, © SolidCraft contributors).
 //! The 3D mouse in the browser (#1336), through the Gamepad API.
 //!
 //! Chromium browsers list a 3Dconnexion device itself, with its six axes scaled to -1..1 from the

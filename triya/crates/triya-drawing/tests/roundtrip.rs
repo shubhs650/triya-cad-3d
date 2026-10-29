@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Triya CAD 3D contributors
-//! T7.3: a regenerated vessel with a GA sheet survives save and open. The saved `.solidcraft` holds
+//! T7.3: a regenerated vessel with a GA sheet survives save and open. The saved `.sc` holds
 //! native features only (sketches, revolves) plus two metadata entries, so opening it needs no
 //! vessel command: the geometry, the vessel JSON and the sheet options come back, and the sheet
 //! exports to the same SVG. The browser saves the same bytes to OPFS through upstream's VFS. The
@@ -50,7 +50,7 @@ fn saved_vessel_opens_with_geometry_vessel_and_sheet() {
 
     let dir = std::env::temp_dir().join(format!("triya-roundtrip-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    for (name, format) in [("vessel-a-shell.solidcraft", "container"), ("vessel-a-shell.json", "json")] {
+    for (name, format) in [("vessel-a-shell.sc", "container"), ("vessel-a-shell.solidcraft", "container"), ("vessel-a-shell.json", "json")] {
         let path = dir.join(name).to_string_lossy().to_string();
         run(&mut s, "file.save_as", json!({"path": path, "format": format}));
 

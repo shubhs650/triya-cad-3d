@@ -34,9 +34,9 @@ jobs:
           git remote add upstream https://github.com/tangency-labs/solidcraft.git || true
           git fetch upstream --tags --quiet
       - name: Whitelist check against the upstream base
-        run: bash triya/ci/check-patch-whitelist.sh v0.22.0
+        run: bash triya/ci/check-patch-whitelist.sh v0.25.1
       - name: Seam patches match the tree
-        run: bash triya/ci/refresh-seam-patches.sh --check v0.22.0
+        run: bash triya/ci/refresh-seam-patches.sh --check v0.25.1
       - name: SPDX headers on Triya files (Rust, TOML, shell, JS, HTML, Triya workflows)
         run: |
           missing=$(grep -rL "SPDX-License-Identifier: MIT OR Apache-2.0" --include='*.rs' --include='*.toml' --include='*.sh' --include='*.js' --include='*.html' --include='*.yml' triya/ .github/workflows/triya-*.yml .github/workflows/upstream-sync.yml || true)
@@ -110,7 +110,7 @@ jobs:
         run: cargo test -p triya-vessel --test phase4_exit -- --ignored --nocapture
 
   upstream-roundtrip:
-    name: Opens in unmodified upstream v0.22.0 (ADR-0006)
+    name: Opens in unmodified upstream v0.25.1 (ADR-0006)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

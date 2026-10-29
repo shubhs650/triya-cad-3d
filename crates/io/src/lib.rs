@@ -1,4 +1,4 @@
-//! File formats. Designs use JSON or versioned containers (`.solidcraft`); the authoritative
+//! File formats. Designs use JSON or versioned containers (`.sc`; `.solidcraft` and `.solvecraft` still open); the authoritative
 //! document rebuilds on load and optional display caches remain provisional. Bodies export
 //! as STL (binary or ASCII), OBJ, STEP and 3MF, and assemblies as URDF ([`urdf()`]); STEP, IGES,
 //! FreeCAD and Rhino files import as a base feature (see [`step_import_feature`]), 3MF and
@@ -8,6 +8,7 @@
 
 pub mod catalog;
 mod design;
+pub mod design_lock;
 mod design_metadata;
 mod dxf;
 mod dxf_out;
@@ -31,7 +32,7 @@ pub mod vfs;
 
 pub use dxf::{read_dxf, write_dxf};
 pub use dxf_out::{DxfEntity, DxfLayer, DxfLinetype, DxfShape, loop_shapes, seg_shape, write_dxf_drawing};
-pub use legacy_dir::{APP_ID, LEGACY_APP_ID, adopt_legacy_dir, legacy_flatpak_path};
+pub use legacy_dir::{APP_ID, LEGACY_APP_ID, PREVIOUS_APP_IDS, adopt_legacy_dir, legacy_flatpak_paths};
 pub use safe_write::{backup_path, write_atomic};
 pub use sketch2d::{Geom2, MAX_DRAWING_BYTES};
 pub use svg::read_svg;
@@ -45,27 +46,35 @@ pub use urdf::{UrdfOptions, UrdfPackage, urdf};
 use solidcraft_doc::{Document, Metadata, ModelState};
 use solidcraft_geom::{Mesh, Vec3};
 
-/// Design file extension.
-pub const DESIGN_EXT: &str = "solidcraft";
-/// The design extension of earlier releases. Compatibility shim (docs/compatibility.md): such
-/// files still open everywhere a design opens; new designs are saved as [`DESIGN_EXT`].
-pub const LEGACY_DESIGN_EXT: &str = "solvecraft";
+/// Design file extension: new designs, autosaves and recovery files are written as `.sc`.
+pub const DESIGN_EXT: &str = "sc";
+/// The design extensions of earlier releases, newest first. Compatibility shim
+/// (docs/compatibility.md): such files still open everywhere a design opens, and Save keeps
+/// writing an opened file under its own name; new designs are saved as [`DESIGN_EXT`].
+pub const LEGACY_DESIGN_EXTS: [&str; 2] = ["solidcraft", "solvecraft"];
 /// Every extension a design file may have, current first.
-pub const DESIGN_EXTS: [&str; 2] = [DESIGN_EXT, LEGACY_DESIGN_EXT];
+pub const DESIGN_EXTS: [&str; 3] = [DESIGN_EXT, LEGACY_DESIGN_EXTS[0], LEGACY_DESIGN_EXTS[1]];
 
-/// Is this a design file name (`.solidcraft`, or the legacy extension), any case?
+/// Is this extension (without the dot) one a design file may have (`sc` or a legacy one), any case?
+pub fn is_design_ext(ext: &str) -> bool {
+    DESIGN_EXTS.iter().any(|x| ext.eq_ignore_ascii_case(x))
+}
+
+/// Is this a design file name (`.sc`, a legacy extension, or plain `.json`), any case?
 pub fn is_design_path(path: &str) -> bool {
-    std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| DESIGN_EXTS.iter().chain(["json"].iter()).any(|x| e.eq_ignore_ascii_case(x)))
+    std::path::Path::new(path).extension().and_then(|e| e.to_str()).is_some_and(|e| is_design_ext(e) || e.eq_ignore_ascii_case("json"))
+}
+
+/// Is this a design container file (`.sc` or a legacy extension, not plain JSON), any case?
+pub fn is_design_container_path(path: &std::path::Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(is_design_ext)
 }
 /// Largest design file we read.
 pub const MAX_DESIGN_BYTES: usize = 256 << 20;
 
 #[derive(Debug, thiserror::Error)]
 pub enum IoError {
-    #[error("unsupported format `{0}` (use stl, obj, step, 3mf, urdf or solidcraft)")]
+    #[error("unsupported format `{0}` (use stl, obj, step, 3mf, urdf or sc)")]
     Format(String),
     #[error("nothing to export: the design has no bodies")]
     Empty,
@@ -345,15 +354,52 @@ impl Format {
             "3mf" => Format::ThreeMf,
             "3mf-tagged" => Format::ThreeMfTagged,
             "urdf" => Format::Urdf,
-            "solidcraft" | "solvecraft" | "json" => Format::Design,
+            e if e == "json" || is_design_ext(e) => Format::Design,
             _ => return Err(IoError::Format(ext)),
         })
     }
 }
 
+/// How closely an exported mesh follows curved faces: its chord tolerance as a share of each
+/// body's size. Standard is what every mesh export used; Fine and Finest give the small round
+/// features of a large part more sides (#4747).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MeshQuality {
+    #[default]
+    Standard,
+    Fine,
+    Finest,
+}
+
+impl MeshQuality {
+    /// By the name commands take: `standard`, `fine` or `finest`.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "standard" => Some(Self::Standard),
+            "fine" => Some(Self::Fine),
+            "finest" => Some(Self::Finest),
+            _ => None,
+        }
+    }
+
+    /// The chord tolerance as a share of the body's size.
+    fn share(self) -> f64 {
+        match self {
+            Self::Standard => 2e-4,
+            Self::Fine => 5e-5,
+            Self::Finest => 1e-5,
+        }
+    }
+}
+
 /// Fine export mesh for a body (chord tolerance 2e-4 of its size).
 pub fn export_mesh(b: &solidcraft_kernel::Body) -> Result<Mesh> {
-    Ok(b.tessellate((b.size() * 2e-4).max(1e-3))?)
+    export_mesh_at(b, MeshQuality::Standard)
+}
+
+/// [`export_mesh`] at `quality` (never finer than 1 µm).
+pub fn export_mesh_at(b: &solidcraft_kernel::Body, quality: MeshQuality) -> Result<Mesh> {
+    Ok(b.tessellate((b.size() * quality.share()).max(1e-3))?)
 }
 
 /// Distance within which an exported mesh's vertices are welded (STL and 3MF alike).
@@ -403,23 +449,55 @@ pub fn stl_ascii(meshes: &[Mesh], name: &str) -> String {
     s
 }
 
-/// Wavefront OBJ, one object per body.
+/// Wavefront OBJ, one object per body. Positions and normals are each written once per
+/// distinct value, so a face's vertices are shared while the normals keep edges between
+/// faces sharp. Names are written as they are (OBJ takes the rest of the line).
 pub fn obj(meshes: &[(String, Mesh)]) -> String {
+    use std::collections::HashMap;
     let mut s = String::from("# SolidCraft OBJ export (mm)\n");
-    let mut base = 1usize;
+    let (mut vbase, mut nbase) = (1usize, 1usize);
     for (name, m) in meshes {
-        s += &format!("o {}\n", name.replace(char::is_whitespace, "_"));
-        for p in &m.positions {
-            s += &format!("v {} {} {}\n", p.x, p.y, p.z);
-        }
-        for n in &m.normals {
-            s += &format!("vn {} {} {}\n", n.x, n.y, n.z);
-        }
+        let name: String = name.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+        s += &format!("o {name}\n");
+        // `+ 0.0` turns -0 into 0, so both merge.
+        let key = |x: f64, y: f64, z: f64| [x + 0.0, y + 0.0, z + 0.0].map(f64::to_bits);
+        let mut vmap: HashMap<[u64; 3], usize> = HashMap::new();
+        let mut nmap: HashMap<[u64; 3], usize> = HashMap::new();
+        let vi: Vec<usize> = m
+            .positions
+            .iter()
+            .map(|p| {
+                let next = vmap.len();
+                *vmap.entry(key(p.x, p.y, p.z)).or_insert_with(|| {
+                    s += &format!("v {} {} {}\n", p.x, p.y, p.z);
+                    next
+                })
+            })
+            .collect();
+        let ni: Vec<usize> = m
+            .normals
+            .iter()
+            .map(|n| {
+                let next = nmap.len();
+                *nmap.entry(key(n.x, n.y, n.z)).or_insert_with(|| {
+                    s += &format!("vn {} {} {}\n", n.x, n.y, n.z);
+                    next
+                })
+            })
+            .collect();
         for t in &m.triangles {
-            let [a, b, c] = t.map(|i| i as usize + base);
-            s += &format!("f {a}//{a} {b}//{b} {c}//{c}\n");
+            let (Some(a), Some(b), Some(c)) = (vi.get(t[0] as usize), vi.get(t[1] as usize), vi.get(t[2] as usize)) else { continue };
+            let (a, b, c) = (a + vbase, b + vbase, c + vbase);
+            match (ni.get(t[0] as usize), ni.get(t[1] as usize), ni.get(t[2] as usize)) {
+                (Some(na), Some(nb), Some(nc)) => {
+                    let (na, nb, nc) = (na + nbase, nb + nbase, nc + nbase);
+                    s += &format!("f {a}//{na} {b}//{nb} {c}//{nc}\n");
+                }
+                _ => s += &format!("f {a} {b} {c}\n"),
+            }
         }
-        base += m.positions.len();
+        vbase += vmap.len();
+        nbase += nmap.len();
     }
     s
 }
@@ -459,6 +537,18 @@ fn threemf_metadata(meta: &Metadata) -> Vec<(&'static str, &str)> {
 /// STEP and IGES headers (author, organization; STEP also the description) and 3MF model
 /// metadata (project as the title, author as the designer, description, licence).
 pub fn export_with_metadata(state: &ModelState, bodies: &[String], format: Format, name: &str, meta: &Metadata) -> Result<Vec<u8>> {
+    export_with_quality(state, bodies, format, name, meta, MeshQuality::Standard)
+}
+
+/// [`export_with_metadata`], meshing STL, OBJ and 3MF at `quality`.
+pub fn export_with_quality(
+    state: &ModelState,
+    bodies: &[String],
+    format: Format,
+    name: &str,
+    meta: &Metadata,
+    quality: MeshQuality,
+) -> Result<Vec<u8>> {
     let sel: Vec<&solidcraft_doc::ModelBody> = state.bodies.iter().filter(|b| bodies.is_empty() || bodies.contains(&b.name)).collect();
     if sel.is_empty() {
         return Err(IoError::Empty);
@@ -470,7 +560,7 @@ pub fn export_with_metadata(state: &ModelState, bodies: &[String], format: Forma
             let meshes: Vec<Mesh> = sel
                 .iter()
                 .map(|b| {
-                    let m = export_mesh(&b.body)?;
+                    let m = export_mesh_at(&b.body, quality)?;
                     let (positions, triangles) = weld(&m.positions, &m.triangles, weld_eps(&b.body));
                     Ok(Mesh { positions, triangles, ..Mesh::default() })
                 })
@@ -478,7 +568,7 @@ pub fn export_with_metadata(state: &ModelState, bodies: &[String], format: Forma
             if format == Format::StlBinary { stl_binary(&meshes, name) } else { stl_ascii(&meshes, name).into_bytes() }
         }
         Format::Obj => {
-            let meshes: Vec<(String, Mesh)> = sel.iter().map(|b| Ok((b.name.clone(), export_mesh(&b.body)?))).collect::<Result<_>>()?;
+            let meshes: Vec<(String, Mesh)> = sel.iter().map(|b| Ok((b.name.clone(), export_mesh_at(&b.body, quality)?))).collect::<Result<_>>()?;
             obj(&meshes).into_bytes()
         }
         Format::Step => {
@@ -492,18 +582,18 @@ pub fn export_with_metadata(state: &ModelState, bodies: &[String], format: Forma
             solidcraft_kernel::iges_export_bodies(&bs, &step_header(format!("{name}.igs"), meta))?.into_bytes()
         }
         Format::ThreeMf | Format::ThreeMfTagged => {
-            let objs: Vec<MeshObject> = sel.iter().map(|b| mesh_object(b, format == Format::ThreeMfTagged)).collect::<Result<_>>()?;
+            let objs: Vec<MeshObject> = sel.iter().map(|b| mesh_object(b, format == Format::ThreeMfTagged, quality)).collect::<Result<_>>()?;
             write_3mf_with(&objs, &threemf_metadata(meta))?
         }
-        Format::Design => return Err(IoError::Format("solidcraft (save the document instead)".into())),
+        Format::Design => return Err(IoError::Format("sc (save the document instead)".into())),
         Format::Urdf => return Err(IoError::Format("urdf (an assembly package; use file.export)".into())),
     })
 }
 
 /// A body as a 3MF mesh: welded watertight (T-junctions split), coloured, and with `tagged`
 /// each triangle keeps the B-rep face it came from.
-fn mesh_object(b: &solidcraft_doc::ModelBody, tagged: bool) -> Result<MeshObject> {
-    let m = export_mesh(&b.body)?;
+fn mesh_object(b: &solidcraft_doc::ModelBody, tagged: bool, quality: MeshQuality) -> Result<MeshObject> {
+    let m = export_mesh_at(&b.body, quality)?;
     let eps = weld_eps(&b.body);
     // Faces with colours of their own tag their triangles.
     let paint = b.body.paint();
@@ -751,6 +841,24 @@ mod tests {
         assert!(o.contains("o Body1") && o.contains("\nf "));
     }
 
+    /// OBJ shares a face's vertices (a cube: 8 positions, 6 normals, not 36 of each) and keeps
+    /// the body name as written, spaces included.
+    #[test]
+    fn obj_export_is_welded_and_keeps_names() {
+        let (_, m) = model();
+        let mut st = (*m.state()).clone();
+        for b in &mut st.bodies {
+            b.name = "Red Block".into();
+        }
+        let o = String::from_utf8(export(&st, &[], Format::Obj, "t").unwrap()).unwrap();
+        let count = |p: &str| o.lines().filter(|l| l.starts_with(p)).count();
+        assert!(o.contains("\no Red Block\n"), "{o}");
+        assert_eq!((count("v "), count("vn "), count("f ")), (8, 6, 12), "{o}");
+        let ids: Vec<usize> =
+            o.lines().filter(|l| l.starts_with("f ")).flat_map(|l| l.split([' ', '/']).skip(1)).filter_map(|x| x.parse().ok()).collect();
+        assert!(ids.iter().all(|i| (1..=8).contains(i) || (1..=6).contains(i)));
+    }
+
     /// The design properties land in each format's own metadata (#1015): STEP and IGES headers,
     /// 3MF model metadata. Other tools' keys never leave the design file.
     #[test]
@@ -844,10 +952,14 @@ mod tests {
         assert!(step_import_feature(b"ISO-10303-21;", "x.step").is_err());
         assert!(step_import_feature(&[0xff, 0xfe, 0x00], "x.step").is_err());
         assert!(Format::from_name("a.dwg").is_err());
-        // Compatibility shim: the legacy design extension is still a design.
+        // Compatibility shim: the legacy design extensions are still designs.
         assert_eq!(Format::from_name("old.solvecraft").unwrap(), Format::Design);
-        assert_eq!(Format::from_name("new.solidcraft").unwrap(), Format::Design);
-        assert!(is_design_path("/d/old.SOLVECRAFT") && is_design_path("new.solidcraft") && !is_design_path("a.step"));
+        assert_eq!(Format::from_name("older.solidcraft").unwrap(), Format::Design);
+        assert_eq!(Format::from_name("new.sc").unwrap(), Format::Design);
+        assert_eq!(Format::from_name("NEW.SC").unwrap(), Format::Design);
+        assert!(is_design_path("/d/old.SOLVECRAFT") && is_design_path("older.solidcraft") && is_design_path("new.sc") && !is_design_path("a.step"));
+        assert_eq!(DESIGN_EXT, "sc");
+        assert_eq!(DESIGN_EXTS, ["sc", "solidcraft", "solvecraft"], "new extension first, then every older one");
         assert!(read_stl(&[0u8; 10]).is_err());
         let mut fake = vec![0u8; 84];
         fake[80..84].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -959,6 +1071,7 @@ mod tests {
                 radius: "6".into(),
                 height: "15".into(),
                 operation: Operation::NewBody,
+                references: Vec::new(),
             },
             None,
         )

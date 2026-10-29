@@ -13,11 +13,13 @@ pub struct Catalog {
     pub name: &'static str,
     source: &'static str,
     messages: OnceLock<Messages>,
+    /// The messages in display order, for a catalog with right-to-left text (see [`crate::bidi`]).
+    shown: OnceLock<Option<Messages>>,
 }
 
 impl Catalog {
     const fn new(id: &'static str, name: &'static str, source: &'static str) -> Self {
-        Self { id, name, source, messages: OnceLock::new() }
+        Self { id, name, source, messages: OnceLock::new(), shown: OnceLock::new() }
     }
 
     fn messages(&'static self) -> &'static Messages {
@@ -29,43 +31,65 @@ impl Catalog {
             }
         })
     }
+
+    /// The messages as egui must be given them: right-to-left lines in display order, since egui
+    /// has no bidirectional layout (see [`crate::bidi`]). The same map as [`Self::messages`] for
+    /// every other catalog.
+    fn shown(&'static self) -> &'static Messages {
+        let shown = self.shown.get_or_init(|| {
+            let messages = self.messages();
+            messages
+                .values()
+                .any(|text| crate::bidi::has_rtl(text))
+                .then(|| messages.iter().map(|(id, text)| (id.clone(), crate::bidi::visual_template(text).into_owned())).collect())
+        });
+        match shown {
+            Some(shown) => shown,
+            None => self.messages(),
+        }
+    }
+
+    /// The language's own name as the language list draws it.
+    pub fn display_name(&self) -> std::borrow::Cow<'static, str> {
+        crate::bidi::visual(self.name)
+    }
 }
 
-static ENGLISH: Catalog = Catalog::new("en", "English", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/en.json")));
-static CZECH: Catalog = Catalog::new("cs", "Čeština", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/cs.json")));
-static DANISH: Catalog = Catalog::new("da", "Dansk", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/da.json")));
-static GERMAN: Catalog = Catalog::new("de", "Deutsch", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/de.json")));
+static ENGLISH: Catalog = Catalog::new("en", "English", include_str!(concat!(env!("OUT_DIR"), "/locales/en.json")));
+static ARABIC: Catalog = Catalog::new("ar", "العربية", include_str!(concat!(env!("OUT_DIR"), "/locales/ar.json")));
+static CZECH: Catalog = Catalog::new("cs", "Čeština", include_str!(concat!(env!("OUT_DIR"), "/locales/cs.json")));
+static DANISH: Catalog = Catalog::new("da", "Dansk", include_str!(concat!(env!("OUT_DIR"), "/locales/da.json")));
+static GERMAN: Catalog = Catalog::new("de", "Deutsch", include_str!(concat!(env!("OUT_DIR"), "/locales/de.json")));
 /// English in UK spelling: only the messages whose spelling differs; the rest are English's.
-static ENGLISH_UK: Catalog =
-    Catalog::new("en-GB", "English (UK)", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/en-GB.json")));
-static SPANISH: Catalog = Catalog::new("es", "Español (España)", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/es.json")));
-static FRENCH: Catalog = Catalog::new("fr", "Français", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/fr.json")));
-static GALICIAN: Catalog = Catalog::new("gl", "Galego", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/gl.json")));
-static HUNGARIAN: Catalog = Catalog::new("hu", "Magyar", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/hu.json")));
-static INDONESIAN: Catalog =
-    Catalog::new("id", "Bahasa Indonesia", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/id.json")));
-static ITALIAN: Catalog = Catalog::new("it", "Italiano", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/it.json")));
-static JAPANESE: Catalog = Catalog::new("ja", "日本語", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/ja.json")));
-static KOREAN: Catalog = Catalog::new("ko", "한국어", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/ko.json")));
-static MALAY: Catalog = Catalog::new("ms", "Bahasa Melayu", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/ms.json")));
-static DUTCH: Catalog = Catalog::new("nl", "Nederlands", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/nl.json")));
-static POLISH: Catalog = Catalog::new("pl", "Polski", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/pl.json")));
-static PORTUGUESE_BR: Catalog =
-    Catalog::new("pt-BR", "Português (Brasil)", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/pt-BR.json")));
-static ROMANIAN: Catalog = Catalog::new("ro", "Română", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/ro.json")));
-static RUSSIAN: Catalog = Catalog::new("ru", "Русский", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/ru.json")));
-static SWEDISH: Catalog = Catalog::new("sv", "Svenska", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/sv.json")));
-static TURKISH: Catalog = Catalog::new("tr", "Türkçe", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/tr.json")));
-static UKRAINIAN: Catalog = Catalog::new("uk", "Українська", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/uk.json")));
-static VIETNAMESE: Catalog = Catalog::new("vi", "Tiếng Việt", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/vi.json")));
-static CHINESE: Catalog = Catalog::new("zh", "中文", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/zh.json")));
-static CHINESE_TRADITIONAL: Catalog =
-    Catalog::new("zh-TW", "繁體中文", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/zh-TW.json")));
+static ENGLISH_UK: Catalog = Catalog::new("en-GB", "English (UK)", include_str!(concat!(env!("OUT_DIR"), "/locales/en-GB.json")));
+static SPANISH: Catalog = Catalog::new("es", "Español (España)", include_str!(concat!(env!("OUT_DIR"), "/locales/es.json")));
+static FRENCH: Catalog = Catalog::new("fr", "Français", include_str!(concat!(env!("OUT_DIR"), "/locales/fr.json")));
+static GALICIAN: Catalog = Catalog::new("gl", "Galego", include_str!(concat!(env!("OUT_DIR"), "/locales/gl.json")));
+static HEBREW: Catalog = Catalog::new("he", "עברית", include_str!(concat!(env!("OUT_DIR"), "/locales/he.json")));
+static HUNGARIAN: Catalog = Catalog::new("hu", "Magyar", include_str!(concat!(env!("OUT_DIR"), "/locales/hu.json")));
+static INDONESIAN: Catalog = Catalog::new("id", "Bahasa Indonesia", include_str!(concat!(env!("OUT_DIR"), "/locales/id.json")));
+static ITALIAN: Catalog = Catalog::new("it", "Italiano", include_str!(concat!(env!("OUT_DIR"), "/locales/it.json")));
+static JAPANESE: Catalog = Catalog::new("ja", "日本語", include_str!(concat!(env!("OUT_DIR"), "/locales/ja.json")));
+static KOREAN: Catalog = Catalog::new("ko", "한국어", include_str!(concat!(env!("OUT_DIR"), "/locales/ko.json")));
+static MALAY: Catalog = Catalog::new("ms", "Bahasa Melayu", include_str!(concat!(env!("OUT_DIR"), "/locales/ms.json")));
+static NORWEGIAN: Catalog = Catalog::new("nb", "Norsk bokmål", include_str!(concat!(env!("OUT_DIR"), "/locales/nb.json")));
+static DUTCH: Catalog = Catalog::new("nl", "Nederlands", include_str!(concat!(env!("OUT_DIR"), "/locales/nl.json")));
+static POLISH: Catalog = Catalog::new("pl", "Polski", include_str!(concat!(env!("OUT_DIR"), "/locales/pl.json")));
+static PORTUGUESE_BR: Catalog = Catalog::new("pt-BR", "Português (Brasil)", include_str!(concat!(env!("OUT_DIR"), "/locales/pt-BR.json")));
+static ROMANIAN: Catalog = Catalog::new("ro", "Română", include_str!(concat!(env!("OUT_DIR"), "/locales/ro.json")));
+static RUSSIAN: Catalog = Catalog::new("ru", "Русский", include_str!(concat!(env!("OUT_DIR"), "/locales/ru.json")));
+static SWEDISH: Catalog = Catalog::new("sv", "Svenska", include_str!(concat!(env!("OUT_DIR"), "/locales/sv.json")));
+static TURKISH: Catalog = Catalog::new("tr", "Türkçe", include_str!(concat!(env!("OUT_DIR"), "/locales/tr.json")));
+static UKRAINIAN: Catalog = Catalog::new("uk", "Українська", include_str!(concat!(env!("OUT_DIR"), "/locales/uk.json")));
+static VIETNAMESE: Catalog = Catalog::new("vi", "Tiếng Việt", include_str!(concat!(env!("OUT_DIR"), "/locales/vi.json")));
+static CHINESE: Catalog = Catalog::new("zh", "中文", include_str!(concat!(env!("OUT_DIR"), "/locales/zh.json")));
+static CHINESE_TRADITIONAL: Catalog = Catalog::new("zh-TW", "繁體中文", include_str!(concat!(env!("OUT_DIR"), "/locales/zh-TW.json")));
 /// English first (the fallback), then by language id, one per line so that adding a language
 /// doesn't edit a line another addition edits.
 #[rustfmt::skip]
 pub const LOCALES: &[&Catalog] = &[
     &ENGLISH,
+    &ARABIC,
     &CZECH,
     &DANISH,
     &GERMAN,
@@ -73,12 +97,14 @@ pub const LOCALES: &[&Catalog] = &[
     &SPANISH,
     &FRENCH,
     &GALICIAN,
+    &HEBREW,
     &HUNGARIAN,
     &INDONESIAN,
     &ITALIAN,
     &JAPANESE,
     &KOREAN,
     &MALAY,
+    &NORWEGIAN,
     &DUTCH,
     &POLISH,
     &PORTUGUESE_BR,
@@ -109,9 +135,14 @@ impl Locale {
         self.0.name
     }
 
-    /// Stable message ID → translation → English → ID.
+    /// The language's own name as the language list draws it.
+    pub fn display_name(self) -> std::borrow::Cow<'static, str> {
+        self.0.display_name()
+    }
+
+    /// Stable message ID → translation → English → ID, in display order (see [`crate::bidi`]).
     pub fn text(self, id: &str) -> &str {
-        self.0.messages().get(id).or_else(|| ENGLISH.messages().get(id)).map_or(id, String::as_str)
+        self.0.shown().get(id).or_else(|| ENGLISH.messages().get(id)).map_or(id, String::as_str)
     }
 
     /// Translate source labels from engine/UI tables, preserving unknown labels.
@@ -133,7 +164,7 @@ impl Locale {
         if let Some(candidates) = ids.get(label) {
             // Preserve the old last-ID preference among available translations. A new
             // English-only alias must not hide a translation that already exists here.
-            if let Some(text) = candidates.iter().rev().find_map(|id| self.0.messages().get(*id)) {
+            if let Some(text) = candidates.iter().rev().find_map(|id| self.0.shown().get(*id)) {
                 return text;
             }
             if let Some(id) = candidates.last() {
@@ -168,6 +199,22 @@ impl Locale {
     /// a UI label ("Fillet", "Boss"); only the default names are translated.
     pub fn given_name(self, text: &str) -> String {
         self.default_name(text).unwrap_or_else(|| text.to_string())
+    }
+
+    /// Evaluation errors stay English for scripts; the empty Cut/Intersect hint that names
+    /// another component is translated where it is shown. Other text is returned unchanged.
+    pub fn diagnostic(self, text: &str) -> String {
+        const PREFIX: &str = "there is no body to cut or intersect in component '";
+        if let Some((before, detail)) = text.split_once(PREFIX)
+            && let Some((component, detail)) = detail.split_once("'; the tool may overlap '")
+            && let Some((body, detail)) = detail.split_once("' in component '")
+            && let Some((other, after)) = detail.split_once("' — activate that component or pick the body as a target")
+        {
+            let (component, body, other) = (self.given_name(component), self.given_name(body), self.given_name(other));
+            let message = self.format("diagnostic.empty_boolean_component", &[("component", &component), ("body", &body), ("other", &other)]);
+            return format!("{before}{message}{after}");
+        }
+        text.to_string()
     }
 
     /// Translate generated browser names and labels, preserving custom names otherwise.
@@ -253,6 +300,14 @@ pub fn tr(id: &str) -> &str {
 pub fn tr_label(label: &str) -> &str {
     CURRENT.with(|current| current.get().label(label))
 }
+
+/// Every English catalog entry `(id, text)`, for Preferences search to match a translation
+/// back to the words it was written in.
+pub(crate) fn each_english_message(mut f: impl FnMut(&str, &str)) {
+    for (id, text) in ENGLISH.messages() {
+        f(id, text);
+    }
+}
 pub fn format(id: &str, args: &[(&str, &str)]) -> String {
     CURRENT.with(|current| current.get().format(id, args))
 }
@@ -262,13 +317,32 @@ pub fn tr_dyn(text: &str) -> String {
 pub fn tr_name(text: &str) -> String {
     CURRENT.with(|current| current.get().given_name(text))
 }
+pub fn tr_diagnostic(text: &str) -> String {
+    CURRENT.with(|current| current.get().diagnostic(text))
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Strings a pull request adds under `assets/locales/pending/` work before they are folded
+    /// into the catalogs (the build merges them in).
     #[test]
+    fn pending_messages_are_in_the_catalogs() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/locales/pending");
+        for entry in std::fs::read_dir(dir).unwrap().filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|x| x == "json")) {
+            let pending: BTreeMap<String, Messages> = serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap()).unwrap();
+            for (locale, messages) in pending {
+                for (id, text) in messages {
+                    // The catalogs hand right-to-left text out in display order (`crate::bidi`);
+                    // pending files hold it in reading order, as the catalogs do (#7527).
+                    assert_eq!(Locale::for_language(&locale).text(&id), crate::bidi::visual_template(&text), "{locale}: {id}");
+                }
+            }
+        }
+    }
 
+    #[test]
     fn alias_resolution_regression() {
         static LEGACY: Catalog = Catalog::new("test-legacy", "Test", r#"{"Pitch":"legacy pitch"}"#);
         static ALIAS: Catalog = Catalog::new("test-alias", "Test", r#"{"coupling.pitch":"mechanical pitch"}"#);
@@ -281,6 +355,37 @@ mod tests {
         assert_eq!(alias.label("Pitch"), "mechanical pitch");
         assert_eq!(alias.label("coupling.pitch"), "mechanical pitch");
         assert_eq!(alias.label("original unknown caption"), "original unknown caption");
+    }
+
+    #[test]
+    fn timeline_feature_hint_comes_from_the_catalog() {
+        let id = "timeline.feature_hint";
+        let english = "Double-click to edit · drag to reorder · right-click for more";
+        assert_eq!(ENGLISH.messages().get(id).map(String::as_str), Some(english));
+        for language in ["en", "ja", "zh", "de", "ko", "es"] {
+            let _scope = scope(language);
+            let hint = tr(id);
+            assert_eq!(hint, Locale::for_language(language).text(id));
+            assert_ne!(hint, id);
+            if ["ja", "zh", "de", "ko"].contains(&language) {
+                assert_ne!(hint, english, "{language}: the hint must be translated");
+            }
+        }
+    }
+
+    #[test]
+    fn empty_boolean_component_diagnostic_translates_with_literal_names() {
+        let message = "solid.extrude: there is no body to cut or intersect in component 'Part {1}'; the tool may overlap 'Bracket' in component 'Imported STEP' — activate that component or pick the body as a target";
+        assert_eq!(Locale::for_language("en").diagnostic(message), message);
+        for (language, prefix) in [("ja", "solid.extrude: コンポーネント"), ("zh", "solid.extrude: 组件")] {
+            let translated = Locale::for_language(language).diagnostic(message);
+            assert!(translated.starts_with(prefix), "{translated}");
+            for name in ["Part {1}", "Bracket", "Imported STEP"] {
+                assert!(translated.contains(name), "{translated}");
+            }
+        }
+        let plain = "there is no body to cut or intersect";
+        assert_eq!(Locale::for_language("ja").diagnostic(plain), plain);
     }
 
     /// English first, then by id, so adding a locale edits only its own line.
@@ -335,13 +440,13 @@ mod tests {
         ENGLISH.messages().values().map(String::as_str).collect()
     }
 
-    /// Catalogs delivered complete. English is the source catalog; Czech, Italian, Japanese and Chinese
+    /// Catalogs delivered complete. English is the source catalog; Arabic, Czech, Italian, Japanese and Chinese
     /// are complete. German, Korean, Malay, Russian, French and Ukrainian
     /// are partial (German and Korean predate the coverage guards; Russian, French and Ukrainian
     /// are kept partial so a new label doesn't need more translations), so their gaps fall back
     /// to English and are reported by `cargo xtask i18n` without failing the build, while
     /// nothing in the complete catalogs may regress.
-    const COMPLETE: &[&str] = &["ja", "zh"];
+    const COMPLETE: &[&str] = &["ar", "he", "ja", "vi", "zh"];
 
     /// `text()` falls back to English silently, so a message a complete locale never received is
     /// shown in English inside an otherwise translated UI, with nothing in the build to say so.
@@ -420,6 +525,7 @@ mod tests {
         let cases = [
             ("cs", "Příruba", "Zebra analýza", "Studie pohybu"),
             ("da", "Flange", "Zebraanalyse", "Bevægelsesanalyse"),
+            ("nb", "Flens", "Zebraanalyse", "Bevegelsesanalyse"),
             ("zh", "法兰", "斑马纹分析", "运动研究"),
             ("ja", "フランジ", "ゼブラ解析", "モーション スタディ"),
             ("de", "Flansch", "Zebra-Analyse", "Bewegungsuntersuchung"),
@@ -503,6 +609,21 @@ mod tests {
         }
     }
 
+    /// "Quantity" is the number of instances in the pattern dialogs and the plotted value in the
+    /// motion study (#6538): each meaning has its own entry, and the label is the count.
+    #[test]
+    fn pattern_quantity_is_the_count_and_the_motion_plot_keeps_its_own() {
+        for catalog in LOCALES {
+            let locale = Locale(catalog);
+            assert_eq!(locale.label("Quantity"), locale.text("ui.quantity"), "{}", catalog.id);
+            assert_eq!(locale.label("Quantity 2"), locale.text("ui.quantity_2"), "{}", catalog.id);
+        }
+        let de = Locale::for_language("de");
+        assert_eq!(de.label("Quantity"), "Anzahl");
+        assert_eq!(de.label("motion.plot_quantity"), "Größe");
+        assert_eq!(Locale::for_language("en").label("motion.plot_quantity"), "Quantity");
+    }
+
     #[test]
     fn every_ui_label_literal_reaches_an_english_catalog_entry() {
         let english: Messages = serde_json::from_str(ENGLISH.source).unwrap();
@@ -542,6 +663,46 @@ mod tests {
             missing.len(),
             missing.join("\n  ")
         );
+    }
+
+    #[test]
+    fn render_shell_labels_and_planned_reasons_translate_in_required_catalogs() {
+        for language in ["ja", "zh", "de", "ko"] {
+            let locale = Locale::for_language(language);
+            for label in [
+                "APPEARANCE",
+                "SCENE",
+                "LIGHTS",
+                "STAGE",
+                "CAMERA",
+                "SHOTS",
+                "LENS",
+                "FRAME",
+                "RESULT",
+                "IMAGE",
+                "BATCH",
+                "Shots",
+                "Shots Strip",
+                "Strip",
+                "Pick",
+                "Component",
+                "Product picking is not supported yet.",
+                "The live preview shows direct light only and no shadows.",
+            ] {
+                assert_ne!(locale.label(label), label, "{language}: {label}");
+            }
+            assert_ne!(locale.text("render.stage_preview_note"), Locale::for_language("en").text("render.stage_preview_note"));
+            // "Studio" is also the German word: require the translated catalog entry,
+            // rather than requiring its spelling to differ from English.
+            assert!(locale.0.messages().contains_key("toolbar.render_studio"));
+            assert_eq!(locale.label("STUDIO"), locale.text("toolbar.render_studio"));
+            let session = solidcraft_engine::Session::default();
+            for command in solidcraft_engine::command_specs().into_iter().filter(|c| c.planned.is_some() && crate::workspace::render_tab(c.tab)) {
+                assert_ne!(locale.label(command.label), command.label, "{language}: {}", command.id);
+                let reason = command.info(&session).disabled_reason.unwrap();
+                assert_ne!(locale.label(&reason), reason, "{language}: {} reason", command.id);
+            }
+        }
     }
 
     /// The mouse mapping picker shows its preset's help through `tr_label`, which the guard above
@@ -817,6 +978,61 @@ mod tests {
         assert_eq!(pt.format("document.save_changes", &[("name", "My {design}")]), "Salvar as alterações em My {design}?");
         assert_eq!(pt.format("dialog.selected_count", &[("count", "2")]), "↖ 2 selecionados");
         assert_eq!(pt.label("NonExistentKey"), "NonExistentKey");
+    }
+
+    /// Hebrew is stored in reading order; egui reverses each run of Hebrew letters but places
+    /// the runs of a line left to right, so every message comes back with its words, numbers,
+    /// units and placeholders in display order and brackets mirrored (#3457).
+    /// Arabic goes through the same right-to-left path as Hebrew: its words, numbers, units and
+    /// placeholders come back in display order, and each Arabic word's letters stay in reading
+    /// order for the shaper, which joins and reverses them.
+    #[test]
+    fn arabic_catalog_is_registered_and_comes_back_in_display_order() {
+        let ar = Locale::for_language("ar");
+        assert!(is_supported("ar"));
+        assert_eq!(ar.name(), "العربية");
+        assert_eq!(ar.display_name(), "العربية");
+        assert_eq!(ar.text("ui.preferences"), "التفضيلات");
+        assert_eq!(ar.label("Extrude"), "بثق");
+        // Two words: the second is drawn first, on the left.
+        assert_eq!(ar.text("ui.new_design"), "جديد تصميم");
+        assert_eq!(ar.dynamic("Units: mm"), "mm :الوحدات");
+        assert_eq!(ar.dynamic("Sketch1"), "1 رسم");
+        let saved = ar.format("document.save_changes", &[("name", "Bracket")]);
+        assert!(saved.starts_with("؟Bracket "), "{saved}");
+        let english: Messages = serde_json::from_str(ENGLISH.source).unwrap();
+        for id in english.keys() {
+            let text = ar.text(id);
+            assert!(
+                !text.chars().any(|c| matches!(c, '\u{200E}' | '\u{200F}' | '\u{061C}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')),
+                "{id}: {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hebrew_catalog_is_registered_and_comes_back_in_display_order() {
+        let he = Locale::for_language("he");
+        assert!(is_supported("he"));
+        assert_eq!(he.name(), "עברית");
+        assert_eq!(he.display_name(), "עברית");
+        assert_eq!(he.text("ui.preferences"), "העדפות");
+        assert_eq!(he.label("Extrude"), "שליפה");
+        assert_eq!(he.dynamic("Sketch1"), "1סקיצה");
+        assert_eq!(he.dynamic("Units: mm"), "mm :יחידות");
+        assert_eq!(he.dynamic("Parameters (5)"), "(5) פרמטרים");
+        assert_eq!(he.format("document.save_changes", &[("name", "My {design}")]), "?My {design}ב־ השינויים את לשמור");
+        assert_eq!(he.given_name("Sketch of bracket"), "Sketch of bracket");
+        assert_eq!(he.label("NonExistentKey"), "NonExistentKey");
+        // No directional control characters reach egui, which would draw them as boxes.
+        let english: Messages = serde_json::from_str(ENGLISH.source).unwrap();
+        for id in english.keys() {
+            let text = he.text(id);
+            assert!(
+                !text.chars().any(|c| matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')),
+                "{id}: {text:?}"
+            );
+        }
     }
 
     #[test]

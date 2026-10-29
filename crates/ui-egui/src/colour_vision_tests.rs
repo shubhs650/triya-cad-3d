@@ -290,9 +290,8 @@ fn groups(t: &Tokens) -> Vec<Group> {
         group("validation status", &[("form_success", t.form_success), ("error", t.error)], &[("panel", t.panel)]),
         group("validation surfaces", &[("form_success_fill", t.form_success_fill), ("form_error_fill", t.form_error_fill)], &[]),
         group("UI text", &[("error", t.error), ("warning", t.warning), ("text", t.text)], &[("panel", t.panel)]),
-        group("origin axes", &[("axis_x", t.axis_x), ("axis_y", t.axis_y), ("axis_z", t.axis_z)], &[("viewport_top", t.viewport_top)]),
-        group("view triad", &[("triad[0]", t.triad[0]), ("triad[1]", t.triad[1]), ("triad[2]", t.triad[2])], &[("viewport_top", t.viewport_top)]),
-        group("gizmo", &[("gizmo[0]", t.gizmo[0]), ("gizmo[1]", t.gizmo[1]), ("gizmo[2]", t.gizmo[2])], &[("viewport_top", t.viewport_top)]),
+        // Every axis drawn: origin, view triad, navigation cube, Move gizmo… (one set, #976).
+        group("axes", &[("axis_x", t.axis_x), ("axis_y", t.axis_y), ("axis_z", t.axis_z)], &[("viewport_top", t.viewport_top)]),
         group("bend lines", &[("bend_up", t.bend_up), ("bend_down", t.bend_down)], &[("viewport_top", t.viewport_top)]),
         group("box select", &[("box_window", t.box_window), ("box_crossing", t.box_crossing)], &[("viewport_top", t.viewport_top)]),
         group(
@@ -319,9 +318,8 @@ fn groups(t: &Tokens) -> Vec<Group> {
             ],
             &[("body", t.body), ("viewport_top", t.viewport_top)],
         ),
-        // The scale's three stops, unlit. Shaded (a stop at one angle to the light, the next at
-        // another), middle and tight merge for a red-green loss (3.3 protan, 5.2 deutan) and flat
-        // and middle for tritan (4.6). That is the scale's own fault, in Off too: #975.
+        // The scale's three stops, unlit. Along the scale, see
+        // `the_curvature_scale_lightens_steadily_for_every_eye` (#975).
         group(
             "curvature map",
             &[
@@ -389,6 +387,7 @@ const NO_MEANING: &[(&str, &str)] = &[
     ("borders.bevel", "structural chrome: hierarchy uses width, pattern and placement, not hue"),
     ("icon_palette", "optional SVG palette; actual roles and theme contrast are guarded in icon and theme tests"),
     ("file_dim", "File view secondary text, WCAG guarded in theme tests"),
+    ("form_primary_fill", "ground under a filled primary field; form_primary carries the meaning, contrast guarded in theme tests"),
     ("file_recovery_well", "decorative recovery icon ground"),
     ("file_action_height", "layout dimension"),
     ("file_back_height", "layout dimension"),
@@ -517,6 +516,7 @@ const NO_MEANING: &[(&str, &str)] = &[
     ("origin_point", "the origin, alone"),
     ("construction_plane", "a plane"),
     ("body_edge", "the model's edges"),
+    ("sketch_halo", "neutral rim beneath sketch curves; the curves carry the state colours"),
     ("grid", "the grid"),
     ("grid_major", "the grid"),
     ("profile_fill", "a closed profile's tint"),
@@ -563,7 +563,7 @@ fn token_fields(t: &Tokens) -> BTreeSet<String> {
     out
 }
 
-/// A group member's token field (`triad[0]` is part of `triad`).
+/// A group member's token field (`continuity[0]` is part of `continuity`).
 fn field_of(name: &str) -> &str {
     name.split('[').next().unwrap_or(name)
 }
@@ -698,7 +698,7 @@ fn off_gives_the_theme_unchanged() {
     }
 }
 
-/// The token fields whose `Debug` text differs (`triad`, `analysis.draft`…), so a field cannot
+/// The token fields whose `Debug` text differs (`continuity`, `analysis.draft`…), so a field cannot
 /// change in a mode by accident.
 fn changed_fields(a: &Tokens, b: &Tokens) -> BTreeSet<String> {
     let (la, lb) = (format!("{a:#?}"), format!("{b:#?}"));
@@ -732,8 +732,8 @@ fn changed_fields(a: &Tokens, b: &Tokens) -> BTreeSet<String> {
 fn each_mode_changes_only_its_table() {
     let set = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<BTreeSet<_>>();
     let red_green_both = [
-        "triad",
-        "gizmo",
+        "axis_x",
+        "axis_y",
         "analysis.draft",
         "analysis.access",
         "analysis.hatch",
@@ -879,7 +879,7 @@ fn the_shader_gets_the_modes_colours_and_its_stripes() {
 #[test]
 fn the_sections_messages_are_in_every_catalog() {
     let load = |text: &str| -> serde_json::Map<String, serde_json::Value> { serde_json::from_str(text).unwrap() };
-    let english = load(include_str!("../../../assets/locales/en.json"));
+    let english = load(include_str!(concat!(env!("OUT_DIR"), "/locales/en.json")));
     let ids: Vec<&str> = ColorVision::ALL
         .into_iter()
         .flat_map(|m| [m.label_id(), m.help_id()])
@@ -887,22 +887,24 @@ fn the_sections_messages_are_in_every_catalog() {
         .chain(["ui.colour_vision", "ui.colour_vision_mode", "ui.colour_vision_sample", "ui.colour_vision_note"])
         .collect();
     for (lang, text) in [
-        ("cs", include_str!("../../../assets/locales/cs.json")),
-        ("da", include_str!("../../../assets/locales/da.json")),
-        ("de", include_str!("../../../assets/locales/de.json")),
-        ("ja", include_str!("../../../assets/locales/ja.json")),
-        ("ko", include_str!("../../../assets/locales/ko.json")),
-        ("pl", include_str!("../../../assets/locales/pl.json")),
-        ("ru", include_str!("../../../assets/locales/ru.json")),
-        ("zh", include_str!("../../../assets/locales/zh.json")),
+        ("cs", include_str!(concat!(env!("OUT_DIR"), "/locales/cs.json"))),
+        ("da", include_str!(concat!(env!("OUT_DIR"), "/locales/da.json"))),
+        ("de", include_str!(concat!(env!("OUT_DIR"), "/locales/de.json"))),
+        ("ja", include_str!(concat!(env!("OUT_DIR"), "/locales/ja.json"))),
+        ("ko", include_str!(concat!(env!("OUT_DIR"), "/locales/ko.json"))),
+        ("nb", include_str!(concat!(env!("OUT_DIR"), "/locales/nb.json"))),
+        ("pl", include_str!(concat!(env!("OUT_DIR"), "/locales/pl.json"))),
+        ("ru", include_str!(concat!(env!("OUT_DIR"), "/locales/ru.json"))),
+        ("zh", include_str!(concat!(env!("OUT_DIR"), "/locales/zh.json"))),
     ] {
         let catalog = load(text);
         for id in &ids {
             let (Some(en), Some(here)) = (english.get(*id), catalog.get(*id)) else {
                 panic!("{lang}: missing message {id} (English: {})", english.contains_key(*id));
             };
-            // Danish uses the same established names for these colour-vision modes.
-            let shared_name = lang == "da" && ["ui.colour_vision_deutan", "ui.colour_vision_protan", "ui.colour_vision_tritan"].contains(id);
+            // Danish and Norwegian use the same established names for these colour-vision modes.
+            let shared_name =
+                matches!(lang, "da" | "nb") && ["ui.colour_vision_deutan", "ui.colour_vision_protan", "ui.colour_vision_tritan"].contains(id);
             assert!(lang == "de" || shared_name || here != en, "{lang}: {id} is the English text {en}");
         }
     }
@@ -964,6 +966,39 @@ fn ui_prefs_sets_each_mode_and_refuses_anything_else() {
 /// Random values (fixed seed): strings near the four ids and far from them, numbers, nesting.
 /// `ui.prefs` takes exactly the four ids and refuses the rest without a change; saved
 /// preferences load every value, unknown ones as Off. Nothing panics.
+/// The section previews the mode being chosen (#7152): the sample's lines take that mode's
+/// colours. The status chips beside it keep theirs in every mode.
+#[test]
+fn the_sample_previews_the_mode_being_chosen() {
+    let mut h = crate::scenario::Harness::new();
+    crate::prefs::control(&mut h.app, &json!({"open": "Interface"})).unwrap();
+    let lines = |h: &crate::scenario::Harness| {
+        let mut out = BTreeSet::new();
+        for s in &h.shapes {
+            crate::test_support::each_shape(&s.shape, &mut |shape| {
+                if let egui::Shape::LineSegment { stroke, .. } = shape {
+                    out.insert(stroke.color.to_array());
+                }
+            });
+        }
+        out
+    };
+    for mode in [ColorVision::Protan, ColorVision::Tritan, ColorVision::Off] {
+        crate::prefs::control(&mut h.app, &json!({"color_vision": mode.id()})).unwrap();
+        h.frames(2);
+        let (want, off) = (Tokens::get_in(mode), Tokens::get_in(ColorVision::Off));
+        let painted = lines(&h);
+        for (name, c) in [("axis_x", want.axis_x), ("axis_y", want.axis_y), ("sketch_locked", want.sketch_locked)] {
+            assert!(painted.contains(&c.to_array()), "{mode:?}: the sample draws {name} {c:?}");
+        }
+        if mode != ColorVision::Off {
+            let changed = [(want.axis_x, off.axis_x), (want.sketch_locked, off.sketch_locked)];
+            assert!(changed.iter().any(|(a, b)| a != b), "{mode:?} recolours what the sample shows");
+        }
+    }
+    crate::prefs::control(&mut h.app, &json!({"button": "cancel"})).unwrap();
+}
+
 #[test]
 fn random_values_never_panic_and_only_the_four_ids_are_taken() {
     fn value(next: &mut impl FnMut() -> u64, depth: u32) -> serde_json::Value {
@@ -1040,4 +1075,25 @@ fn cancel_puts_the_mode_back_ok_keeps_it_and_restore_defaults_resets_interface_o
     control(&mut app, json!({"button": "defaults"}));
     assert_eq!(app.preferences.color_vision, ColorVision::Off);
     control(&mut app, json!({"button": "ok"}));
+}
+
+/// #975: the Curvature Map reads from flat to tight with hue lost too. Along the shader's two
+/// blends its lightness rises the whole way, and each quarter of the scale is a clear step, for
+/// normal vision and each simulated loss. The former blue, green, red scale rose and fell.
+#[test]
+fn the_curvature_scale_lightens_steadily_for_every_eye() {
+    let c = Tokens::light().analysis.curvature;
+    // Flat to middle over the first half, middle to tight over the second, as the shader mixes.
+    let at = |t: f64| -> Rgb8 {
+        let (a, b, u) = if t < 0.5 { (c[0], c[1], t * 2.0) } else { (c[1], c[2], t * 2.0 - 1.0) };
+        std::array::from_fn(|k| ((f64::from(a[k]) + (f64::from(b[k]) - f64::from(a[k])) * u) * 255.0).round().clamp(0.0, 255.0) as u8)
+    };
+    for eye in [Eye::Normal, Eye::Protan, Eye::Deutan, Eye::Tritan] {
+        let labs: Vec<V3> = (0..=4).map(|i| lab(simulate(at(f64::from(i) / 4.0), eye, Instrument::Machado))).collect();
+        for w in labs.windows(2) {
+            assert!(w[1][0] > w[0][0], "{eye:?}: the lightness falls along the scale: {labs:?}");
+            let step = de2000(w[0], w[1]);
+            assert!(step >= 10.0, "{eye:?}: a quarter of the scale is only {step:.1} apart: {labs:?}");
+        }
+    }
 }

@@ -5,6 +5,7 @@
 //! test cannot see runtime-registered commands).
 
 use serde_json::{Value, json};
+use solidcraft_engine::doc::metadata::Owner;
 use solidcraft_engine::{EngineError, Session};
 use triya_drawing::commands::{self, SHEET_KEY};
 
@@ -128,7 +129,7 @@ fn drawing_commands_never_panic_on_hostile_params() {
         Box::new(|s: &mut Session| {
             let _ = s.execute("vessel.new", &json!({}));
             let mut m = s.doc.metadata.clone();
-            let _ = m.set(SHEET_KEY, json!({"options": {"size": "a9", "views": 7, "scale": -1}}));
+            let _ = m.set(Owner::Design, SHEET_KEY, json!({"options": {"size": "a9", "views": 7, "scale": -1}}));
             s.doc_mut().metadata = m;
         }),
     ];

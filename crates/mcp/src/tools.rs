@@ -75,7 +75,7 @@ pub fn tool_definitions() -> Vec<Value> {
         tool(
             "describe_command",
             "Describe a command",
-            "One command's parameter docs and, for commands with a typed contract (solid.box, solid.extrude and engine.describe so far), the \
+            "One command's parameter docs and, for commands with a typed contract (every new command, and more of the older ones as they are converted), the \
              JSON Schemas (2020-12) of its parameters (`input`) and of a successful result (`output`); null for the others.",
             obj(json!({"id": string("Command id, e.g. \"solid.extrude\"")}), &["id"]),
             Effect::ReadOnly,
@@ -92,7 +92,8 @@ pub fn tool_definitions() -> Vec<Value> {
              created: {points, curves, constraints, dimensions}: the ids of what they added, stable and not reused \
              after a delete (undo rewinds the counters with the design), usable right away \
              in sketch.dimension, sketch.constraint.* and sketch.delete. Feature commands return the feature's id \
-             and name, every body (bodies) and the bodies the feature created, changed and removed (created_bodies, changed_bodies, removed_bodies).",
+             and name, every body (bodies) and the bodies the feature created, changed and removed (created_bodies, changed_bodies, removed_bodies). \
+             view.pick {pixels: [[x,y]…]} answers the body, face, exact world point, normal and depth under pixels of a screenshot (read-only; docs/control-protocol.md).",
             obj(
                 json!({
                     "command": string("Command id (see list_commands)"),
@@ -125,6 +126,7 @@ pub fn tool_definitions() -> Vec<Value> {
                         "items": {"type": "object", "properties": {"command": {"type": "string"}, "params": {"type": "object"}}, "required": ["command"]},
                     },
                     "rollback": {"type": "boolean", "description": "Undo completed steps when one fails (default true)"},
+                    "coalesce_parameters": {"type": "boolean", "description": "Set each run of consecutive plain parameter edits (parameters.change or set_parameter with a name and a value, or changes) together, rebuilding the design once for the run instead of once per edit; a run that is refused goes step by step, naming the refused step. Other steps still see the design up to date. Each step keeps its own result; the run is one undo step (default false)"},
                     "timings": {"type": "boolean", "description": "Add `timings`: [{index, command, ms}] for every step run (the failing one included) and `total_ms` (default false)"},
                     "profile": {"type": "boolean", "description": "Like timings, and each step's `profile`: {boolean_ms, tessellate_ms, other_ms}, its time in kernel booleans, in tessellation and the rest (default false)"},
                     "verbose": {"type": "boolean", "description": "false: a compact reply. Feature steps leave out the full body list (created_bodies, changed_bodies and removed_bodies stay), sketch steps the ids they repeat outside `created` (default true)"},
@@ -294,7 +296,7 @@ pub fn tool_definitions() -> Vec<Value> {
         tool(
             "open",
             "Open a design",
-            "Open a .solidcraft design file, a STEP file (.step/.stp: a new design whose bodies come from the file, as an \
+            "Open a .sc design file (or a .solidcraft one from an earlier release), a STEP file (.step/.stp: a new design whose bodies come from the file, as an \
              Import base feature in a component named after the file; an assembly's parts become nested components) or a \
              mesh (.3mf/.stl/.obj/.glb/.gltf: mesh bodies in such a component; a glTF file's nodes become nested components and its \
              materials appearances); the result reports the component (id, component_name). Replaces the current design; insert into it \
@@ -303,7 +305,7 @@ pub fn tool_definitions() -> Vec<Value> {
              so it is turned by default (`up: \"z\"` keeps its axes). `names` picks what the bodies are named after when the solids' own names say nothing useful.",
             obj(
                 json!({
-                    "path": string("Path to a .solidcraft, .step/.stp, .3mf, .stl, .obj, .glb or .gltf file"),
+                    "path": string("Path to a .sc (or .solidcraft), .step/.stp, .3mf, .stl, .obj, .glb or .gltf file"),
                     "up": {"type": "string", "enum": ["z", "y"], "description": "STEP and glTF only. z keeps the file's axes; y: the file has Y up, so its bodies are turned to stand Z up. Default: z for STEP, y for glTF"},
                     "names": {"type": "string", "enum": ["auto", "solid", "product", "instance"], "description": "STEP, IGES, FreeCAD and Rhino. auto (default): keep meaningful solid names, replace placeholders with the nearest named product, else instance; solid: the solid's own name; product: the part's name; instance: the occurrence's name, else the product's"},
                 }),
@@ -314,9 +316,9 @@ pub fn tool_definitions() -> Vec<Value> {
         tool(
             "save",
             "Save the design",
-            "Save the design to `path` or its current file. The default is a design container; a .json path selects plain JSON. Set format to container or json to override the path.",
+            "Save the design to `path` or its current file (a design opened as .solidcraft keeps that name). New designs are .sc files. The default is a design container; a .json path selects plain JSON. Set format to container or json to override the path.",
             obj(
-                json!({"path": string("Path to save to (default: the current file)"), "format": {"type": "string", "enum": ["container", "json"], "description": "Design encoding (default: JSON for .json, container otherwise)"}}),
+                json!({"path": string("Path to save to, e.g. part.sc (default: the current file)"), "format": {"type": "string", "enum": ["container", "json"], "description": "Design encoding (default: JSON for .json, container otherwise)"}}),
                 &[],
             ),
             Effect::Files,
@@ -788,6 +790,22 @@ fn batch(b: &mut dyn Backend, a: &Map<String, Value>) -> Value {
         }
     }
     let steps = &mapped;
+    // A step the batch would refuse at its turn refuses it now, before anything runs (#5853).
+    // Only where the commands run in this process: a running app may be another version, with
+    // commands this one lacks, and checks the batch against its own registry when it gets it.
+    if b.in_process()
+        && let Some(refusal) = solidcraft_engine::batch_preflight::check(steps, b.param_check(), &[])
+    {
+        let mut reply = refusal.reply(steps.len());
+        if let Some(o) = reply.as_object_mut() {
+            o.insert("ok".into(), Value::Bool(false));
+            o.insert("applied".into(), json!([]));
+        }
+        if let (Some(command), Some(failed)) = (refusal.command.as_deref(), reply.get_mut("failed").and_then(Value::as_object_mut)) {
+            failed.insert("error".into(), Value::String(command_error(command, refusal.error.clone())));
+        }
+        return text_result(&reply, true);
+    }
     // A `list_commands` step's catalog, filtered as the tool filters it.
     let narrow = |i: usize, v: Value| match filters.iter().find(|(j, _)| *j == i) {
         Some((_, f)) => filter_commands(v, Some(f)),
@@ -796,7 +814,11 @@ fn batch(b: &mut dyn Backend, a: &Map<String, Value>) -> Value {
     // An app that runs batches itself answers the whole batch in one request, so one frame
     // (#743). One too long for a control line goes step by step: the app would refuse it unrun.
     // The margin covers the envelope and the `allow_paths` the backend adds.
+    let coalesce = a.get("coalesce_parameters").and_then(Value::as_bool).unwrap_or(false);
     let mut params = json!({"commands": steps, "rollback": rollback});
+    if coalesce && let Some(o) = params.as_object_mut() {
+        o.insert("coalesce_parameters".into(), Value::Bool(true));
+    }
     if timed && let Some(o) = params.as_object_mut() {
         o.insert("timings".into(), Value::Bool(true));
         o.insert("profile".into(), Value::Bool(profile));
@@ -834,46 +856,68 @@ fn batch(b: &mut dyn Backend, a: &Map<String, Value>) -> Value {
     let clock = timing::Clock::start();
     // The kernel's share can only be measured where the commands run: in this process.
     let profile = profile && b.in_process();
-    for (i, step) in steps.iter().enumerate() {
-        let command = step.get("command").or_else(|| step.get("id")).and_then(Value::as_str);
-        let (r, took) = timing::time(profile, || match command {
-            Some(id) => exec(b, id, step.get("params").cloned().filter(|p| !p.is_null()).unwrap_or(json!({}))),
-            None => Err("missing `command`".to_string()),
-        });
-        if timed {
-            rows.push(took.to_json(i, command.unwrap_or_default()));
-        }
-        match r {
-            Ok(v) => {
-                let v = narrow(i, v);
-                results.push(if verbose { v } else { compact(v) })
-            }
-            Err(e) => {
-                // A step still running in the app was not cancelled: the rollback first waits for
-                // it (the backend does), so a restored checkpoint takes it back too.
-                let running = e.starts_with(STILL_RUNNING);
-                let (went_back, undone) = start.rollback(b, i);
-                // Only a rollback asked for is reported as one.
-                let rolled_back = rollback && went_back;
-                let mut failed = json!({"index": i, "command": command, "error": e});
-                // Applied: the steps before it, unless rolled back; and the step itself while it
-                // still runs, as it will apply when it finishes.
-                let mut applied: Vec<usize> = if rolled_back { Vec::new() } else { (0..i).collect() };
-                if running && !rolled_back {
-                    failed["still_running"] = json!(true);
-                    applied.push(i);
+    // With `coalesce_parameters`, each run of plain parameter edits as one edit (#5822); a run
+    // whose combined edit is refused goes step by step.
+    for run in solidcraft_engine::batch_params::plan(steps, coalesce) {
+        let singles = match run {
+            solidcraft_engine::batch_params::BatchRun::Step(i) => vec![i],
+            solidcraft_engine::batch_params::BatchRun::Params { steps: indices, changes } => {
+                let (r, took) = timing::time(profile, || exec(b, "parameters.change", solidcraft_engine::batch_params::combined_params(&changes)));
+                match r {
+                    Ok(v) => {
+                        if timed {
+                            rows.push(took.to_json(indices.first().copied().unwrap_or(0), "parameters.change"));
+                        }
+                        let rows = solidcraft_engine::batch_params::step_results(steps, &indices, &v);
+                        results.extend(rows.into_iter().map(|v| if verbose { v } else { compact(v) }));
+                        continue;
+                    }
+                    Err(_) => indices,
                 }
-                let reply = json!({
-                    "ok": false,
-                    "completed": i,
-                    "failed": failed,
-                    "rolled_back": rolled_back,
-                    "undone": undone,
-                    "applied": applied,
-                    "not_run": (i + 1..steps.len()).collect::<Vec<_>>(),
-                    "results": results,
-                });
-                return text_result(&with_timings(reply, timed, rows, clock.ms()), true);
+            }
+        };
+        for i in singles {
+            let Some(step) = steps.get(i) else { continue };
+            let command = step.get("command").or_else(|| step.get("id")).and_then(Value::as_str);
+            let (r, took) = timing::time(profile, || match command {
+                Some(id) => exec(b, id, step.get("params").cloned().filter(|p| !p.is_null()).unwrap_or(json!({}))),
+                None => Err("missing `command`".to_string()),
+            });
+            if timed {
+                rows.push(took.to_json(i, command.unwrap_or_default()));
+            }
+            match r {
+                Ok(v) => {
+                    let v = narrow(i, v);
+                    results.push(if verbose { v } else { compact(v) })
+                }
+                Err(e) => {
+                    // A step still running in the app was not cancelled: the rollback first waits for
+                    // it (the backend does), so a restored checkpoint takes it back too.
+                    let running = e.starts_with(STILL_RUNNING);
+                    let (went_back, undone) = start.rollback(b, i);
+                    // Only a rollback asked for is reported as one.
+                    let rolled_back = rollback && went_back;
+                    let mut failed = json!({"index": i, "command": command, "error": e});
+                    // Applied: the steps before it, unless rolled back; and the step itself while it
+                    // still runs, as it will apply when it finishes.
+                    let mut applied: Vec<usize> = if rolled_back { Vec::new() } else { (0..i).collect() };
+                    if running && !rolled_back {
+                        failed["still_running"] = json!(true);
+                        applied.push(i);
+                    }
+                    let reply = json!({
+                        "ok": false,
+                        "completed": i,
+                        "failed": failed,
+                        "rolled_back": rolled_back,
+                        "undone": undone,
+                        "applied": applied,
+                        "not_run": (i + 1..steps.len()).collect::<Vec<_>>(),
+                        "results": results,
+                    });
+                    return text_result(&with_timings(reply, timed, rows, clock.ms()), true);
+                }
             }
         }
     }
@@ -920,7 +964,8 @@ fn batch_reply(r: &Value, len: usize, rollback: bool, verbose: bool, narrow: &dy
                     "rolled_back": rolled_back,
                     "undone": r["undone"],
                     "applied": applied,
-                    "not_run": (completed + 1..len).collect::<Vec<_>>(),
+                    // An app that refused the batch before its first step says what didn't run.
+                    "not_run": r.get("not_run").filter(|v| v.is_array()).cloned().unwrap_or_else(|| json!((completed + 1..len).collect::<Vec<_>>())),
                     "results": results,
                 }),
                 true,

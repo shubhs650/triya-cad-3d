@@ -6,6 +6,7 @@
 use crate::model::{Element, ElementKind, HeadPresetId, MAX_EXTRA_BYTES, VesselDoc};
 use crate::{commands, emit, eval};
 use serde_json::{Value, json};
+use solidcraft_engine::doc::metadata::Owner;
 use solidcraft_engine::{EngineError, Session};
 
 /// The commands are registered once per test process (the registry is global and idempotent).
@@ -186,9 +187,9 @@ fn vessel_commands_never_panic_on_hostile_params() {
         move |s: &mut Session| {
             let _ = s.execute("vessel.new", &json!({}));
             let mut m = s.doc.metadata.clone();
-            let _ = m.set(commands::METADATA_KEY, head.clone());
+            let _ = m.set(Owner::Design, commands::METADATA_KEY, head.clone());
             if let Some(c) = &chunk {
-                let _ = m.set(&commands::chunk_key(1), c.clone());
+                let _ = m.set(Owner::Design, &commands::chunk_key(1), c.clone());
             }
             s.doc_mut().metadata = m;
         }

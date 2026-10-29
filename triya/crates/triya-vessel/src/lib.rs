@@ -14,7 +14,7 @@
 //! [`commands::METADATA_KEY`] (`in.openengtools.triya.vessel`), as `{"doc": VesselDoc, "generated":
 //! {"features": [ids]}}`. Upstream's `Document::metadata` is made for exactly this ("another
 //! tool's data goes under its reverse-DNS key", see `crates/doc/src/metadata.rs`): it is saved
-//! with the `.solidcraft` file, round-trips through older and newer SolidCraft versions untouched,
+//! with the design file (`.sc`, or a legacy `.solidcraft`), round-trips through older and newer SolidCraft versions untouched,
 //! takes part in undo (a metadata change is a document change) and needs **no design-format
 //! change** (`crates/doc/src/format/pending/`). The limits are upstream's: one key of at most
 //! 64 KiB; a larger vessel is refused with an error, never truncated.

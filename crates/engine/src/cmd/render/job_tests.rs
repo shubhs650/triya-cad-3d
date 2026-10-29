@@ -636,7 +636,7 @@ fn unsupported_intent_is_rejected_and_export_preserves_existing_files() {
         json!({"settings":{"mode":"final"}}),
         json!({"settings":{"format":"exr"}}),
         json!({"settings":{"backend":"missing"}}),
-        json!({"settings":{"exposure_ev":1}}),
+        json!({"settings":{"exposure_ev":1},"integrator":"raytrace"}),
         json!({"unknown":true}),
     ] {
         assert!(s.execute("render.preflight", &params).is_err());
@@ -1044,9 +1044,13 @@ fn dielectric_preflight_and_start_resolve_refraction_without_broadening_boundari
     let mut s = Session::default();
     s.set_render_job_host(Some(host.clone())).unwrap();
     s.execute("solid.box", &json!({"length":20,"width":20,"height":2,"body_name":"Glass"})).unwrap();
+    // The default view sends the single pixel's ray exactly through a box edge, which the optics reject
+    // as an ambiguous interface normal. Whether the job then ends Failed or Cancelled would depend on
+    // whether the cancel below beats the render thread, so view the glass off-axis.
+    let camera = solidcraft_render::Camera { yaw: 0.3, pitch: 0.4, ..Default::default() };
     let document = s.doc.clone();
     let before = (s.revision, s.evaluations, s.is_dirty(), s.undo.len(), s.redo.len());
-    let params = json!({"integrator":"raytrace","settings":{"width":1,"height":1},"raytrace":{"dielectrics":[{
+    let params = json!({"integrator":"raytrace","settings":{"width":1,"height":1,"camera":camera},"raytrace":{"dielectrics":[{
         "body_index":0,"body_name":"Glass","boundary":"closed_box","ior":1.5,"absorption_per_mm":[0,0,0],"thickness_mm":0
     }]}});
     for command in ["render.preflight", "render.start"] {
@@ -1065,7 +1069,12 @@ fn dielectric_preflight_and_start_resolve_refraction_without_broadening_boundari
             let handle = s.render_job_handle(id).unwrap();
             s.execute("render.cancel", &json!({"job":id})).unwrap();
             let status = handle.wait_timeout(std::time::Duration::from_secs(10)).unwrap();
-            assert!(matches!(status.progress.phase, solidcraft_render::job::Phase::Cancelled | solidcraft_render::job::Phase::Completed));
+            assert!(
+                matches!(status.progress.phase, solidcraft_render::job::Phase::Cancelled | solidcraft_render::job::Phase::Completed),
+                "phase {:?}, error {:?}",
+                status.progress.phase,
+                status.error
+            );
         }
     }
     for boundary in ["closed_mesh", "thin_sheet"] {
@@ -1170,4 +1179,21 @@ fn explicit_render_camera_preserves_orientation_and_refuses_invalid_state_atomic
     assert_eq!(s.camera, before_camera);
     assert!(Arc::ptr_eq(&document, &s.doc));
     assert_eq!(before, (s.revision, s.evaluations, s.is_dirty(), s.undo.len(), s.redo.len(), s.model.is_stale()));
+}
+
+/// #5089: a setup saved with exposure (the render workspace and the other executors use it)
+/// renders on the raster executor, which has no exposure, and the reply says what it left out.
+#[test]
+fn a_setup_saved_with_exposure_renders_and_names_the_controls_it_leaves_out() {
+    let (mut s, host) = session();
+    s.execute("render.settings.set", &json!({"name":"x","set":{"mode":"preview","width":16,"height":16,"exposure_ev":0.3}})).unwrap();
+    let reply = s.execute("render.preflight", &json!({"setup":"x"})).unwrap();
+    assert_eq!(reply["ignored_controls"], json!(["exposure_ev"]));
+    let plain = s.execute("render.preflight", &request()).unwrap();
+    assert_eq!(plain["ignored_controls"], json!([]));
+    let started = s.execute("render.start", &json!({"setup":"x"})).unwrap();
+    assert_eq!(started["ignored_controls"], json!(["exposure_ev"]));
+    finish(&host);
+    let id: JobId = serde_json::from_value(started["job"].clone()).unwrap();
+    assert_eq!(s.execute("render.status", &json!({"job":id})).unwrap()["progress"]["phase"], "completed");
 }

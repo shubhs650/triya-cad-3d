@@ -1,8 +1,8 @@
 # Upstream files touched by the Triya CAD 3D overlay
 
-Base: SolidCraft v0.22.0, commit `0537623` (`git diff v0.22.0` → `0001-seams.patch`;
+Base: SolidCraft v0.25.1, commit `37a586d` (`git diff v0.25.1` → `0001-seams.patch`;
 `Cargo.lock` separately in `0002-cargo-lock.patch`). Every seam in a file whose syntax has
-comments carries `// Modified by Triya CAD 3D: <why>`. JSON has no comment syntax, so the three
+comments carries `// Modified by Triya CAD 3D: <why>`. JSON has no comment syntax, so the six
 catalog lines are recorded only here.
 
 Refresh both patches after changing a seam: `bash triya/ci/refresh-seam-patches.sh` (Triya CI runs it
@@ -30,6 +30,9 @@ root, then `cargo update --workspace` (or let cargo regenerate the lock) instead
 | 17 | `crates/ui-egui/src/toolbar.rs` | after `app_name`; the app bar's `brand_mark` call | `pub static BRAND_MARK: OnceLock<fn(&Painter, Pos2)>`; the app bar paints it when set, else upstream's mark | the app bar painted SolidCraft's logo; `triya_ui::register` sets Triya's code-drawn mark (`triya_ui::icons::paint_app_bar_mark`) |
 | 18 | `crates/ui-egui/src/home.rs` | File page navigation, `home:about` row | `app_name().1` instead of `"About SolidCraft"` | same (v0.22's start page has no product heading; its About row names the product) |
 | 19 | `crates/ui-egui/src/help.rs` | Help menu `("about", …)` row | `app_name().1` instead of `"About SolidCraft"` | same; the item opens the Triya About window (`triya_ui::about`) |
+| 20 | `assets/locales/ar.json` | after `"ui.heading_utility"` | `"ui.heading_vessel": "الأوعية"` | v0.25 made Arabic a complete catalog (`i18n::COMPLETE`), so `every_complete_catalog_carries_every_english_message` requires the heading |
+| 21 | `assets/locales/he.json` | same | `"ui.heading_vessel": "מכלים"` | likewise (Hebrew, complete since v0.25) |
+| 22 | `assets/locales/vi.json` | same | `"ui.heading_vessel": "BÌNH CHỨA"` | likewise (Vietnamese, complete since v0.25) |
 
 ## Not touched, by design
 

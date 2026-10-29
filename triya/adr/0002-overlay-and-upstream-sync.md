@@ -45,3 +45,10 @@ now reads: upstream releases are merged by tag on the owner's request until `tri
 the daily cron stays off until then. The base for the seam whitelist, the patches and the
 roundtrip job is v0.22.0. Designs saved from now on are `solidcraft/35` and do not open in
 SolidCraft releases older than v0.22.0 (ADR-0006's target is the current base).
+
+## Amendment 2026-10-28 — v0.25.1
+The owner (Shubham, 2026-10-28) asked to move onto upstream v0.25.1 (`37a586d`, 571 commits
+after v0.22.0) before the beta, for its stability and performance work. Same procedure: one
+merge commit of the tag, never a rebase. The base for the seam whitelist, the patches and the
+roundtrip job is now v0.25.1. Designs saved from now on are `solidcraft/41` and open in SolidCraft
+v0.25.1 and later.

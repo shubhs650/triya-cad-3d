@@ -24,6 +24,7 @@ triya-brand = { workspace = true }
 triya-ui = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11", "links"] }
 egui = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 rfd = { workspace = true }

@@ -37,3 +37,10 @@ assets and derived tables are added as ATTRIBUTION rows. All new files carry SPD
 - Users see "Triya CAD 3D" but save `.solidcraft` files — documented in the README FAQ.
 - The web shell keeps upstream's `index.html` element ids (shared `loading.css`); only visible
   strings, manifest, icons and the cache prefix change.
+
+## Amendment 2026-10-28 — `.sc` design extension
+Upstream v0.25 saves new designs as `.sc` and still opens `.solidcraft` (its compatibility
+shim). Triya follows upstream (owner, 2026-10-28, plan D1): the rule was never the spelling, it
+was that files stay interchangeable with upstream, and `.sc` is what upstream now writes. Triya
+writes `.sc` for new designs, keeps an opened file's own extension on Save, and opens both.
+The format tag `solidcraft/N` and every other identifier above are unchanged.
